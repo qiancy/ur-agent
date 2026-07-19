@@ -2,6 +2,7 @@
 
 > **Audience**: All AI Agents working on Uni-Resource Agent.
 > **Purpose**: One source of truth for architecture, constraints, and progress.
+> **Note**: This document is primarily in Chinese for the opencode agent.
 
 ---
 
@@ -147,7 +148,7 @@ All tables use `context_id` for multi-tenant isolation.
 
 ## 🛠️ Database Configuration
 
-The database is configured and running on PostgreSQL 16.14. For detailed configuration information, see the [PostgreSQL service documentation](/data/service/pg-unires/README.md).
+The database is configured and running on PostgreSQL 16.14. For detailed configuration information, see the [PostgreSQL Database Management Documentation](DBA.md).
 
 ---
 

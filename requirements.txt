@@ -1,0 +1,26 @@
+# requirements.txt
+
+# LangChain
+langchain
+langchain-core
+langchain-openai
+
+# Database
+psycopg2-binary
+sqlalchemy
+
+# Web Framework
+fastapi
+uvicorn
+pydantic
+
+# Authentication
+python-jose
+passlib
+python-multipart
+
+# Vector Database
+chromadb
+
+# Utilities
+python-dotenv

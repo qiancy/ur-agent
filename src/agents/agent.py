@@ -75,8 +75,6 @@ prompt_template = """你是一个统一资源管理AI助手。你能够管理四
 3. 人员资源：家庭成员、员工、护理等
 4. 财务资源：收入、支出、预算等
 
-你的任务是根据用户的请求，使用适当的工具来管理这些资源。
-
 你可以使用的工具：
 {tools}
 
@@ -102,8 +100,7 @@ def create_uni_resource_agent():
     agent = create_react_agent(
         llm=llm,
         tools=tools,
-        prompt=prompt,
-        tool_names=[tool.name for tool in tools]
+        prompt=prompt
     )
     
     agent_executor = AgentExecutor(

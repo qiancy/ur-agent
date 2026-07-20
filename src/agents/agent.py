@@ -102,7 +102,8 @@ def create_uni_resource_agent():
     agent = create_react_agent(
         llm=llm,
         tools=tools,
-        prompt=prompt
+        prompt=prompt,
+        tool_names=[tool.name for tool in tools]
     )
     
     agent_executor = AgentExecutor(

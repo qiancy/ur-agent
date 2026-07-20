@@ -148,7 +148,7 @@ All tables use `context_id` for multi-tenant isolation.
 
 ## 🛠️ Database Configuration
 
-The database is configured and running on PostgreSQL 16.14. For detailed configuration information, see the [PostgreSQL Database Management Documentation](DBA.md).
+The database is configured and running on PostgreSQL 16.14. For detailed configuration information, see the [PostgreSQL Database Management Documentation](docs/DBA.md).
 
 ---
 

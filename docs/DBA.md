@@ -75,3 +75,37 @@ su - postgres -c "/data/service/pg-unires/bin/pgctl.sh log"
 ```bash
 /data/init/init-pg.sh
 ```
+
+## PostgreSQL Vector Extension (pgvector) 安装
+本系统使用 pgvector 扩展来支持向量数据库功能，这对于 RAG（检索增强生成）功能至关重要。
+
+### 安装步骤
+1. 安装 PostgreSQL 开发头文件：
+```bash
+apt-get update
+apt-get install -y postgresql-server-dev-all
+```
+
+2. 编译并安装 pgvector 扩展：
+```bash
+cd /tmp
+git clone https://github.com/pgvector/pgvector.git
+cd pgvector
+make USE_PGXS=1 PG_CONFIG=/usr/lib/postgresql/16/bin/pg_config
+make install USE_PGXS=1 PG_CONFIG=/usr/lib/postgresql/16/bin/pg_config
+```
+
+3. 在数据库中创建扩展：
+```bash
+su - postgres -c "psql -d unires -c 'CREATE EXTENSION IF NOT EXISTS vector;'"
+```
+
+### 验证安装
+```bash
+su - postgres -c "psql -d unires -c 'SELECT * FROM pg_extension WHERE extname = 'vector';'"
+```
+
+### 注意事项
+- 扩展安装到 `/usr/lib/postgresql/16/lib/vector.so` 和 `/usr/share/postgresql/16/extension/vector.control`
+- 安装需要 PostgreSQL 16 开发头文件
+- 安装后需重启 PostgreSQL 服务以加载扩展

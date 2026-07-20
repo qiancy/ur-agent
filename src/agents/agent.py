@@ -1,5 +1,5 @@
 from typing import List, Optional
-from langchain.agents import AgentExecutor, create_react_agent
+from langchain.agents import initialize_agent, AgentType
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import Tool
 from langchain_openai import ChatOpenAI
@@ -76,7 +76,7 @@ prompt_template = """你是一个统一资源管理AI助手。你能够管理四
 4. 财务资源：收入、支出、预算等
 
 你可以使用的工具：
-{tool_names}
+{tools}
 
 请严格按照以下格式回复：
 Thought: 我需要使用哪个工具来解决这个问题？
@@ -95,21 +95,15 @@ Action Input: 工具输入参数
 def create_uni_resource_agent():
     llm = get_llm()
     
-    prompt = PromptTemplate.from_template(prompt_template)
-    
-    agent = create_react_agent(
+    agent = initialize_agent(
+        tools=tools,
         llm=llm,
-        tools=tools,
-        prompt=prompt
+        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+        verbose=True,
+        return_intermediate_steps=True
     )
     
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        verbose=True
-    )
-    
-    return agent_executor
+    return agent
 
 # 主函数
 def main():

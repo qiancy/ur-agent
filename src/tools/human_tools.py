@@ -1,114 +1,92 @@
+"""Human tools: manage_reminder, check_wellness."""
 from typing import Optional
 from langchain_core.tools import tool
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import json
 
-from src.db.database import get_db_connection
+from src.db.database import (
+    query_person,
+    query_person_by_name,
+    _execute,
+)
+
 
 @tool
-def manage_reminder(action: str, person_name: str, task: str, due_date: Optional[str] = None) -> str:
+def manage_reminder(
+    action: str,
+    person_name: str,
+    task: str,
+    oid: int,
+    due_date: Optional[str] = None,
+) -> str:
     """
-    Manage personnel reminders and tasks.
-    
+    Manage health reminders for a person.
+
     Args:
-        action (str): Action type (add, update, delete)
-        person_name (str): Name of the person
-        task (str): Task description
-        due_date (Optional[str]): Due date for the task (optional)
-        
+        action: Action type — 'add', 'update', or 'delete'.
+        person_name: Name of the person.
+        task: Task/reminder description.
+        oid: Organization identifier.
+        due_date: Due date for the task (optional).
+
     Returns:
-        str: Operation confirmation or error message
+        Operation confirmation or error message.
     """
-    conn = None
     try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Normalize action to lowercase
         action = action.lower().strip()
-        
+
+        people = query_person(oid, person_name)
+        if not people:
+            return f"Person '{person_name}' not found in org {oid}"
+        person = people[0]
+
+        current = person.get("health_reminders") or {}
+        if isinstance(current, str):
+            current = json.loads(current)
+
         if action == "add":
-            # Insert new reminder
-            cur.execute("""
-                INSERT INTO personnel (name, role, health_reminders)
-                VALUES (%s, %s, %s)
-                RETURNING id
-            """, (person_name, "reminder", json.dumps({"task": task, "due_date": due_date})))
-            
-            person_id = cur.fetchone()[0]
-            conn.commit()
-            return f"Successfully added reminder for {person_name}: {task}"
-            
+            tasks = current.get("tasks", [])
+            tasks.append({"task": task, "due_date": due_date})
+            current["tasks"] = tasks
         elif action == "update":
-            # Update existing reminder
-            cur.execute("""
-                UPDATE personnel 
-                SET health_reminders = %s
-                WHERE name = %s AND role = 'reminder'
-            """, (json.dumps({"task": task, "due_date": due_date}), person_name))
-            
-            if cur.rowcount > 0:
-                conn.commit()
-                return f"Successfully updated reminder for {person_name}: {task}"
-            else:
-                return f"No reminder found for {person_name}"
-                
+            tasks = current.get("tasks", [])
+            updated = False
+            for t in tasks:
+                if t["task"] == task:
+                    t["due_date"] = due_date
+                    updated = True
+            if not updated:
+                tasks.append({"task": task, "due_date": due_date})
+            current["tasks"] = tasks
         elif action == "delete":
-            # Delete reminder
-            cur.execute("""
-                DELETE FROM personnel 
-                WHERE name = %s AND role = 'reminder'
-            """, (person_name,))
-            
-            if cur.rowcount > 0:
-                conn.commit()
-                return f"Successfully deleted reminder for {person_name}"
-            else:
-                return f"No reminder found for {person_name}"
+            current["tasks"] = [t for t in current.get("tasks", []) if t["task"] != task]
         else:
             return f"Invalid action: {action}. Use 'add', 'update', or 'delete'"
-            
+
+        _execute(
+            "UPDATE person SET health_reminders = %s WHERE id = %s",
+            (json.dumps(current, ensure_ascii=False), person["id"]),
+        )
+        return f"Reminder {action}d for {person_name}: {task}"
     except Exception as e:
-        return f"Error managing reminder: {str(e)}"
-    finally:
-        if conn:
-            conn.close()
+        return f"Error managing reminder: {e}"
+
 
 @tool
-def check_wellness(person_name: str, context_id: int) -> str:
+def check_wellness(person_name: str, oid: int) -> str:
     """
-    Check wellness information for a person in a specific context.
-    
+    Check wellness / health information for a person.
+
     Args:
-        person_name (str): Name of the person
-        context_id (int): Context identifier for multi-tenant isolation
-        
+        person_name: Name of the person.
+        oid: Organization identifier.
+
     Returns:
-        str: Wellness information or error message
+        Person information with health data, or error message.
     """
-    conn = None
     try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Query wellness information
-        cur.execute("""
-            SELECT * FROM personnel 
-            WHERE context_id = %s AND name = %s
-        """, (context_id, person_name))
-        
-        person = cur.fetchone()
-        
-        if person:
-            # Convert to regular dict for JSON serialization
-            person_data = dict(person)
-            return json.dumps(person_data, default=str)
-        else:
-            return f"No person found with name '{person_name}' in context {context_id}"
-            
+        people = query_person(oid, person_name)
+        if people:
+            return json.dumps(people[0], default=str, ensure_ascii=False)
+        return f"Person '{person_name}' not found in org {oid}"
     except Exception as e:
-        return f"Error checking wellness: {str(e)}"
-    finally:
-        if conn:
-            conn.close()
+        return f"Error checking wellness: {e}"

@@ -4,6 +4,7 @@
 > **Purpose**: One source of truth for architecture, constraints, and progress.
 > **Note**: This document is primarily in Chinese for the opencode agent.
 
+
 ---
 
 ## 🎯 Project at a Glance
@@ -85,7 +86,18 @@ uni-resource-agent/
 ├── AGENTS.md                 # ← This file
 ├── README.md                 # Human-readable
 ├── LICENSE
-├── _pm/                      # Project management
+├── agents/                   # ← Agent specifications (root level)
+│   ├── DBA_AGENT.md          # PostgreSQL数据库管理规范
+│   ├── TDD_AGENT.md          # 测试驱动开发规范
+│   ├── dba/                  # 数据库管理相关文件
+│   └── tdd/                  # 测试相关文件
+│       ├── README.md
+│       ├── test_three_kingdoms.py
+│       ├── test_three_kingdoms_http.py
+│       ├── test_fire_newye_api.py
+│       ├── setup_fire_newye_campaign.py
+│       └── 火烧新野战役故事文档.md
+├── _pm/                      # Project management (NOT YET CREATED - see note below)
 │   ├── 团队分工.md
 │   ├── 进度跟踪.md
 │   └── 质量检查.md
@@ -107,48 +119,112 @@ uni-resource-agent/
 ├── data/
 │   ├── init_data/            # 4 spaces JSON
 │   └── knowledge/            # RAG documents
-└── docs/
-    └── 项目说明文档.md
+├── docs/
+│   ├── API.md                # API documentation
+│   └── (removed - moved to agents/DBA_AGENT.md)
+└── tdd/                      # Test scripts (root level - deprecated)
+    ├── test_three_kingdoms_http.py
+    └── test_three_kingdoms.py
+└── agents/
+    └── tdd/                  # Test scripts (moved here)
+        ├── TDD.md            # TDD规范文档
+        ├── test_three_kingdoms_http.py
+        └── test_three_kingdoms.py
 ```
 
 ---
 
-## 🔧 Tool Function Signatures (Must Implement)
+## 🔧 Tool Function Signatures
 
-All tools use `@tool` decorator from LangChain.
+All tools use `@tool` decorator from LangChain. Exported via `src.tools.ALL_TOOLS`.
 
 ```python
 @tool
-def query_asset(name: str, context_id: int, warehouse: Optional[str] = None) -> str
+def query_asset(name: str, org_id: int, warehouse: Optional[str] = None) -> str
 
 @tool
-def transfer_asset(asset_id: str, from_context: int, to_context: int, quantity: int) -> str
+def transfer_asset(asset_id: int, from_org: int, to_org: int, quantity: int) -> str
 
 @tool
-def record_transaction(amount: float, category: str, description: str, context_id: int) -> str
+def record_transaction(amount: float, category: str, description: str,
+                       org_id: int, from_party: str, to_party: str) -> str
 
 @tool
-def manage_reminder(action: str, person_name: str, task: str, due_date: Optional[str] = None) -> str
+def get_transaction_history(org_id: int) -> str
 
 @tool
-def rag_search(query: str, context_id: int) -> str
+def get_summary(org_id: int) -> str
+
+@tool
+def manage_reminder(action: str, person_name: str, task: str,
+                    org_id: int, due_date: Optional[str] = None) -> str
+
+@tool
+def check_wellness(person_name: str, org_id: int) -> str
+
+@tool
+def rag_search(query: str, org_id: int) -> str
+
+@tool
+def store_knowledge(content: str, org_id: int, title: str) -> str
 ```
 
 ---
 
 ## 🗄️ Database Schema
 
-All tables use `context_id` for multi-tenant isolation.
+> `org_id` 是程序运行时概念，不作为独立表。所有表带 `org_id` 做多租户隔离。
 
-- `contexts` — id, name, type, owner_user_id
-- `physical_assets` — id, context_id, name, type, quantity, status, lifecycle_log
-- `virtual_assets` — id, context_id, name, content, embedding
-- `personnel` — id, context_id, name, role, birth_date, health_reminders
-- `transactions` — id, context_id, amount, category, description, transaction_date
+| Table | Description | Key Columns |
+|-------|-------------|-------------|
+| `organization` | 组织 (个人/家庭/公司) | id, name, type, description |
+| `personnel` | 人员 | id, name, birth_date, health_reminders |
+| `membership` | 人员↔组织 (多对多, 带角色) | person_id, org_id, role |
+| `assets` | 资产基表 | id, org_id, name, type, status |
+| `physical_assets` | 物理资产 (继承 assets) | id(FK→assets), quantity, warehouse |
+| `virtual_assets` | 虚拟资产 (继承 assets) | id(FK→assets), content, embedding |
+| `party` | 交易参与方 (属于组织) | id, org_id, name, role, description |
+| `transactions` | 交易记录 | id, from_party_id, to_party_id, amount, category |
+
+**ER 关系:**
+
+```
+organization ──→ membership ←── personnel
+      │
+      └──→ party ──→ transactions (from_party_id, to_party_id)
+
+assets ─┬─ physical_assets
+        └─ virtual_assets
+```
 
 ## 🛠️ Database Configuration
 
-The database is configured and running on PostgreSQL 16.14. For detailed configuration information, see the [PostgreSQL Database Management Documentation](docs/DBA.md).
+PostgreSQL 16.14 + pgvector. Database: `unires`, User: `unires`, Password: `demo123`, Port: `5432`.
+See [DBA_AGENT.md](agents/DBA_AGENT.md) for details.
+
+## 🌐 REST API
+
+Backend: FastAPI at `http://localhost:8000`. Full API docs: `README.md`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | 健康检查 |
+| GET | `/organizations?type=&name=` | 查询组织 |
+| POST | `/organizations` | 创建组织 |
+| GET | `/organizations/{id}/members` | 查看组织成员 |
+| POST | `/organizations/members` | 添加组织成员 |
+| GET | `/persons/{id}/organizations` | 查看人员所属组织 |
+| GET | `/assets?org_id=&name=&warehouse=` | 查询资产 |
+| POST | `/assets` | 创建资产 |
+| POST | `/assets/transfer` | 资产调拨 |
+| GET | `/personnel?org_id=&name=` | 查询人员 |
+| POST | `/personnel` | 添加人员 |
+| GET | `/party?org_id=&name=` | 查询参与方 |
+| POST | `/party` | 创建参与方 |
+| GET | `/transactions?org_id=&limit=` | 交易记录 |
+| POST | `/transactions` | 记录交易 |
+| GET | `/summary?org_id=` | 财务摘要 |
+| POST | `/chat` | AI 对话 |
 
 ---
 
@@ -165,9 +241,9 @@ The database is configured and running on PostgreSQL 16.14. For detailed configu
 
 | Phase | Status | ETA |
 | :--- | :--- | :--- |
-| Infrastructure scripts | 🔴 Not started | 7/20 |
-| Tool functions | 🔴 Not started | 7/25 |
-| Agent + Backend | 🔴 Not started | 7/28 |
+| Infrastructure scripts | ✅ Done | 7/20 |
+| Tool functions | ✅ Done | 7/25 |
+| Agent + Backend | ✅ Done | 7/28 |
 | AMD GPU verification | 🔴 Not started | 8/3 |
 | Submission | 🔴 Not started | 8/6 |
 
@@ -175,8 +251,58 @@ Detailed tasks: [`_pm/进度跟踪.md`](_pm/进度跟踪.md)
 
 ---
 
+## 🧪 Testing (TDD)
+
+### Test Documentation
+- **TDD规范**：[`TDD.md`](agents/tdd/TDD.md)
+- **测试用例**：[`agents/tdd/test_three_kingdoms_http.py`](agents/tdd/test_three_kingdoms_http.py)
+
+### Test Principles
+1. **Black-box testing** - No modification to `src/` code
+2. **Context isolation** - Each test uses independent `context_id`
+3. **API-only operations** - All data access via HTTP API
+
+### Test Coverage
+| Module | Status |
+|--------|--------|
+| Organization API | ✅ 100% |
+| Person API | ✅ 100% |
+| Resource API | ✅ 100% |
+| Warehouse API | ✅ 100% |
+| Transaction API | ✅ 100% |
+| Party API | ✅ 100% |
+| Summary API | ✅ 100% |
+| Chat API | ⚠️ Basic |
+
+---
+
 ## 🔗 Quick Links
 
-- [Team分工](_pm/团队分工.md)
+- [团队分工](_pm/团队分工.md)
 - [进度跟踪](_pm/进度跟踪.md)
 - [质量检查](_pm/质量检查.md)
+- [DBA指南](agents/DBA_AGENT.md)
+- [TDD指南](agents/tdd/TDD.md)
+
+---
+
+## 📝 Documentation Updates
+
+| File | Status | Description |
+|------|--------|-------------|
+| `agents/tdd/TDD.md` | ✅ Updated | Added test case execution flow with manager review process |
+| `AGENTS.md` | ✅ Updated | Added TDD section with test coverage and principles, updated links |
+| `docs/ARCHITECTURE.md` | ✅ Created | Added comprehensive architecture documentation |
+| `README.md` | ✅ Updated | Added documentation links and architecture summary |
+
+---
+
+## 📌 Note on _pm/ Directory
+
+The `_pm/` directory does not currently exist in this project. Project management documentation files should be created under this directory when needed:
+
+- `团队分工.md` - Team分工 (Team Division)
+- `进度跟踪.md` - Progress tracking
+- `质量检查.md` - Quality check guidelines
+
+---

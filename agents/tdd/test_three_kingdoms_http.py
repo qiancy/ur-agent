@@ -268,17 +268,19 @@ class TestWarehouseAPI:
 
     def test_create(self):
         """测试创建仓库"""
+        import time
+        unique_code = f"Z{int(time.time() * 1000) % 10000}"
         resp = client.post("/warehouse", json={
             "oid": 1,
             "name": "测试仓库",
-            "code": "Z002",
+            "code": unique_code,
             "location": "测试地点",
             "description": "测试描述"
         })
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["name"] == "测试仓库"
-        assert data["code"] == "Z002"
+        assert data["code"] == unique_code
 
 
 class TestResourceWarehouseAPI:

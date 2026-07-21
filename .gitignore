@@ -39,3 +39,7 @@ ENV/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Logs and output
+output/
+*.log

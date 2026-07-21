@@ -1,17 +1,180 @@
-# 初始化数据库脚本
-
-import os
+"""
+初始化数据库：建表 + 插入三国示例数据。
+用法: PYTHONPATH=. python scripts/init_db.py
+"""
 import sys
-from src.db.database import init_database
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from src.db.database import (
+    init_database, create_resource, create_person,
+    create_organization, add_membership,
+    create_party, create_transaction,
+    create_warehouse, create_resource_warehouse,
+    query_person, query_party, query_resource, query_organization,
+)
+
 
 def main():
-    print("正在初始化数据库...")
-    try:
-        init_database()
-        print("数据库初始化成功！")
-    except Exception as e:
-        print(f"数据库初始化失败: {str(e)}")
-        sys.exit(1)
+    init_database(drop_all=True)
+
+    # ── Organizations (with initial funds & reputation) ──────
+    orgs = {}
+    for name, otype, desc, funds, rep in [
+        ("蜀国", "company", "蜀汉政权", 50000, 80),
+        ("魏国", "company", "曹魏政权", 80000, 90),
+        ("吴国", "company", "东吴政权", 60000, 75),
+        ("刘备", "personal", "刘备个人组织", 5000, 70),
+        ("诸葛亮", "personal", "诸葛亮个人组织", 8000, 85),
+    ]:
+        orgs[name] = create_organization(name, otype, desc, funds, rep)
+
+    # ── Person (纯人, 无 oid) ──────────────────────────────
+    persons = {}
+    for name in [
+        "张飞", "诸葛亮", "关羽", "赵云", "刘备",
+        "诸葛瞻", "黄月英", "曹操", "司马懿", "孙权", "周瑜",
+    ]:
+        persons[name] = create_person(name)
+
+    # ── Membership (person ↔ org, 带 role) ──────────────────
+    links = [
+        ("刘备", "蜀国", "主公"),
+        ("诸葛亮", "蜀国", "丞相"),
+        ("张飞", "蜀国", "将军"),
+        ("关羽", "蜀国", "将军"),
+        ("赵云", "蜀国", "将军"),
+        ("刘备", "刘备", "本人"),
+        ("诸葛亮", "诸葛亮", "本人"),
+        ("诸葛亮", "刘备", "军师"),
+        ("诸葛瞻", "诸葛亮", "子女"),
+        ("黄月英", "诸葛亮", "配偶"),
+        ("曹操", "魏国", "主公"),
+        ("司马懿", "魏国", "谋士"),
+        ("孙权", "吴国", "主公"),
+        ("周瑜", "吴国", "都督"),
+    ]
+    for person_name, org_name, role in links:
+        add_membership(persons[person_name]["id"], orgs[org_name]["id"], role)
+
+    # ── Warehouse ────────────────────────────────────────────
+    warehouses = {}
+    for org_name, name, code, loc in [
+        ("蜀国", "蜀国武库", "A", "成都"),
+        ("蜀国", "蜀国军械库", "B", "成都"),
+        ("魏国", "魏国武库", "A", "洛阳"),
+        ("吴国", "吴国水军基地", "A", "建业"),
+    ]:
+        warehouses[(org_name, name)] = create_warehouse(
+            orgs[org_name]["id"], name, code, loc
+        )
+
+    # ── Resources (physical) ────────────────────────────────
+    resources = {}
+    for org_name, name, rtype, unit in [
+        ("蜀国", "青龙偃月刀", "physical", "把"),
+        ("蜀国", "丈八蛇矛", "physical", "把"),
+        ("蜀国", "连弩", "physical", "架"),
+        ("蜀国", "战船", "physical", "艘"),
+        ("魏国", "长枪", "physical", "支"),
+        ("吴国", "战船", "physical", "艘"),
+    ]:
+        resources[(org_name, name)] = create_resource(
+            orgs[org_name]["id"], name, rtype, unit
+        )
+
+    # ── Resources (financial) ────────────────────────────────
+    for org_name, name, amount, currency in [
+        ("蜀国", "蜀国金库", 50000, "黄金"),
+        ("魏国", "魏国金库", 80000, "黄金"),
+        ("吴国", "吴国金库", 60000, "黄金"),
+    ]:
+        resources[(org_name, name)] = create_resource(
+            orgs[org_name]["id"], name, "financial", unit=None,
+            amount=amount, currency=currency
+        )
+
+    # ── Resources (human) ────────────────────────────────────
+    for org_name, name, pid in [
+        ("蜀国", "蜀国兵力", persons["张飞"]["id"]),
+        ("魏国", "魏国兵力", persons["曹操"]["id"]),
+        ("吴国", "吴国兵力", persons["孙权"]["id"]),
+    ]:
+        resources[(org_name, name)] = create_resource(
+            orgs[org_name]["id"], name, "human", pid=pid
+        )
+
+    # ── Resources (knowledge) ────────────────────────────────
+    resources[("蜀国", "隆中对")] = create_resource(
+        orgs["蜀国"]["id"], "隆中对", "knowledge",
+        content="三分天下之策"
+    )
+
+    # ── ResourceWarehouse (resource quantities) ──────────────
+    rw = [
+        ("蜀国", "青龙偃月刀", "total", 1, "把"),
+        ("蜀国", "青龙偃月刀", "A", 1, "把"),
+        ("蜀国", "青龙偃月刀", "A-1-001", 1, "把"),
+        ("蜀国", "丈八蛇矛", "total", 1, "把"),
+        ("蜀国", "丈八蛇矛", "A", 1, "把"),
+        ("蜀国", "丈八蛇矛", "A-1-002", 1, "把"),
+        ("蜀国", "连弩", "total", 50, "架"),
+        ("蜀国", "连弩", "A", 30, "架"),
+        ("蜀国", "连弩", "A-1-003", 30, "架"),
+        ("蜀国", "连弩", "B", 20, "架"),
+        ("蜀国", "连弩", "B-1-001", 20, "架"),
+        ("蜀国", "战船", "total", 10, "艘"),
+        ("蜀国", "战船", "A", 10, "艘"),
+        ("蜀国", "战船", "A-2-001", 10, "艘"),
+        ("魏国", "长枪", "total", 200, "支"),
+        ("魏国", "长枪", "A", 200, "支"),
+        ("魏国", "长枪", "A-1-001", 200, "支"),
+        ("吴国", "战船", "total", 100, "艘"),
+        ("吴国", "战船", "A", 100, "艘"),
+        ("吴国", "战船", "A-2-001", 100, "艘"),
+    ]
+    for org_name, res_name, loc_path, qty, unit in rw:
+        create_resource_warehouse(
+            resources[(org_name, res_name)]["id"],
+            loc_path, qty, unit
+        )
+
+    # ── Transactions (先创建 transaction, 再创建 party) ─────
+    # t1: 诸葛亮资助蜀汉军费
+    t1 = create_transaction(1000.00, "军费", "诸葛亮家资助蜀汉军费")
+    create_party(persons["刘备"]["id"], orgs["蜀国"]["id"], t1["id"],
+                 "payer", "蜀汉集团支付", funds_change=-1000, reputation_change=-2)
+    create_party(persons["诸葛亮"]["id"], orgs["蜀国"]["id"], t1["id"],
+                 "payee", "诸葛亮家接收", funds_change=1000, reputation_change=2)
+
+    # t2: 蜀汉发放俸禄
+    t2 = create_transaction(500.00, "俸禄", "蜀汉发放俸禄")
+    create_party(persons["刘备"]["id"], orgs["蜀国"]["id"], t2["id"],
+                 "payer", "蜀汉集团支付俸禄", funds_change=-500, reputation_change=1)
+    create_party(persons["诸葛亮"]["id"], orgs["蜀国"]["id"], t2["id"],
+                 "payee", "诸葛亮接收俸禄", funds_change=500, reputation_change=0)
+
+    # t3: 东吴联合抗曹军费
+    t3 = create_transaction(3000.00, "军费", "东吴联合抗曹军费")
+    create_party(persons["孙权"]["id"], orgs["吴国"]["id"], t3["id"],
+                 "payer", "东吴支付军费", funds_change=-3000, reputation_change=-5)
+    create_party(persons["刘备"]["id"], orgs["蜀国"]["id"], t3["id"],
+                 "payee", "蜀汉接收军费", funds_change=3000, reputation_change=5)
+
+    # ── Verify ─────────────────────────────────────────────
+    print("\n── 验证 ──")
+    for org_name, label in [("蜀国", "蜀国"), ("魏国", "魏国"), ("吴国", "吴国")]:
+        oid = orgs[org_name]["id"]
+        org = query_organization(oid=oid)[0]
+        per = query_person(oid)
+        pat = query_party(oid)
+        res = query_resource(oid)
+        print(f"\n{label} (oid={oid}):")
+        print(f"  funds={org['funds']}, reputation={org['reputation']}")
+        print(f"  person:  {[p['name'] for p in per]}")
+        print(f"  party:   {[(p['person_name']+'('+p['role']+',funds:'+str(p['funds_change'])+')') for p in pat]}")
+        print(f"  resource: {[(r['name']+'['+r['type']+']') for r in res]}")
+
 
 if __name__ == "__main__":
     main()

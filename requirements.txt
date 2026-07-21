@@ -13,6 +13,7 @@ sqlalchemy
 fastapi
 uvicorn
 pydantic
+gradio
 
 # Authentication
 python-jose

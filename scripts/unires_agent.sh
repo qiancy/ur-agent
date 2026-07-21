@@ -34,7 +34,18 @@ check_dependencies() {
 # 安装依赖
 install_dependencies() {
     echo -e "${YELLOW}安装Python依赖...${NC}"
-    pip3 install --break-system-packages -r requirements.txt
+    # 获取脚本所在目录的父目录（项目根目录）
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    REQUIREMENTS_FILE="$PROJECT_ROOT/requirements.txt"
+    
+    if [ ! -f "$REQUIREMENTS_FILE" ]; then
+        echo -e "${RED}错误: 未找到 requirements.txt 文件${NC}"
+        echo -e "${YELLOW}期望路径: $REQUIREMENTS_FILE${NC}"
+        exit 1
+    fi
+    
+    pip3 install --break-system-packages -r "$REQUIREMENTS_FILE"
     if [ $? -ne 0 ]; then
         echo -e "${RED}依赖安装失败${NC}"
         exit 1
@@ -45,9 +56,13 @@ install_dependencies() {
 # 初始化数据库
 init_database() {
     echo -e "${YELLOW}初始化数据库...${NC}"
-    # 尝试使用当前目录下的init_db.py文件
-    if [ -f "scripts/init_db.py" ]; then
-        python3 scripts/init_db.py
+    # 获取脚本所在目录的父目录（项目根目录）
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    
+    # 尝试使用项目根目录下的init_db.py文件
+    if [ -f "$PROJECT_ROOT/scripts/init_db.py" ]; then
+        python3 "$PROJECT_ROOT/scripts/init_db.py"
     else
         # 如果没有这个文件，创建一个简单的数据库初始化
         echo -e "${YELLOW}未找到数据库初始化脚本，跳过数据库初始化${NC}"
@@ -65,6 +80,10 @@ init_database() {
 start_backend() {
     echo -e "${YELLOW}启动后端服务...${NC}"
     
+    # 获取脚本所在目录的父目录（项目根目录）
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    
     # 检查是否已在运行
     if [ -f "$BACKEND_PID_FILE" ]; then
         PID=$(cat "$BACKEND_PID_FILE")
@@ -76,6 +95,9 @@ start_backend() {
             rm -f "$BACKEND_PID_FILE"
         fi
     fi
+    
+    # 切换到项目根目录
+    cd "$PROJECT_ROOT"
     
     # 启动后端服务
     nohup uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 &
@@ -102,6 +124,10 @@ start_backend() {
 start_frontend() {
     echo -e "${YELLOW}启动前端服务...${NC}"
     
+    # 获取脚本所在目录的父目录（项目根目录）
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    
     # 检查是否已在运行
     if [ -f "$FRONTEND_PID_FILE" ]; then
         PID=$(cat "$FRONTEND_PID_FILE")
@@ -111,8 +137,11 @@ start_frontend() {
         fi
     fi
     
+    # 切换到项目根目录
+    cd "$PROJECT_ROOT"
+    
     # 启动前端服务（调用独立的 frontend.py 脚本）
-    nohup python3 src/frontend.py > "$FRONTEND_LOG" 2>&1 &
+    nohup python3 "$PROJECT_ROOT/src/frontend.py" > "$FRONTEND_LOG" 2>&1 &
     
     FRONTEND_PID=$!
     
@@ -226,6 +255,10 @@ show_help() {
     echo "服务端口:"
     echo "  后端: 8000"
     echo "  前端: 7860"
+    echo ""
+    echo "注意:"
+    echo "  脚本会自动从项目根目录查找 requirements.txt"
+    echo "  请确保在项目根目录下运行此脚本"
 }
 
 # 主程序

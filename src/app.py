@@ -247,14 +247,17 @@ async def chat(body: ChatRequest):
 
         def _run_agent():
             from src.agents.agent import create_uni_resource_agent
+            from langchain.agents import AgentExecutor
+            from src.tools import ALL_TOOLS
             agent = create_uni_resource_agent()
-            return agent.invoke({"input": body.message})
+            agent_executor = AgentExecutor(agent=agent, tools=ALL_TOOLS, verbose=True, handle_parsing_errors=True)
+            return agent_executor.invoke({"input": body.message})
 
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_agent), timeout=30
         )
-        logger.info(f"Chat response: {result['output'][:100]}...")
-        return {"response": result["output"], "oid": body.oid}
+        logger.info(f"Chat response: {result.get('output', '')[:100]}...")
+        return {"response": result.get('output', ''), "oid": body.oid}
     except asyncio.TimeoutError:
         logger.error("Chat request timed out (30s)")
         raise HTTPException(504, "AI agent timed out. Is the LLM server running?")

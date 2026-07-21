@@ -43,3 +43,6 @@ Thumbs.db
 # Logs and output
 output/
 *.log
+
+.venv/
+

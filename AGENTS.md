@@ -244,6 +244,11 @@ Backend: FastAPI at `http://localhost:8000`. Full API docs: `README.md`.
 | Infrastructure scripts | ✅ Done | 7/20 |
 | Tool functions | ✅ Done | 7/25 |
 | Agent + Backend | ✅ Done | 7/28 |
+| TDD Test Scripts | ✅ Done | 7/21 |
+| TDD Documentation | ✅ Done | 7/21 |
+| **初始化API实现建议** | ✅ Done | 7/21 |
+| **测试脚本更新** | ✅ Done | 7/21 |
+| **测试计划文档更新** | ✅ Done | 7/21 |
 | AMD GPU verification | 🔴 Not started | 8/3 |
 | Submission | 🔴 Not started | 8/6 |
 
@@ -283,6 +288,9 @@ Detailed tasks: [`_pm/进度跟踪.md`](_pm/进度跟踪.md)
 - [质量检查](_pm/质量检查.md)
 - [DBA指南](agents/DBA_AGENT.md)
 - [TDD指南](agents/tdd/TDD.md)
+- [回归测试计划](agents/tdd/回归测试计划.md)
+- [测试执行指南](agents/tdd/测试执行指南.md)
+- [初始化API建议](agents/tdd/初始化API实现建议.md)
 
 ---
 
@@ -294,6 +302,10 @@ Detailed tasks: [`_pm/进度跟踪.md`](_pm/进度跟踪.md)
 | `AGENTS.md` | ✅ Updated | Added TDD section with test coverage and principles, updated links |
 | `docs/ARCHITECTURE.md` | ✅ Created | Added comprehensive architecture documentation |
 | `README.md` | ✅ Updated | Added documentation links and architecture summary |
+| `agents/tdd/回归测试计划.md` | ✅ Updated | 回归测试计划文档，包含API依赖说明 |
+| `agents/tdd/测试执行指南.md` | ✅ Created | 测试执行指南 |
+| `agents/tdd/初始化API实现建议.md` | ✅ Created | 初始化API实现建议和API调用说明 |
+| `agents/tdd/test_fire_newye_api.py` | ✅ Updated | 添加init-api命令和API调用逻辑 |
 
 ---
 

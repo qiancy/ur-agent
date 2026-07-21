@@ -1,5 +1,5 @@
 """
-Uni-Resource Agent — Gradio frontend.
+Uni-Resource Agent — Gradio frontend (v5.2).
 
 Connects to FastAPI backend at http://localhost:8000.
 """
@@ -24,17 +24,17 @@ def _post(path, body=None):
 
 # ── org selector ─────────────────────────────────────────────────────────────
 
-ORG_OPTIONS = [
-    ("蜀国 (公司)", 1),
-    ("魏国 (公司)", 2),
-    ("吴国 (公司)", 3),
-    ("刘备 (个人)", 4),
-    ("诸葛亮 (个人)", 5),
-]
+def _load_orgs():
+    """动态加载组织列表"""
+    try:
+        orgs = _get("/organizations")
+        return [(f"{o['name']} ({o['type']})", o["id"]) for o in orgs]
+    except Exception:
+        return []
 
 
 def org_id(label: str) -> int:
-    for name, oid in ORG_OPTIONS:
+    for name, oid in _load_orgs():
         if name == label:
             return oid
     return 1
@@ -43,130 +43,160 @@ def org_id(label: str) -> int:
 # ── Tab 1: Personnel ────────────────────────────────────────────────────────
 
 def load_personnel(org_label):
-    rows = _get("/personnel", {"org_id": org_id(org_label)})
+    oid = org_id(org_label)
+    rows = _get("/person", {"oid": oid})
     if not rows:
         return "暂无人员数据"
     lines = []
     for p in rows:
-        lines.append(f"**{p['name']}** — {p['role'] or '-'}")
+        role = p.get("membership_role") or "-"
+        lines.append(f"**{p['name']}** — {role}")
     return "\n\n".join(lines)
 
 
 def add_personnel_fn(org_label, name, role):
     if not name.strip():
         return "请输入姓名"
-    _post("/personnel", {
-        "org_id": org_id(org_label),
-        "name": name.strip(),
-        "role": role.strip() or None,
-    })
+    oid = org_id(org_label)
+    person = _post("/person", {"name": name.strip()})
+    if role.strip():
+        _post("/organizations/members", {"pid": person["id"], "oid": oid, "role": role.strip()})
     return load_personnel(org_label)
 
 
 # ── Tab 2: Assets ───────────────────────────────────────────────────────────
 
-def load_assets(org_label, warehouse_filter):
-    params = {"org_id": org_id(org_label)}
-    if warehouse_filter.strip():
-        params["warehouse"] = warehouse_filter.strip()
-    rows = _get("/assets", params)
+def load_assets(org_label):
+    oid = org_id(org_label)
+    rows = _get("/resource", {"oid": oid})
     if not rows:
-        return "暂无资产数据"
+        return "暂无资源数据"
     lines = []
     for a in rows:
-        qty = a.get("quantity")
-        wh = a.get("warehouse") or ""
+        t = a.get("type") or "?"
+        unit = a.get("unit") or ""
+        amount = a.get("amount")
         content = a.get("content") or ""
-        extra = f"  x{qty} @{wh}" if qty is not None else f"  [{content}]"
-        lines.append(f"**{a['name']}** ({a['type'] or '?'}){extra}")
+        if amount is not None:
+            extra = f"  {amount} {unit}" if unit else f"  {amount}"
+        elif content:
+            extra = f"  [{content[:30]}]"
+        else:
+            extra = ""
+        lines.append(f"**{a['name']}** ({t}){extra}")
     return "\n\n".join(lines)
 
 
-def add_asset_fn(org_label, name, atype, qty, warehouse):
+def add_asset_fn(org_label, name, atype, amount, unit):
     if not name.strip():
-        return "请输入资产名称"
+        return "请输入资源名称"
     body = {
-        "org_id": org_id(org_label),
+        "oid": org_id(org_label),
         "name": name.strip(),
-        "asset_type": atype.strip() or None,
-        "quantity": int(qty) if qty else 0,
-        "warehouse": warehouse.strip() or None,
+        "resource_type": atype.strip() or "physical",
     }
-    _post("/assets", body)
-    return load_assets(org_label, "")
+    if unit.strip():
+        body["unit"] = unit.strip()
+    if amount:
+        body["amount"] = float(amount)
+    _post("/resource", body)
+    return load_assets(org_label)
 
 
 # ── Tab 3: Party ────────────────────────────────────────────────────────────
 
 def load_party(org_label):
-    rows = _get("/party", {"org_id": org_id(org_label)})
+    oid = org_id(org_label)
+    rows = _get("/party", {"oid": oid})
     if not rows:
         return "暂无参与方"
     lines = []
     for p in rows:
-        lines.append(f"**{p['name']}** [{p['role']}] — {p['description'] or ''}")
+        pname = p.get("person_name") or f"pid:{p['pid']}"
+        role = p.get("role") or "-"
+        desc = p.get("description") or ""
+        fc = p.get("funds_change") or 0
+        rc = p.get("reputation_change") or 0
+        changes = []
+        if fc != 0:
+            changes.append(f"资金{'+'if fc>0 else ''}{fc}")
+        if rc != 0:
+            changes.append(f"声望{'+'if rc>0 else ''}{rc}")
+        change_str = f" ({', '.join(changes)})" if changes else ""
+        lines.append(f"**{pname}** [{role}] — {desc}{change_str}")
     return "\n\n".join(lines)
 
 
-def add_party_fn(org_label, name, role, desc):
-    if not name.strip():
-        return "请输入参与方名称"
-    _post("/party", {
-        "org_id": org_id(org_label),
-        "name": name.strip(),
-        "role": role.strip() or None,
+def add_party_fn(org_label, person_name, role, desc, funds_change, rep_change):
+    if not person_name.strip():
+        return "请输入人名"
+    oid = org_id(org_label)
+    people = _get("/person", {"oid": oid, "name": person_name.strip()})
+    if not people:
+        return f"找不到人员: {person_name}"
+    pid = people[0]["id"]
+    txns = _get("/transaction", {"oid": oid, "limit": 1})
+    if not txns:
+        return "请先创建交易记录"
+    txn_id = txns[0]["id"]
+    body = {
+        "pid": pid,
+        "oid": oid,
+        "transaction_id": txn_id,
+        "role": role.strip() or "participant",
         "description": desc.strip() or None,
-    })
+        "funds_change": float(funds_change) if funds_change else 0,
+        "reputation_change": int(rep_change) if rep_change else 0,
+    }
+    _post("/party", body)
     return load_party(org_label)
 
 
 # ── Tab 4: Transactions ─────────────────────────────────────────────────────
 
 def load_transactions(org_label):
-    rows = _get("/transactions", {"org_id": org_id(org_label), "limit": 50})
+    oid = org_id(org_label)
+    rows = _get("/transaction", {"oid": oid, "limit": 50})
     if not rows:
         return "暂无交易记录"
     lines = []
     for t in rows:
-        fn = t.get("from_party_name") or f"#{t['from_party_id']}"
-        fr = t.get("from_party_role") or ""
-        tn = t.get("to_party_name") or f"#{t['to_party_id']}"
-        tr = t.get("to_party_role") or ""
+        parties = t.get("parties") or []
+        parts = []
+        for p in parties:
+            pname = p.get("person_name") or f"pid:{p['pid']}"
+            role = p.get("role") or ""
+            fc = p.get("funds_change") or 0
+            parts.append(f"{pname}({role}, {'+'if fc>=0 else ''}{fc})")
+        party_str = " ↔ ".join(parts) if parts else "无参与方"
         lines.append(
-            f"**{fn}**({fr}) → **{tn}**({tr})\n"
-            f"  ¥{t['amount']}  [{t['category']}]  {t['description'] or ''}"
+            f"**¥{t['amount']}** [{t['category']}] — {t.get('description') or ''}\n"
+            f"  参与方: {party_str}"
         )
     return "\n\n".join(lines)
 
 
-def add_transaction_fn(org_label, from_name, to_name, amount, category, desc):
-    if not from_name.strip() or not to_name.strip():
-        return "请输入交易双方名称"
-    from_parties = _get("/party", {"org_id": org_id(org_label), "name": from_name.strip()})
-    to_parties = _get("/party", {"org_id": org_id(org_label), "name": to_name.strip()})
-    if not from_parties:
-        return f"找不到参与方: {from_name}"
-    if not to_parties:
-        return f"找不到参与方: {to_name}"
-    _post("/transactions", {
-        "from_party_id": from_parties[0]["id"],
-        "to_party_id": to_parties[0]["id"],
+def add_transaction_fn(org_label, amount, category, desc):
+    if not amount or float(amount) <= 0:
+        return "请输入有效金额"
+    body = {
         "amount": float(amount),
         "category": category.strip() or "其他",
         "description": desc.strip() or None,
-    })
+    }
+    _post("/transaction", body)
     return load_transactions(org_label)
 
 
 # ── Tab 5: Summary ──────────────────────────────────────────────────────────
 
 def load_summary(org_label):
-    s = _get("/summary", {"org_id": org_id(org_label)})
+    s = _get("/summary", {"oid": org_id(org_label)})
     return (
         f"**{org_label} 财务摘要**\n\n"
+        f"资金: ¥{s['funds']:,.2f}\n"
+        f"声望: {s['reputation']}\n"
         f"总流出: ¥{s['total_outflow']:,.2f}\n"
-        f"总流入: ¥{s['total_inflow']:,.2f}\n"
-        f"净余额: ¥{s['balance']:,.2f}\n"
         f"交易笔数: {s['transaction_count']}"
     )
 
@@ -177,7 +207,7 @@ def chat_fn(message, history, org_label):
     if not message.strip():
         return history, ""
     try:
-        resp = _post("/chat", {"message": message, "org_id": org_id(org_label)})
+        resp = _post("/chat", {"message": message, "oid": org_id(org_label)})
         reply = resp.get("response", "No response")
     except Exception as e:
         reply = f"Error: {e}"
@@ -189,7 +219,7 @@ def chat_fn(message, history, org_label):
 # ── Build UI ─────────────────────────────────────────────────────────────────
 
 def build_app():
-    org_labels = [name for name, _ in ORG_OPTIONS]
+    org_labels = [name for name, _ in _load_orgs()] or ["蜀国 (company)"]
 
     with gr.Blocks(title="Uni-Resource Agent") as demo:
         gr.Markdown("# Uni-Resource Agent\n**万物皆资源 — One AI. All Your Worlds.**")
@@ -209,7 +239,6 @@ def build_app():
                     per_name = gr.Textbox(label="姓名", placeholder="诸葛亮")
                     per_role = gr.Textbox(label="角色", placeholder="丞相")
                     per_add = gr.Button("添加", variant="primary")
-                per_add.click(load_personnel, org_selector, per_out, queue=False)
                 per_add.click(
                     add_personnel_fn,
                     [org_selector, per_name, per_role],
@@ -218,39 +247,43 @@ def build_app():
                 demo.load(load_personnel, org_selector, per_out, queue=False)
 
             # ── Assets ─────────────────────────────────────────────────
-            with gr.TabItem("资产"):
+            with gr.TabItem("资源"):
                 ast_out = gr.Markdown()
-                ast_wh_filter = gr.Textbox(label="仓库筛选", placeholder="军械库（可选）")
                 ast_refresh = gr.Button("刷新")
                 with gr.Row():
                     ast_name = gr.Textbox(label="名称", placeholder="连弩")
-                    ast_type = gr.Textbox(label="类型", placeholder="兵器")
-                    ast_qty = gr.Number(label="数量", value=0)
-                    ast_warehouse = gr.Textbox(label="仓库", placeholder="军械库")
+                    ast_type = gr.Dropdown(
+                        choices=["physical", "financial", "human", "knowledge"],
+                        value="physical", label="类型")
+                    ast_amount = gr.Number(label="数量", value=0)
+                    ast_unit = gr.Textbox(label="单位", placeholder="架")
                     ast_add = gr.Button("添加", variant="primary")
-                ast_refresh.click(load_assets, [org_selector, ast_wh_filter], ast_out, queue=False)
+                ast_refresh.click(load_assets, org_selector, ast_out, queue=False)
                 ast_add.click(
                     add_asset_fn,
-                    [org_selector, ast_name, ast_type, ast_qty, ast_warehouse],
+                    [org_selector, ast_name, ast_type, ast_amount, ast_unit],
                     ast_out,
-                ).then(lambda: ("", "", 0, ""), outputs=[ast_name, ast_type, ast_qty, ast_warehouse])
-                demo.load(load_assets, [org_selector, gr.State("")], ast_out, queue=False)
+                ).then(lambda: ("", "physical", 0, ""), outputs=[ast_name, ast_type, ast_amount, ast_unit])
+                demo.load(load_assets, org_selector, ast_out, queue=False)
 
             # ── Party ──────────────────────────────────────────────────
             with gr.TabItem("参与方"):
                 party_out = gr.Markdown()
                 party_refresh = gr.Button("刷新")
                 with gr.Row():
-                    party_name = gr.Textbox(label="名称", placeholder="蜀汉集团")
-                    party_role = gr.Textbox(label="角色", placeholder="买家")
-                    party_desc = gr.Textbox(label="描述", placeholder="蜀汉政权")
+                    party_name = gr.Textbox(label="人名", placeholder="诸葛亮")
+                    party_role = gr.Textbox(label="角色", placeholder="payer")
+                    party_desc = gr.Textbox(label="描述", placeholder="付款方")
+                with gr.Row():
+                    party_fc = gr.Number(label="资金变更", value=0)
+                    party_rc = gr.Number(label="声望变更", value=0)
                     party_add = gr.Button("添加", variant="primary")
                 party_refresh.click(load_party, org_selector, party_out, queue=False)
                 party_add.click(
                     add_party_fn,
-                    [org_selector, party_name, party_role, party_desc],
+                    [org_selector, party_name, party_role, party_desc, party_fc, party_rc],
                     party_out,
-                ).then(lambda: ("", "", ""), outputs=[party_name, party_role, party_desc])
+                ).then(lambda: ("", "", "", 0, 0), outputs=[party_name, party_role, party_desc, party_fc, party_rc])
                 demo.load(load_party, org_selector, party_out, queue=False)
 
             # ── Transactions ───────────────────────────────────────────
@@ -258,8 +291,6 @@ def build_app():
                 tx_out = gr.Markdown()
                 tx_refresh = gr.Button("刷新")
                 with gr.Row():
-                    tx_from = gr.Textbox(label="付款方", placeholder="蜀汉集团")
-                    tx_to = gr.Textbox(label="收款方", placeholder="诸葛亮家")
                     tx_amt = gr.Number(label="金额", value=0)
                     tx_cat = gr.Textbox(label="类别", placeholder="军费")
                     tx_desc = gr.Textbox(label="描述", placeholder="军费支出")
@@ -267,9 +298,9 @@ def build_app():
                 tx_refresh.click(load_transactions, org_selector, tx_out, queue=False)
                 tx_add.click(
                     add_transaction_fn,
-                    [org_selector, tx_from, tx_to, tx_amt, tx_cat, tx_desc],
+                    [org_selector, tx_amt, tx_cat, tx_desc],
                     tx_out,
-                ).then(lambda: ("", "", 0, "", ""), outputs=[tx_from, tx_to, tx_amt, tx_cat, tx_desc])
+                ).then(lambda: (0, "", ""), outputs=[tx_amt, tx_cat, tx_desc])
                 demo.load(load_transactions, org_selector, tx_out, queue=False)
 
             # ── Summary ────────────────────────────────────────────────

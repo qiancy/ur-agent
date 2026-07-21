@@ -481,7 +481,7 @@ def query_party_by_transaction(transaction_id: int) -> List[Dict]:
     return _fetch(sql, (transaction_id,))
 
 
-def query_party(oid: int, pid: int = None) -> List[Dict]:
+def query_party(oid: int, pid: int = None, name: str = None) -> List[Dict]:
     sql = """
         SELECT p.*, per.name AS person_name
         FROM party p
@@ -492,4 +492,7 @@ def query_party(oid: int, pid: int = None) -> List[Dict]:
     if pid:
         sql += " AND p.pid = %s"
         params.append(pid)
+    if name:
+        sql += " AND per.name ILIKE %s"
+        params.append(f"%{name}%")
     return _fetch(sql, tuple(params))

@@ -1,6 +1,7 @@
 """
 Uni-Resource Agent — FastAPI backend (v5.2).
 """
+import asyncio
 from typing import Optional
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, Query
@@ -31,6 +32,8 @@ class OrgCreate(BaseModel):
     name: str
     org_type: str
     description: Optional[str] = None
+    funds: Optional[float] = 0
+    reputation: Optional[int] = 0
 
 class ResourceCreate(BaseModel):
     oid: int
@@ -97,7 +100,8 @@ async def list_organizations(org_type: Optional[str] = None, name: Optional[str]
 
 @app.post("/organizations", status_code=201)
 async def add_organization(body: OrgCreate):
-    return create_organization(body.name, body.org_type, body.description)
+    return create_organization(body.name, body.org_type, body.description,
+                               body.funds, body.reputation)
 
 @app.get("/organizations/{oid}/members")
 async def list_org_members(oid: int):
@@ -114,21 +118,25 @@ async def list_person_orgs(pid: int):
 
 # Person
 @app.get("/person")
+@app.get("/personnel")
 async def list_person(oid: int = Query(...), name: Optional[str] = None):
     return query_person(oid, name=name)
 
 @app.post("/person", status_code=201)
+@app.post("/personnel", status_code=201)
 async def add_person(body: PersonCreate):
     return create_person(body.name, body.birth_date)
 
 
 # Resource
 @app.get("/resource")
+@app.get("/assets")
 async def list_resource(oid: int = Query(...), name: Optional[str] = None,
                         resource_type: Optional[str] = None):
     return query_resource(oid, name=name, resource_type=resource_type)
 
 @app.post("/resource", status_code=201)
+@app.post("/assets", status_code=201)
 async def add_resource(body: ResourceCreate):
     return create_resource(body.oid, body.name, body.resource_type,
                            body.unit, body.amount, body.currency,
@@ -137,10 +145,12 @@ async def add_resource(body: ResourceCreate):
 
 # Warehouse
 @app.get("/warehouse")
+@app.get("/warehouses")
 async def list_warehouse(oid: int = Query(...), name: Optional[str] = None):
     return query_warehouse(oid, name=name)
 
 @app.post("/warehouse", status_code=201)
+@app.post("/warehouses", status_code=201)
 async def add_warehouse(body: WarehouseCreate):
     return create_warehouse(body.oid, body.name, body.code,
                            body.location, body.description)
@@ -164,20 +174,21 @@ async def get_total(resource_id: int = Query(...)):
 
 # Transaction
 @app.get("/transaction")
-async def list_transaction(oid: int = Query(...), limit: int = Query(50, ge=1, le=200)):
+@app.get("/transactions")
+async def list_transaction(oid: int = Query(...), limit: int = 20):
     return get_transactions(oid, limit=limit)
 
 @app.post("/transaction", status_code=201)
+@app.post("/transactions", status_code=201)
 async def add_transaction(body: TransactionCreate):
-    if body.amount <= 0:
-        raise HTTPException(400, "Amount must be positive")
     return create_transaction(body.amount, body.category, body.description)
 
 
 # Party
 @app.get("/party")
-async def list_party(oid: int = Query(...), pid: Optional[int] = None):
-    return query_party(oid, pid=pid)
+async def list_party(oid: int = Query(...), pid: Optional[int] = None,
+                     name: Optional[str] = None):
+    return query_party(oid, pid=pid, name=name)
 
 @app.get("/party/transaction/{transaction_id}")
 async def list_party_by_transaction(transaction_id: int):
@@ -186,7 +197,8 @@ async def list_party_by_transaction(transaction_id: int):
 @app.post("/party", status_code=201)
 async def add_party(body: PartyCreate):
     return create_party(body.pid, body.oid, body.transaction_id,
-                        body.role, body.description)
+                        body.role, body.description,
+                        body.funds_change, body.reputation_change)
 
 
 # Summary
@@ -231,12 +243,21 @@ async def get_summary(oid: int = Query(...)):
 @app.post("/chat")
 async def chat(body: ChatRequest):
     try:
-        from src.agents.agent import create_uni_resource_agent
         logger.info(f"Chat request: oid={body.oid}, message={body.message[:50]}...")
-        agent = create_uni_resource_agent()
-        result = agent.invoke({"input": body.message})
+
+        def _run_agent():
+            from src.agents.agent import create_uni_resource_agent
+            agent = create_uni_resource_agent()
+            return agent.invoke({"input": body.message})
+
+        result = await asyncio.wait_for(
+            asyncio.to_thread(_run_agent), timeout=30
+        )
         logger.info(f"Chat response: {result['output'][:100]}...")
         return {"response": result["output"], "oid": body.oid}
+    except asyncio.TimeoutError:
+        logger.error("Chat request timed out (30s)")
+        raise HTTPException(504, "AI agent timed out. Is the LLM server running?")
     except Exception as e:
         logger.error(f"Agent error: {e}")
         raise HTTPException(500, f"Agent error: {e}")

@@ -7,7 +7,7 @@ from src.models.schemas import RegisterRequest, LoginRequest
 from src.db.database import (
     create_person, add_membership,
     query_person_by_pid, query_organization_by_oid, query_membership,
-    create_account, query_account_by_login,
+    create_account, query_account_by_login, query_accounts_by_person_id,
 )
 from src.auth.auth import (
     parse_login_name, validate_pid, validate_oid,
@@ -24,7 +24,7 @@ async def register(body: RegisterRequest):
     # 1. Parse and validate login format
     parsed = parse_login_name(body.login)
     if not parsed:
-        raise HTTPException(400, "Invalid login format. Must be {pid}@{oid}.cn")
+        raise HTTPException(400, "Invalid login format. Must be {pid}@{oid} or {pid}@{oid}.{suffix}")
 
     pid, oid = parsed
 
@@ -112,12 +112,20 @@ async def login(body: LoginRequest):
     # 1. Parse login format
     parsed = parse_login_name(body.login)
     if not parsed:
-        raise HTTPException(400, "Invalid login format. Must be {pid}@{oid}.cn")
+        raise HTTPException(400, "Invalid login format. Must be {pid}@{oid} or {pid}@{oid}.{suffix}")
 
     pid, oid = parsed
 
-    # 2. Check if account exists
+    # 2. Find person and account. The login suffix is presentation only; pid is the
+    # stable business identity, so caocao@wei.cn and caocao@wei.com resolve to the same pid/oid.
+    persons = query_person_by_pid(pid)
+    if not persons:
+        raise HTTPException(401, "Invalid credentials")
+    person = persons[0]
+
     accounts = query_account_by_login(body.login)
+    if not accounts:
+        accounts = query_accounts_by_person_id(person["id"])
     if not accounts:
         raise HTTPException(401, "Invalid credentials")
     account = accounts[0]
@@ -126,34 +134,23 @@ async def login(body: LoginRequest):
     if account["status"] != "active":
         raise HTTPException(403, "Account is not active")
 
-    # 4. Get person via account.person_id
-    from src.db.database import _fetch
-    persons = _fetch("SELECT * FROM person WHERE id = %s", (account["person_id"],))
-    if not persons:
-        raise HTTPException(401, "Invalid credentials")
-    person = persons[0]
-
-    # 5. Verify pid matches
-    if person["pid"] != pid:
-        raise HTTPException(401, "Invalid credentials")
-
-    # 6. Check if organization exists
+    # 4. Check if organization exists
     orgs = query_organization_by_oid(oid)
     if not orgs:
         raise HTTPException(401, "Invalid credentials")
     org = orgs[0]
 
-    # 7. Check membership
+    # 5. Check membership
     memberships = query_membership(person["id"], org["id"])
     if not memberships:
         raise HTTPException(401, "No membership in this organization")
     membership = memberships[0]
 
-    # 8. Verify password
+    # 6. Verify password
     if not verify_password(body.password, account["password"], account["salt"]):
         raise HTTPException(401, "Invalid password")
 
-    # 9. Create JWT token — only business fields (pid, oid), no numeric DB IDs
+    # 7. Create JWT token — only business fields (pid, oid), no numeric DB IDs
     token_data = {
         "pid": person["pid"],
         "person_name": person["name"],
@@ -164,7 +161,7 @@ async def login(body: LoginRequest):
     }
     access_token = create_access_token(token_data)
 
-    # 10. Return token and context
+    # 8. Return token and context
     return {
         "access_token": access_token,
         "token_type": "bearer",

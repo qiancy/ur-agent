@@ -104,7 +104,10 @@ start_backend() {
     
     # 启动后端服务
     cd "$PROJECT_ROOT"
-    nohup python3 -m uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 &
+    export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+    export PYTHONUNBUFFERED=1
+    export JWT_SECRET="${JWT_SECRET:-unires-dev-jwt-secret}"
+    nohup setsid python3 -m uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 < /dev/null &
     BACKEND_PID=$!
     
     # 保存PID

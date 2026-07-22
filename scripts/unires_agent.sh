@@ -123,6 +123,29 @@ start_backend() {
     fi
 }
 
+# 停止后端服务
+stop_backend() {
+    if [ -f "$BACKEND_PID_FILE" ]; then
+        PID=$(cat "$BACKEND_PID_FILE")
+        if ps -p "$PID" > /dev/null; then
+            echo -e "${YELLOW}停止后端服务 (PID: $PID)${NC}"
+            kill "$PID"
+        fi
+        rm -f "$BACKEND_PID_FILE"
+    else
+        echo -e "${YELLOW}未找到后端服务PID文件${NC}"
+    fi
+}
+
+# 重启后端服务
+restart_backend() {
+    stop_backend
+    sleep 2
+    check_dependencies
+    install_dependencies
+    start_backend
+}
+
 # 启动前端服务
 start_frontend() {
     echo -e "${YELLOW}启动前端服务...${NC}"
@@ -175,23 +198,8 @@ start_frontend() {
     fi
 }
 
-# 停止服务
-stop_service() {
-    echo -e "${YELLOW}停止服务...${NC}"
-    
-    # 停止后端服务
-    if [ -f "$BACKEND_PID_FILE" ]; then
-        PID=$(cat "$BACKEND_PID_FILE")
-        if ps -p "$PID" > /dev/null; then
-            echo -e "${YELLOW}停止后端服务 (PID: $PID)${NC}"
-            kill "$PID"
-        fi
-        rm -f "$BACKEND_PID_FILE"
-    else
-        echo -e "${YELLOW}未找到后端服务PID文件${NC}"
-    fi
-    
-    # 停止前端服务
+# 停止前端服务
+stop_frontend() {
     if [ -f "$FRONTEND_PID_FILE" ]; then
         PID=$(cat "$FRONTEND_PID_FILE")
         if ps -p "$PID" > /dev/null; then
@@ -202,6 +210,26 @@ stop_service() {
     else
         echo -e "${YELLOW}未找到前端服务PID文件${NC}"
     fi
+}
+
+# 重启前端服务
+restart_frontend() {
+    stop_frontend
+    sleep 2
+    check_dependencies
+    install_dependencies
+    start_frontend
+}
+
+# 停止服务
+stop_service() {
+    echo -e "${YELLOW}停止服务...${NC}"
+    
+    # 停止后端服务
+    stop_backend
+    
+    # 停止前端服务
+    stop_frontend
     
     echo -e "${GREEN}服务已停止${NC}"
 }
@@ -253,26 +281,28 @@ check_status() {
 # 显示帮助
 show_help() {
     echo "Uni-Resource Agent 管理脚本"
-    echo "使用方法: $0 [--verbose] [选项]"
+    echo "使用方法: $0 [--verbose] <backend|frontend|service> <start|stop|status|restart>"
     echo ""
     echo "选项:"
-    echo "  --verbose  前端以前台模式启动，并输出日志到当前终端"
-    echo "  start       启动服务 (后端和前端)"
-    echo "  start-backend  启动后端服务"
-    echo "  start-frontend  启动前端服务"
-    echo "  stop        停止全部服务"
-    echo "  stop-backend  停止后端服务"
-    echo "  stop-frontend 停止前端服务"
-    echo "  status      检查服务状态"
-    echo "  help        显示此帮助信息"
+    echo "  --verbose          frontend start 时以前台模式启动，并输出日志到当前终端"
+    echo ""
+    echo "命令:"
+    echo "  backend start      启动后端服务"
+    echo "  backend stop       停止后端服务"
+    echo "  backend status     检查后端服务状态"
+    echo "  backend restart    重启后端服务"
+    echo "  frontend start     启动前端服务"
+    echo "  frontend stop      停止前端服务"
+    echo "  frontend status    检查前端服务状态"
+    echo "  frontend restart   重启前端服务"
+    echo "  service start      启动后端和前端"
+    echo "  service stop       停止后端和前端"
+    echo "  service status     检查后端和前端状态"
+    echo "  help               显示此帮助信息"
     echo ""
     echo "服务端口:"
     echo "  后端: 8000"
     echo "  前端: 7860"
-    echo ""
-    echo "注意:"
-    echo "  脚本会自动从项目根目录查找 requirements.txt"
-    echo "  请确保在项目根目录下运行此脚本"
 }
 
 # 主程序
@@ -291,57 +321,114 @@ main() {
     set -- "${args[@]}"
 
     case "$1" in
-        start)
-            check_dependencies
-            install_dependencies
-            init_database
-            start_backend
-            start_frontend
-            echo -e "${GREEN}Uni-Resource Agent 启动完成!${NC}"
-            echo -e "${GREEN}访问 http://localhost:7860 查看前端界面${NC}"
+        backend)
+            case "$2" in
+                start)
+                    check_dependencies
+                    install_dependencies
+                    init_database
+                    start_backend
+                    ;;
+                stop)
+                    stop_backend
+                    ;;
+                status)
+                    if [ -f "$BACKEND_PID_FILE" ]; then
+                        PID=$(cat "$BACKEND_PID_FILE")
+                        if ps -p "$PID" > /dev/null; then
+                            echo -e "${GREEN}后端服务运行中 (PID: $PID)${NC}"
+                        else
+                            echo -e "${RED}后端服务PID文件存在但进程不存在${NC}"
+                            rm -f "$BACKEND_PID_FILE"
+                            return 1
+                        fi
+                    else
+                        echo -e "${YELLOW}后端服务未运行${NC}"
+                        return 1
+                    fi
+                    ;;
+                restart)
+                    restart_backend
+                    ;;
+                *)
+                    echo -e "${RED}未知 backend 子命令: $2${NC}"
+                    echo -e "${YELLOW}可用: backend start|stop|status|restart${NC}"
+                    exit 1
+                    ;;
+            esac
             ;;
-        start-backend)
-            check_dependencies
-            install_dependencies
-            init_database
-            start_backend
+        frontend)
+            case "$2" in
+                start)
+                    check_dependencies
+                    install_dependencies
+                    start_frontend
+                    ;;
+                stop)
+                    stop_frontend
+                    ;;
+                status)
+                    if [ -f "$FRONTEND_PID_FILE" ]; then
+                        PID=$(cat "$FRONTEND_PID_FILE")
+                        if ps -p "$PID" > /dev/null; then
+                            echo -e "${GREEN}前端服务运行中 (PID: $PID)${NC}"
+                        else
+                            echo -e "${RED}前端服务PID文件存在但进程不存在${NC}"
+                            rm -f "$FRONTEND_PID_FILE"
+                            return 1
+                        fi
+                    else
+                        echo -e "${YELLOW}前端服务未运行${NC}"
+                        return 1
+                    fi
+                    ;;
+                restart)
+                    restart_frontend
+                    ;;
+                *)
+                    echo -e "${RED}未知 frontend 子命令: $2${NC}"
+                    echo -e "${YELLOW}可用: frontend start|stop|status|restart${NC}"
+                    exit 1
+                    ;;
+            esac
             ;;
-        start-frontend)
-            check_dependencies
-            install_dependencies
-            start_frontend
+        service)
+            case "$2" in
+                start)
+                    check_dependencies
+                    install_dependencies
+                    init_database
+                    start_backend
+                    start_frontend
+                    echo -e "${GREEN}Uni-Resource Agent 启动完成!${NC}"
+                    echo -e "${GREEN}访问 http://localhost:7860 查看前端界面${NC}"
+                    ;;
+                stop)
+                    stop_service
+                    ;;
+                status)
+                    check_status
+                    ;;
+                restart)
+                    stop_service
+                    sleep 2
+                    check_dependencies
+                    install_dependencies
+                    start_backend
+                    start_frontend
+                    ;;
+                *)
+                    echo -e "${RED}未知 service 子命令: $2${NC}"
+                    echo -e "${YELLOW}可用: service start|stop|status|restart${NC}"
+                    exit 1
+                    ;;
+            esac
             ;;
-        stop)
-            stop_service
-            ;;
-        stop-backend)
-            if [ -f "$BACKEND_PID_FILE" ]; then
-                PID=$(cat "$BACKEND_PID_FILE")
-                if ps -p "$PID" > /dev/null; then
-                    echo -e "${YELLOW}停止后端服务 (PID: $PID)${NC}"
-                    kill "$PID"
-                fi
-                rm -f "$BACKEND_PID_FILE"
-            fi
-            ;;
-        stop-frontend)
-            if [ -f "$FRONTEND_PID_FILE" ]; then
-                PID=$(cat "$FRONTEND_PID_FILE")
-                if ps -p "$PID" > /dev/null; then
-                    echo -e "${YELLOW}停止前端服务 (PID: $PID)${NC}"
-                    kill "$PID"
-                fi
-                rm -f "$FRONTEND_PID_FILE"
-            fi
-            ;;
-        status)
-            check_status
-            ;;
-        help)
+        help|--help|-h|"")
             show_help
             ;;
         *)
-            echo -e "${RED}未知选项: $1${NC}"
+            echo -e "${RED}未知命令: $1${NC}"
             echo -e "${YELLOW}使用 '$0 help' 查看帮助信息${NC}"
             exit 1
             ;;

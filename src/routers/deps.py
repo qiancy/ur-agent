@@ -4,9 +4,9 @@ Shared dependencies for routers.
 API-facing identifiers: pid (person.pid), oid (organization.oid) — string business keys.
 Internal: person_id (person.id), organization_id (organization.id) — numeric DB keys.
 
-JWT payload uses: pid, oid (strings only)
+JWT payload uses: pid, oid, system_role, role (strings only)
 """
-from typing import Optional
+from typing import Optional, List
 from fastapi import Request, HTTPException
 from src.auth.auth import decode_access_token
 
@@ -64,6 +64,7 @@ def require_org_context(request: Request) -> dict:
             "oid": org["oid"],
             "person_id": person["id"],
             "organization_id": org["id"],
+            "system_role": payload.get("system_role", "user"),
             "role": payload.get("role"),
         }
 
@@ -81,6 +82,7 @@ def require_org_context(request: Request) -> dict:
                     "oid": org["oid"],
                     "person_id": None,
                     "organization_id": org["id"],
+                    "system_role": "user",
                     "role": None,
                 }
         except (ValueError, TypeError):
@@ -95,9 +97,49 @@ def require_org_context(request: Request) -> dict:
                 "oid": org["oid"],
                 "person_id": None,
                 "organization_id": org["id"],
+                "system_role": "user",
                 "role": None,
             }
 
         raise HTTPException(404, "Organization not found")
 
     raise HTTPException(401, "Authentication required. Provide Bearer token or oid query parameter.")
+
+
+
+def require_authenticated(request: Request) -> dict:
+    payload = get_current_user(request)
+    if not payload:
+        raise HTTPException(401, "Authentication required")
+    return payload
+
+
+def require_system_super(request: Request) -> dict:
+    payload = require_authenticated(request)
+    if payload.get("system_role") != "super":
+        raise HTTPException(403, "System super role required")
+    return payload
+
+
+def get_allowed_organization_ids(payload: dict) -> List[int]:
+    from src.db.database import query_person_by_pid, _fetch
+
+    if payload.get("system_role") == "super":
+        rows = _fetch("SELECT id FROM organization ORDER BY id")
+        return [row["id"] for row in rows]
+
+    pid = payload.get("pid")
+    if not pid:
+        return []
+    persons = query_person_by_pid(pid)
+    if not persons:
+        return []
+    rows = _fetch(
+        "SELECT organization_id FROM membership WHERE person_id = %s ORDER BY organization_id",
+        (persons[0]["id"],)
+    )
+    return [row["organization_id"] for row in rows]
+
+
+def is_system_super(payload: dict) -> bool:
+    return bool(payload and payload.get("system_role") == "super")

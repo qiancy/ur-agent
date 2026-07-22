@@ -69,7 +69,7 @@ def verify_password(password: str, stored_password: str, salt: str) -> bool:
     Returns True if password matches, False otherwise.
     """
     try:
-        return ph.verify(stored_password, password + salt)
+        return ph.verify(stored_password, password + (salt or ""))
     except VerifyMismatchError:
         return False
 

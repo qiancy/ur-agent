@@ -71,6 +71,7 @@ async def register(body: RegisterRequest):
             login=body.login,
             password=hashed_password,
             salt=salt,
+            system_role="user",
         )
 
     # 6. Check if membership exists
@@ -79,8 +80,11 @@ async def register(body: RegisterRequest):
     if memberships:
         membership = memberships[0]
     else:
-        # Create membership
-        membership = add_membership(person["id"], org["id"], body.role)
+        # Public registration cannot grant system or organization privileged roles.
+        requested_role = (body.role or "member").strip() or "member"
+        if requested_role.lower() in {"super", "admin", "owner"}:
+            requested_role = "member"
+        membership = add_membership(person["id"], org["id"], requested_role)
 
     # 7. Return result
     return {
@@ -98,7 +102,8 @@ async def register(body: RegisterRequest):
         "account": {
             "id": account["id"],
             "login": account["login"],
-            "status": account["status"]
+            "status": account["status"],
+            "system_role": account.get("system_role", "user")
         },
         "membership": {
             "role": membership["role"]
@@ -157,6 +162,7 @@ async def login(body: LoginRequest):
         "oid": org["oid"],
         "organization_name": org["name"],
         "organization_type": org["type"],
+        "system_role": account.get("system_role", "user"),
         "role": membership["role"]
     }
     access_token = create_access_token(token_data)
@@ -179,7 +185,8 @@ async def login(body: LoginRequest):
         "account": {
             "id": account["id"],
             "login": account["login"],
-            "status": account["status"]
+            "status": account["status"],
+            "system_role": account.get("system_role", "user")
         },
         "membership": {
             "role": membership["role"]

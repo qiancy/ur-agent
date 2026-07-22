@@ -2,18 +2,20 @@
 Person endpoints.
 """
 from typing import Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from src.models.schemas import PersonCreate
 from src.db.database import query_person, create_person
+from src.routers.deps import require_org_context
 
 router = APIRouter(tags=["person"])
 
 
 @router.get("/person")
 @router.get("/personnel")
-async def list_person(oid: int = Query(...), name: Optional[str] = None):
-    return query_person(oid, name=name)
+async def list_person(request: Request, name: Optional[str] = None):
+    ctx = require_org_context(request)
+    return query_person(ctx["organization_id"], name=name)
 
 
 @router.post("/person", status_code=201)

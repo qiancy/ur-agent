@@ -161,14 +161,13 @@ def _show_workspace():
 
 
 def _blank_workspace():
-    return "", "", "", "", "", [], ""
+    return "", "", "", "", [], ""
 
 
 def _workspace_payload(org_label: str, state):
     return (
         load_personnel(org_label, state),
         load_assets(org_label, state),
-        load_party(org_label, state),
         load_transactions(org_label, state),
         load_summary(org_label, state),
         [],
@@ -202,7 +201,7 @@ def login_fn(login, password, state):
         resp = _post("/auth/login", {"login": login.strip(), "password": password.strip()}, state=state)
         new_state = _login_state_from_response(resp)
         org_label = _current_org_label(new_state)
-        per, ast, party, tx, summary, chatbot, chat_input = _workspace_payload(org_label, new_state)
+        per, ast, tx, summary, chatbot, chat_input = _workspace_payload(org_label, new_state)
         return (
             new_state,
             f"登录成功：{new_state.get('person_name')} @ {new_state.get('org_name')}",
@@ -211,7 +210,6 @@ def login_fn(login, password, state):
             *_show_workspace(),
             per,
             ast,
-            party,
             tx,
             summary,
             chatbot,
@@ -333,56 +331,45 @@ def add_asset_fn(org_label, name, atype, amount, unit, state):
     return load_assets(org_label, state)
 
 
-# ── Tab 3: Party ────────────────────────────────────────────────────────────
+# ── Tab 3: Transactions ─────────────────────────────────────────────────────
 
-def load_party(org_label, state=None):
-    oid = _label_to_oid(org_label, state)
-    rows = _get("/party", {"oid": oid}, state=state)
-    if not rows:
-        return "暂无参与方"
-    lines = []
-    for party in rows:
-        pname = party.get("person_name") or f"person_id:{party.get('person_id')}"
-        role = party.get("role") or "-"
-        desc = party.get("description") or ""
-        fc = party.get("funds_change") or 0
-        rc = party.get("reputation_change") or 0
-        changes = []
-        if fc != 0:
-            changes.append(f"资金{'+'if fc>0 else ''}{fc}")
-        if rc != 0:
-            changes.append(f"声望{'+'if rc>0 else ''}{rc}")
-        change_str = f" ({', '.join(changes)})" if changes else ""
-        lines.append(f"**{pname}** [{role}] — {desc}{change_str}")
-    return "\n\n".join(lines)
+def _format_money_direction(value):
+    value = float(value or 0)
+    if value > 0:
+        return f"+¥{value:,.2f}"
+    if value < 0:
+        return f"-¥{abs(value):,.2f}"
+    return "¥0.00"
 
 
-def add_party_fn(org_label, person_name, role, desc, funds_change, rep_change, state):
-    if not person_name.strip():
-        return "请输入人名"
-    oid = _label_to_oid(org_label, state)
-    people = _get("/person", {"oid": oid, "name": person_name.strip()}, state=state)
-    if not people:
-        return f"找不到人员: {person_name}"
-    pid = people[0]["pid"]
-    txns = _get("/transaction", {"oid": oid, "limit": 1}, state=state)
-    if not txns:
-        return "请先创建交易记录"
-    txn_id = txns[0]["id"]
-    body = {
-        "pid": pid,
-        "oid": oid,
-        "transaction_id": txn_id,
-        "role": role.strip() or "participant",
-        "description": desc.strip() or None,
-        "funds_change": float(funds_change) if funds_change else 0,
-        "reputation_change": int(rep_change) if rep_change else 0,
-    }
-    _post("/party", body, params={"oid": oid}, state=state)
-    return load_party(org_label, state)
+def _parse_party_lines(lines_text):
+    parties = []
+    for line_no, raw_line in enumerate((lines_text or "").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 4:
+            raise ValueError(f"参与方第 {line_no} 行格式错误：姓名,角色,+/-,金额[,说明]")
+        name, role, direction, amount_text = parts[:4]
+        desc = ",".join(parts[4:]).strip() if len(parts) > 4 else ""
+        if direction not in {"+", "-"}:
+            raise ValueError(f"参与方第 {line_no} 行方向必须是 + 或 -")
+        try:
+            amount = float(amount_text)
+        except ValueError as exc:
+            raise ValueError(f"参与方第 {line_no} 行金额无效") from exc
+        if amount < 0:
+            raise ValueError(f"参与方第 {line_no} 行金额应填写正数，方向用 + 或 - 表示")
+        parties.append({
+            "name": name,
+            "role": role or "participant",
+            "direction": direction,
+            "amount": amount,
+            "description": desc or None,
+        })
+    return parties
 
-
-# ── Tab 4: Transactions ─────────────────────────────────────────────────────
 
 def load_transactions(org_label, state=None):
     oid = _label_to_oid(org_label, state)
@@ -392,29 +379,62 @@ def load_transactions(org_label, state=None):
     lines = []
     for txn in rows:
         parties = txn.get("parties") or []
-        parts = []
+        party_lines = []
         for party in parties:
             pname = party.get("person_name") or f"person_id:{party.get('person_id')}"
-            role = party.get("role") or ""
-            fc = party.get("funds_change") or 0
-            parts.append(f"{pname}({role}, {'+'if fc>=0 else ''}{fc})")
-        party_str = " ↔ ".join(parts) if parts else "无参与方"
+            role = party.get("role") or "participant"
+            funds = _format_money_direction(party.get("funds_change") or 0)
+            rep = int(party.get("reputation_change") or 0)
+            rep_text = f", 声望{'+' if rep >= 0 else ''}{rep}" if rep else ""
+            party_lines.append(f"  - {pname} [{role}] {funds}{rep_text}")
+        party_text = "\n".join(party_lines) if party_lines else "  - 无参与方"
         lines.append(
-            f"**¥{txn['amount']}** [{txn['category']}] — {txn.get('description') or ''}\n"
-            f"  参与方: {party_str}"
+            f"**交易 #{txn['id']} · ¥{float(txn['amount']):,.2f}** [{txn['category']}]\n"
+            f"{txn.get('description') or ''}\n"
+            f"参与方:\n{party_text}"
         )
     return "\n\n".join(lines)
 
 
-def add_transaction_fn(org_label, amount, category, desc, state):
+def add_transaction_fn(org_label, amount, category, desc, party_lines, state):
     if not amount or float(amount) <= 0:
-        return "请输入有效金额"
+        return "请输入有效交易金额"
+    oid = _label_to_oid(org_label, state)
+    parties = _parse_party_lines(party_lines)
+    if not parties:
+        return "请至少填写一个参与方"
+
+    resolved_parties = []
+    for party in parties:
+        people = _get("/person", {"oid": oid, "name": party["name"]}, state=state)
+        if not people:
+            raise ValueError(f"找不到参与方人员: {party['name']}")
+        resolved_parties.append({**party, "pid": people[0]["pid"]})
+
     body = {
         "amount": float(amount),
         "category": category.strip() or "其他",
         "description": desc.strip() or None,
     }
-    _post("/transaction", body, params={"oid": _label_to_oid(org_label, state)}, state=state)
+    txn = _post("/transaction", body, params={"oid": oid}, state=state)
+    txn_id = txn["id"]
+
+    for party in resolved_parties:
+        signed_amount = party["amount"] if party["direction"] == "+" else -party["amount"]
+        _post(
+            "/party",
+            {
+                "pid": party["pid"],
+                "oid": oid,
+                "transaction_id": txn_id,
+                "role": party["role"],
+                "description": party["description"],
+                "funds_change": signed_amount,
+                "reputation_change": 0,
+            },
+            params={"oid": oid},
+            state=state,
+        )
     return load_transactions(org_label, state)
 
 
@@ -519,25 +539,20 @@ def build_app():
                         ast_unit = gr.Textbox(label="单位", placeholder="架")
                         ast_add = gr.Button("添加", variant="primary")
                     ast_refresh = gr.Button("刷新")
-                with gr.TabItem("参与方"):
-                    party_out = gr.Markdown()
-                    with gr.Row():
-                        party_name = gr.Textbox(label="人名", placeholder="诸葛亮")
-                        party_role = gr.Textbox(label="角色", placeholder="payer")
-                        party_desc = gr.Textbox(label="描述", placeholder="付款方")
-                    with gr.Row():
-                        party_fc = gr.Number(label="资金变更", value=0)
-                        party_rc = gr.Number(label="声望变更", value=0)
-                        party_add = gr.Button("添加", variant="primary")
-                    party_refresh = gr.Button("刷新")
                 with gr.TabItem("交易"):
                     tx_out = gr.Markdown()
                     with gr.Row():
-                        tx_amt = gr.Number(label="金额", value=0)
+                        tx_amt = gr.Number(label="交易金额", value=0)
                         tx_cat = gr.Textbox(label="类别", placeholder="军费")
                         tx_desc = gr.Textbox(label="描述", placeholder="军费支出")
-                        tx_add = gr.Button("记录", variant="primary")
-                    tx_refresh = gr.Button("刷新")
+                    tx_parties = gr.Textbox(
+                        label="参与方",
+                        placeholder="曹操,付款方,-,5000,军费支出\n司马懿,收款方,+,5000,收到军费",
+                        lines=4,
+                    )
+                    with gr.Row():
+                        tx_add = gr.Button("记录交易", variant="primary")
+                        tx_refresh = gr.Button("刷新")
                 with gr.TabItem("财务摘要"):
                     sum_out = gr.Markdown()
                     sum_refresh = gr.Button("刷新")
@@ -557,7 +572,7 @@ def build_app():
         back_btn.click(back_home_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel])
 
         # top logout mirrors workspace logout
-        logout_outputs = [session_state, auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, party_out, tx_out, sum_out, chatbot, chat_input]
+        logout_outputs = [session_state, auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, chatbot, chat_input]
         logout_btn_top.click(logout_fn, [], logout_outputs)
         logout_btn.click(logout_fn, [], logout_outputs)
 
@@ -565,7 +580,7 @@ def build_app():
         login_btn.click(
             login_fn,
             [login_input, login_pwd, session_state],
-            [session_state, login_info, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, party_out, tx_out, sum_out, chatbot, chat_input],
+            [session_state, login_info, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, chatbot, chat_input],
         )
         reg_btn.click(
             register_fn,
@@ -580,11 +595,9 @@ def build_app():
         ast_refresh.click(load_assets, [current_org, session_state], ast_out, queue=False)
         ast_add.click(add_asset_fn, [current_org, ast_name, ast_type, ast_amount, ast_unit, session_state], ast_out).then(lambda: ("", "physical", 0, ""), outputs=[ast_name, ast_type, ast_amount, ast_unit])
 
-        party_refresh.click(load_party, [current_org, session_state], party_out, queue=False)
-        party_add.click(add_party_fn, [current_org, party_name, party_role, party_desc, party_fc, party_rc, session_state], party_out).then(lambda: ("", "", "", 0, 0), outputs=[party_name, party_role, party_desc, party_fc, party_rc])
 
         tx_refresh.click(load_transactions, [current_org, session_state], tx_out, queue=False)
-        tx_add.click(add_transaction_fn, [current_org, tx_amt, tx_cat, tx_desc, session_state], tx_out).then(lambda: (0, "", ""), outputs=[tx_amt, tx_cat, tx_desc])
+        tx_add.click(add_transaction_fn, [current_org, tx_amt, tx_cat, tx_desc, tx_parties, session_state], tx_out).then(lambda: (0, "", "", ""), outputs=[tx_amt, tx_cat, tx_desc, tx_parties])
 
         sum_refresh.click(load_summary, [current_org, session_state], sum_out, queue=False)
 

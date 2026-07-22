@@ -15,6 +15,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+VERBOSE=0
+
 # 检查依赖
 check_dependencies() {
     echo -e "${YELLOW}检查依赖...${NC}"
@@ -135,15 +137,24 @@ start_frontend() {
         if ps -p "$PID" > /dev/null; then
             echo -e "${RED}前端服务已在运行 (PID: $PID)${NC}"
             return 1
+        else
+            echo -e "${YELLOW}PID文件存在但进程不存在，清理旧的PID文件${NC}"
+            rm -f "$FRONTEND_PID_FILE"
         fi
     fi
     
     # 切换到项目根目录
     cd "$PROJECT_ROOT"
     
-    # 启动前端服务（调用独立的 frontend.py 脚本）
-    nohup python3 "$PROJECT_ROOT/src/frontend.py" > "$FRONTEND_LOG" 2>&1 &
-    
+    if [ "$VERBOSE" -eq 1 ]; then
+        echo -e "${YELLOW}前端以 verbose 模式前台启动，日志将输出到当前终端${NC}"
+        echo -e "${YELLOW}停止前端请按 Ctrl+C${NC}"
+        PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 python3 -u "$PROJECT_ROOT/src/frontend.py"
+        return $?
+    fi
+
+    # 启动前端服务（调试模式在 src/frontend.py 的 demo.launch 中开启）
+    PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 nohup python3 -u "$PROJECT_ROOT/src/frontend.py" > "$FRONTEND_LOG" 2>&1 &
     FRONTEND_PID=$!
     
     # 保存PID
@@ -156,6 +167,7 @@ start_frontend() {
     if ps -p "$FRONTEND_PID" > /dev/null; then
         echo -e "${GREEN}前端服务启动成功 (PID: $FRONTEND_PID)${NC}"
         echo -e "${GREEN}前端服务运行在端口 7860${NC}"
+        echo -e "${YELLOW}前端调试日志: $FRONTEND_LOG${NC}"
     else
         echo -e "${RED}前端服务启动失败${NC}"
         rm -f "$FRONTEND_PID_FILE"
@@ -241,9 +253,10 @@ check_status() {
 # 显示帮助
 show_help() {
     echo "Uni-Resource Agent 管理脚本"
-    echo "使用方法: $0 [选项]"
+    echo "使用方法: $0 [--verbose] [选项]"
     echo ""
     echo "选项:"
+    echo "  --verbose  前端以前台模式启动，并输出日志到当前终端"
     echo "  start       启动服务 (后端和前端)"
     echo "  start-backend  启动后端服务"
     echo "  start-frontend  启动前端服务"
@@ -264,6 +277,19 @@ show_help() {
 
 # 主程序
 main() {
+    local args=()
+    for arg in "$@"; do
+        case "$arg" in
+            --verbose)
+                VERBOSE=1
+                ;;
+            *)
+                args+=("$arg")
+                ;;
+        esac
+    done
+    set -- "${args[@]}"
+
     case "$1" in
         start)
             check_dependencies

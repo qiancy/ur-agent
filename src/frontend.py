@@ -3,23 +3,53 @@ Uni-Resource Agent — Gradio frontend (v5.2).
 
 Connects to FastAPI backend at http://localhost:8000.
 """
+import time
 import requests
 import gradio as gr
 
+from src.logging_config import setup_logging
+
+logger = setup_logging("frontend")
 API = "http://localhost:8000"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def _get(path, params=None):
-    r = requests.get(f"{API}{path}", params=params, timeout=10)
-    r.raise_for_status()
-    return r.json()
+def _log_response(method, path, started, response):
+    elapsed = time.monotonic() - started
+    logger.info(
+        "%s %s -> %s %.2fs body=%s",
+        method,
+        path,
+        response.status_code,
+        elapsed,
+        response.text[:1000],
+    )
 
 
-def _post(path, body=None):
-    r = requests.post(f"{API}{path}", json=body, timeout=10)
-    r.raise_for_status()
-    return r.json()
+def _get(path, params=None, timeout=10):
+    started = time.monotonic()
+    logger.info("GET %s params=%s timeout=%s", path, params, timeout)
+    try:
+        r = requests.get(f"{API}{path}", params=params, timeout=timeout)
+        _log_response("GET", path, started, r)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.exception("GET %s failed after %.2fs: %s", path, time.monotonic() - started, e)
+        raise
+
+
+def _post(path, body=None, timeout=10):
+    started = time.monotonic()
+    logger.info("POST %s body=%s timeout=%s", path, body, timeout)
+    try:
+        r = requests.post(f"{API}{path}", json=body, timeout=timeout)
+        _log_response("POST", path, started, r)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.exception("POST %s failed after %.2fs: %s", path, time.monotonic() - started, e)
+        raise
 
 
 # ── org selector ─────────────────────────────────────────────────────────────
@@ -206,10 +236,14 @@ def load_summary(org_label):
 def chat_fn(message, history, org_label):
     if not message.strip():
         return history, ""
+    oid = org_id(org_label)
+    logger.info("CHAT input oid=%s org=%s message=%s", oid, org_label, message)
     try:
-        resp = _post("/chat", {"message": message, "oid": org_id(org_label)})
+        resp = _post("/chat", {"message": message, "oid": oid}, timeout=40)
         reply = resp.get("response", "No response")
+        logger.info("CHAT output oid=%s response=%s", oid, reply[:2000])
     except Exception as e:
+        logger.exception("CHAT failed oid=%s message=%s", oid, message)
         reply = f"Error: {e}"
     history.append({"role": "user", "content": message})
     history.append({"role": "assistant", "content": reply})
@@ -336,4 +370,11 @@ def build_app():
 
 if __name__ == "__main__":
     demo = build_app()
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False, theme=gr.themes.Soft())
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=False,
+        theme=gr.themes.Soft(),
+        debug=True,
+        show_error=True,
+    )

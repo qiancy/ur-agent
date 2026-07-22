@@ -239,30 +239,65 @@ async def get_summary(oid: int = Query(...)):
     }
 
 
+IDENTITY_MESSAGES = {"我是谁", "我是谁？", "我是谁?", "你是谁", "你是谁？", "你是谁?", "当前空间", "当前组织"}
+
+
+def _get_org_context(oid: int) -> dict:
+    rows = query_organization(oid=oid)
+    if not rows:
+        return {"id": oid, "name": f"组织 {oid}", "type": "unknown"}
+    org = rows[0]
+    return {"id": org["id"], "name": org["name"], "type": org["type"]}
+
+
 # Chat
 @app.post("/chat")
 async def chat(body: ChatRequest):
     try:
-        logger.info(f"Chat request: oid={body.oid}, message={body.message[:50]}...")
+        message = body.message.strip()
+        org = _get_org_context(body.oid)
+        logger.info("Chat request: oid=%s, org=%s, message=%s", body.oid, org["name"], message[:100])
+
+        if message in IDENTITY_MESSAGES:
+            response = f"你当前在{org['name']}空间，组织 ID 为 {org['id']}。我是 Uni-Resource Agent，可以帮你管理该空间的资源、人员、交易和知识。"
+            logger.info("Chat fast-path response: %s", response)
+            return {"response": response, "oid": body.oid}
+
+        agent_input = (
+            f"当前组织空间: {org['name']}，组织类型: {org['type']}，oid: {org['id']}。\n"
+            "调用任何工具时必须使用这个 oid，不要使用默认 oid。\n"
+            "如果问题是闲聊或身份确认，直接回答，不要调用工具。\n"
+            f"用户问题: {message}"
+        )
 
         def _run_agent():
             from src.agents.agent import create_uni_resource_agent
             from langchain.agents import AgentExecutor
             from src.tools import ALL_TOOLS
             agent = create_uni_resource_agent()
-            agent_executor = AgentExecutor(agent=agent, tools=ALL_TOOLS, verbose=False, handle_parsing_errors=True, max_iterations=10)
-            return agent_executor.invoke({"input": body.message})
+            agent_executor = AgentExecutor(
+                agent=agent,
+                tools=ALL_TOOLS,
+                verbose=True,
+                handle_parsing_errors=True,
+                max_iterations=4,
+                return_intermediate_steps=True,
+            )
+            return agent_executor.invoke({"input": agent_input})
 
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_agent), timeout=30
         )
-        logger.info(f"Chat response: {result.get('output', '')[:100]}...")
+        steps = result.get("intermediate_steps", [])
+        if steps:
+            logger.info("Chat intermediate steps: %s", steps)
+        logger.info("Chat response: %s", result.get('output', '')[:500])
         return {"response": result.get('output', ''), "oid": body.oid}
     except asyncio.TimeoutError:
         logger.error("Chat request timed out (30s)")
         raise HTTPException(504, "AI agent timed out. Is the LLM server running?")
     except Exception as e:
-        logger.error(f"Agent error: {e}")
+        logger.exception("Agent error")
         raise HTTPException(500, f"Agent error: {e}")
 
 

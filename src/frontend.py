@@ -26,6 +26,7 @@ def _empty_login_state():
         "pid": None,
         "person_name": None,
         "role": None,
+        "system_role": None,
     }
 
 
@@ -33,6 +34,7 @@ def _login_state_from_response(resp):
     person = resp.get("person", {})
     org = resp.get("organization", {})
     membership = resp.get("membership", {})
+    account = resp.get("account", {})
     return {
         "access_token": resp.get("access_token"),
         "org_oid": org.get("oid"),
@@ -41,6 +43,7 @@ def _login_state_from_response(resp):
         "pid": person.get("pid"),
         "person_name": person.get("name"),
         "role": membership.get("role"),
+        "system_role": account.get("system_role", "user"),
     }
 
 
@@ -76,6 +79,23 @@ def _get(path, params=None, timeout=10, state=None):
         return r.json()
     except Exception as e:
         logger.exception("GET %s failed after %.2fs: %s", path, time.monotonic() - started, e)
+        raise
+
+
+def _delete(path, params=None, timeout=10, state=None):
+    started = time.monotonic()
+    logger.info("DELETE %s params=%s timeout=%s", path, params, timeout)
+    headers = {}
+    token = (state or {}).get("access_token")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        r = requests.delete(f"{API}{path}", params=params, timeout=timeout, headers=headers)
+        _log_response("DELETE", path, started, r)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.exception("DELETE %s failed after %.2fs: %s", path, time.monotonic() - started, e)
         raise
 
 
@@ -132,7 +152,8 @@ def _current_org_label(state=None) -> str:
 def _auth_header(state=None) -> str:
     state = state or {}
     if _is_logged_in(state):
-        return f"{state.get('person_name')} @ {state.get('org_name')} ({state.get('role') or 'member'})"
+        system_role = state.get("system_role") or "user"
+        return f"{state.get('person_name')} @ {state.get('org_name')} ({state.get('role') or 'member'}, system:{system_role})"
     return "未登录"
 
 
@@ -161,7 +182,7 @@ def _show_workspace():
 
 
 def _blank_workspace():
-    return "", "", "", "", [], ""
+    return "", "", "", "", "", [], ""
 
 
 def _workspace_payload(org_label: str, state):
@@ -170,6 +191,7 @@ def _workspace_payload(org_label: str, state):
         load_assets(org_label, state),
         load_transactions(org_label, state),
         load_summary(org_label, state),
+        load_campaigns(state),
         [],
         "",
     )
@@ -201,7 +223,7 @@ def login_fn(login, password, state):
         resp = _post("/auth/login", {"login": login.strip(), "password": password.strip()}, state=state)
         new_state = _login_state_from_response(resp)
         org_label = _current_org_label(new_state)
-        per, ast, tx, summary, chatbot, chat_input = _workspace_payload(org_label, new_state)
+        per, ast, tx, summary, campaigns, chatbot, chat_input = _workspace_payload(org_label, new_state)
         return (
             new_state,
             f"登录成功：{new_state.get('person_name')} @ {new_state.get('org_name')}",
@@ -212,6 +234,7 @@ def login_fn(login, password, state):
             ast,
             tx,
             summary,
+            campaigns,
             chatbot,
             chat_input,
         )
@@ -451,6 +474,81 @@ def load_summary(org_label, state=None):
     )
 
 
+# ── Tab 5: Campaigns ─────────────────────────────────────────────────────────
+
+def _is_super(state):
+    return (state or {}).get("system_role") == "super"
+
+
+def load_campaigns(state=None):
+    if not _is_logged_in(state):
+        return "请先登录"
+    rows = _get("/campaigns/imports", state=state)
+    if not rows:
+        return "暂无战役数据"
+    lines = []
+    for row in rows:
+        orgs = row.get("organizations") or []
+        org_text = ", ".join([f"{o.get('name')}(`{o.get('oid')}`)" for o in orgs]) or "-"
+        lines.append(
+            f"**#{row['id']} {row['campaign_name']}** (`{row['campaign_code']}`)\n"
+            f"组织: {org_text}\n"
+            f"导入人: `{row.get('imported_by_pid')}`  状态: `{row.get('status')}`"
+        )
+    return "\n\n".join(lines)
+
+
+def import_campaign_fn(campaign_code, state):
+    if not _is_logged_in(state):
+        return "请先登录", ""
+    try:
+        code = (campaign_code or "fire_xinye").strip() or "fire_xinye"
+        resp = _post("/campaigns/import", {"campaign_code": code}, timeout=30, state=state)
+        campaign = resp.get("campaign_import", {})
+        return load_campaigns(state), f"导入成功：#{campaign.get('id')} {campaign.get('campaign_name')}"
+    except Exception as e:
+        logger.exception("Campaign import failed")
+        return load_campaigns(state), f"导入失败：{e}"
+
+
+def replay_campaign_fn(campaign_import_id, state):
+    if not _is_logged_in(state):
+        return "请先登录"
+    if not campaign_import_id:
+        return "请输入战役批次 ID"
+    try:
+        resp = _get(f"/campaigns/imports/{int(campaign_import_id)}/replay", timeout=20, state=state)
+        events = resp.get("events") or []
+        if not events:
+            return "暂无可回放事件"
+        lines = [f"# {resp.get('campaign_name')} 回放"]
+        for event in events:
+            org = event.get("organization") or {}
+            lines.append(
+                f"**{event.get('seq')}. {event.get('title')}**\n"
+                f"{event.get('description') or ''}\n"
+                f"组织: {org.get('name')} (`{org.get('oid')}`)"
+            )
+        return "\n\n".join(lines)
+    except Exception as e:
+        logger.exception("Campaign replay failed")
+        return f"回放失败：{e}"
+
+
+def delete_campaign_fn(campaign_import_id, state):
+    if not _is_logged_in(state):
+        return "请先登录", ""
+    if not campaign_import_id:
+        return load_campaigns(state), "请输入战役批次 ID"
+    try:
+        resp = _delete(f"/campaigns/imports/{int(campaign_import_id)}", timeout=30, state=state)
+        counts = resp.get("counts", {})
+        return load_campaigns(state), f"删除成功：{counts}"
+    except Exception as e:
+        logger.exception("Campaign delete failed")
+        return load_campaigns(state), f"删除失败：{e}"
+
+
 # ── Tab 6: Chat ─────────────────────────────────────────────────────────────
 
 def chat_fn(message, history, org_label, state):
@@ -519,6 +617,17 @@ def build_app():
                 current_org = gr.Dropdown(choices=[default_org], value=default_org, label="当前组织", interactive=False)
                 logout_btn = gr.Button("退出登录")
             with gr.Tabs():
+                with gr.TabItem("战役"):
+                    camp_out = gr.Markdown()
+                    camp_replay = gr.Markdown()
+                    with gr.Row():
+                        camp_code = gr.Textbox(label="战役模板", value="fire_xinye")
+                        camp_import_id = gr.Number(label="战役批次 ID", value=0, precision=0)
+                    with gr.Row():
+                        camp_import = gr.Button("导入战役", variant="primary")
+                        camp_replay_btn = gr.Button("回放")
+                        camp_delete = gr.Button("删除战役", variant="stop")
+                        camp_refresh = gr.Button("刷新")
                 with gr.TabItem("人员"):
                     per_out = gr.Markdown()
                     with gr.Row():
@@ -572,7 +681,7 @@ def build_app():
         back_btn.click(back_home_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel])
 
         # top logout mirrors workspace logout
-        logout_outputs = [session_state, auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, chatbot, chat_input]
+        logout_outputs = [session_state, auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input]
         logout_btn_top.click(logout_fn, [], logout_outputs)
         logout_btn.click(logout_fn, [], logout_outputs)
 
@@ -580,7 +689,7 @@ def build_app():
         login_btn.click(
             login_fn,
             [login_input, login_pwd, session_state],
-            [session_state, login_info, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, chatbot, chat_input],
+            [session_state, login_info, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input],
         )
         reg_btn.click(
             register_fn,
@@ -589,6 +698,11 @@ def build_app():
         )
 
         # ── Workspace events ────────────────────────────────────────
+        camp_refresh.click(load_campaigns, [session_state], camp_out, queue=False)
+        camp_import.click(import_campaign_fn, [camp_code, session_state], [camp_out, camp_replay])
+        camp_replay_btn.click(replay_campaign_fn, [camp_import_id, session_state], camp_replay)
+        camp_delete.click(delete_campaign_fn, [camp_import_id, session_state], [camp_out, camp_replay])
+
         per_refresh.click(load_personnel, [current_org, session_state], per_out, queue=False)
         per_add.click(add_personnel_fn, [current_org, per_name, per_role, session_state], per_out).then(lambda: ("", ""), outputs=[per_name, per_role])
 

@@ -11,6 +11,7 @@ from src.db.database import (
     create_organization, add_membership,
     create_party, create_transaction,
     create_warehouse, create_resource_warehouse,
+    create_account,
     query_person, query_party, query_resource, query_organization,
 )
 from src.auth.auth import hash_password
@@ -30,27 +31,37 @@ def main():
     ]:
         orgs[name] = create_organization(name, otype, desc, funds, rep, oid=oid)
 
-    # ── Person (with pid and password for authentication) ──────
+    # ── Person (with pid for authentication) ──────
     persons = {}
-    for name, pid, pwd in [
-        ("张飞", "zhangfei", None),
-        ("诸葛亮", "zhugeliang", "demo123"),
-        ("关羽", "guanyu", None),
-        ("赵云", "zhaoyun", None),
-        ("刘备", "liubei", "demo123"),
-        ("诸葛瞻", "zhugezhan", None),
-        ("黄月英", "huangyueying", None),
-        ("曹操", "caocao", "demo123"),
-        ("司马懿", "simayi", None),
-        ("孙权", "sunquan", "demo123"),
-        ("周瑜", "zhouyu", None),
+    for name, pid in [
+        ("张飞", "zhangfei"),
+        ("诸葛亮", "zhugeliang"),
+        ("关羽", "guanyu"),
+        ("赵云", "zhaoyun"),
+        ("刘备", "liubei"),
+        ("诸葛瞻", "zhugezhan"),
+        ("黄月英", "huangyueying"),
+        ("曹操", "caocao"),
+        ("司马懿", "simayi"),
+        ("孙权", "sunquan"),
+        ("周瑜", "zhouyu"),
     ]:
-        password_hash, salt = hash_password(pwd) if pwd else (None, None)
-        persons[name] = create_person(
-            name=name,
-            pid=pid,
+        persons[name] = create_person(name=name, pid=pid)
+
+    # ── Account (认证凭据, 仅给有密码的角色) ──────
+    accounts = {}
+    for person_name, login, pwd in [
+        ("诸葛亮", "zhugeliang@shu.cn", "demo123"),
+        ("刘备", "liubei@shu.cn", "demo123"),
+        ("曹操", "caocao@wei.cn", "demo123"),
+        ("孙权", "sunquan@wu.cn", "demo123"),
+    ]:
+        password_hash, salt = hash_password(pwd)
+        accounts[person_name] = create_account(
+            person_id=persons[person_name]["id"],
+            login=login,
             password=password_hash,
-            salt=salt
+            salt=salt,
         )
 
     # ── Membership (person ↔ org, 带 role) ──────────────────

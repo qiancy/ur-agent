@@ -1,9 +1,10 @@
 """
 Database module for Uni-Resource Agent.
 
-Tables (v5.2):
+Tables (v5.3):
   - organization: 组织 (个人/家庭/公司/等) + funds, reputation
   - person: 人员 (纯个人信息)
+  - account: 认证凭据 (login, password, salt, status)
   - membership: 人员↔组织 (多对多, 带角色)
   - resource: 资源 (单表, type 区分 physical/financial/human/knowledge)
   - warehouse: 仓库
@@ -60,12 +61,22 @@ CREATE TABLE IF NOT EXISTS person (
     id               SERIAL PRIMARY KEY,
     pid              VARCHAR(100) UNIQUE NOT NULL,
     name             VARCHAR(255) NOT NULL,
-    password         TEXT,
-    salt             TEXT,
     birth_date       DATE,
     health_reminders JSONB,
     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Account: 认证凭据 (与 person 分离)
+CREATE TABLE IF NOT EXISTS account (
+    id            SERIAL PRIMARY KEY,
+    person_id     INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    login         VARCHAR(150) NOT NULL UNIQUE,
+    password      TEXT NOT NULL,
+    salt          TEXT,
+    status        VARCHAR(30) NOT NULL DEFAULT 'active',
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Membership: 人员↔组织 (多对多, 带角色)
@@ -156,6 +167,8 @@ CREATE INDEX IF NOT EXISTS idx_rw_location ON resource_warehouse(location_path);
 CREATE INDEX IF NOT EXISTS idx_party_pid ON party(pid);
 CREATE INDEX IF NOT EXISTS idx_party_oid ON party(oid);
 CREATE INDEX IF NOT EXISTS idx_party_transaction ON party(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_account_person ON account(person_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_login ON account(login);
 """
 
 
@@ -171,6 +184,7 @@ def init_database(drop_all: bool = False):
                 DROP TABLE IF EXISTS warehouse CASCADE;
                 DROP TABLE IF EXISTS resource CASCADE;
                 DROP TABLE IF EXISTS membership CASCADE;
+                DROP TABLE IF EXISTS account CASCADE;
                 DROP TABLE IF EXISTS person CASCADE;
                 DROP TABLE IF EXISTS organization CASCADE;
                 DROP TABLE IF EXISTS virtual_assets CASCADE;
@@ -259,17 +273,16 @@ def query_organization(oid: int = None, name: str = None,
 
 # --- Person ---
 
-def create_person(name: str, birth_date: str = None, pid: str = None,
-                  password: str = None, salt: str = None) -> Dict[str, Any]:
+def create_person(name: str, birth_date: str = None, pid: str = None) -> Dict[str, Any]:
     import secrets as _secrets
     if pid is None:
         pid = f"person_{name}_{_secrets.token_hex(4)}"
     sql = """
-        INSERT INTO person (pid, name, password, salt, birth_date)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO person (pid, name, birth_date)
+        VALUES (%s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (pid, name, password, salt, birth_date),
+    return dict(_execute(sql, (pid, name, birth_date),
                          fetch_returning=True)[0])
 
 
@@ -283,6 +296,31 @@ def query_person_by_pid(pid: str) -> List[Dict]:
     """Find person by pid (unique identifier)."""
     sql = "SELECT * FROM person WHERE pid = %s"
     return _fetch(sql, (pid,))
+
+
+# --- Account ---
+
+def create_account(person_id: int, login: str, password: str,
+                   salt: str = None) -> Dict[str, Any]:
+    sql = """
+        INSERT INTO account (person_id, login, password, salt)
+        VALUES (%s, %s, %s, %s)
+        RETURNING *
+    """
+    return dict(_execute(sql, (person_id, login, password, salt),
+                         fetch_returning=True)[0])
+
+
+def query_account_by_login(login: str) -> List[Dict]:
+    """Find account by login name."""
+    sql = "SELECT * FROM account WHERE login = %s"
+    return _fetch(sql, (login,))
+
+
+def update_account_password(person_id: int, password: str,
+                            salt: str = None) -> int:
+    sql = "UPDATE account SET password = %s, salt = %s, updated_at = CURRENT_TIMESTAMP WHERE person_id = %s"
+    return _execute(sql, (password, salt, person_id))
 
 
 def query_organization_by_oid(oid: str) -> List[Dict]:

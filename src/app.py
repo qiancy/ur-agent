@@ -259,14 +259,20 @@ async def chat(body: ChatRequest):
         logger.info("Chat request: oid=%s, org=%s, message=%s", body.oid, org["name"], message[:100])
 
         if message in IDENTITY_MESSAGES:
-            response = f"你当前在{org['name']}空间，组织 ID 为 {org['id']}。我是 Uni-Resource Agent，可以帮你管理该空间的资源、人员、交易和知识。"
-            logger.info("Chat fast-path response: %s", response)
+            members = get_org_members(body.oid)
+            member_text = "、".join(
+                f"{m['name']}({m['role'] or '成员'})" for m in members[:5]
+            ) or "暂无成员"
+            response = (
+                f"当前空间来自数据库 organization 表：{org['name']}，类型 {org['type']}，组织 ID {org['id']}。"
+                f"该空间成员包括：{member_text}。"
+            )
+            logger.info("Chat fast-path response from DB: %s", response)
             return {"response": response, "oid": body.oid}
 
         agent_input = (
-            f"当前组织空间: {org['name']}，组织类型: {org['type']}，oid: {org['id']}。\n"
-            "调用任何工具时必须使用这个 oid，不要使用默认 oid。\n"
-            "如果问题是闲聊或身份确认，直接回答，不要调用工具。\n"
+            f"数据库已确认当前 organization.id={org['id']}，name={org['name']}，type={org['type']}。\n"
+            "调用工具时必须显式传入上述 oid。\n"
             f"用户问题: {message}"
         )
 

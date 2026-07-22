@@ -712,6 +712,17 @@ def get_campaign_import(campaign_import_id: int) -> List[Dict[str, Any]]:
     return _fetch("SELECT * FROM campaign_import WHERE id = %s", (campaign_import_id,))
 
 
+def get_active_campaign_import_by_code(campaign_code: str) -> List[Dict[str, Any]]:
+    sql = """
+        SELECT *
+        FROM campaign_import
+        WHERE campaign_code = %s AND status = 'active'
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+    """
+    return _fetch(sql, (campaign_code,))
+
+
 def get_campaign_import_org_ids(campaign_import_id: int) -> List[int]:
     rows = _fetch(
         "SELECT organization_id FROM campaign_import_org WHERE campaign_import_id = %s",

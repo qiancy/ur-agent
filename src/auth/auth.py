@@ -22,7 +22,7 @@ if not JWT_SECRET:
     raise RuntimeError("JWT_SECRET environment variable is required. "
                        "Set it before starting the server.")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24
+JWT_EXPIRATION_HOURS = 72
 
 
 # ── Login name parsing ───────────────────────────────────────────────────────

@@ -250,7 +250,7 @@ async def chat(body: ChatRequest):
             from langchain.agents import AgentExecutor
             from src.tools import ALL_TOOLS
             agent = create_uni_resource_agent()
-            agent_executor = AgentExecutor(agent=agent, tools=ALL_TOOLS, verbose=True, handle_parsing_errors=True)
+            agent_executor = AgentExecutor(agent=agent, tools=ALL_TOOLS, verbose=False, handle_parsing_errors=True, max_iterations=10)
             return agent_executor.invoke({"input": body.message})
 
         result = await asyncio.wait_for(

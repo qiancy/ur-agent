@@ -35,8 +35,13 @@ Four resource types. One AI Agent. Multiple isolated spaces.
 
 **Killer Feature**: Multi-Context Space (MCS)
 - One user, multiple identities: `Zhang San @ Company / Home / Family / School`
-- Data isolated by `context_id`
+- Data isolated by `oid` (organization) + `pid` (person) combination
 - Switch spaces, Agent adapts instantly
+
+**Context Format**: `context = {oid, pid}`
+- `oid`: Organization ID - identifies the organization/space
+- `pid`: Person ID - identifies the person/identity
+- Example: `Zhang San @ Company` → `oid=1, pid=101`
 
 ---
 ## 🏠 Environment
@@ -60,7 +65,7 @@ This system is running in a Kubernetes pod environment with the following constr
 | Vector DB | ChromaDB |
 | Backend | FastAPI + JWT |
 | Frontend | Gradio |
-| Database | PostgreSQL (context_id isolation) |
+| Database | PostgreSQL (context isolation via oid+pid) |
 
 ### Model Strategy (Development vs Production)
 
@@ -232,7 +237,7 @@ Backend: FastAPI at `http://localhost:8000`. Full API docs: `README.md`.
 
 1. **Zero Cloud API (Production)** — Core inference for user data runs locally on AMD ROCm. No external model APIs for business logic.
 2. **Privacy First** — No user data leaves the machine. Cloud APIs allowed for development only (code generation, no user data).
-3. **Context Isolation** — Every DB query must include `context_id = current_context`.
+3. **Context Isolation** — Every DB query must include `oid = current_oid` and `pid = current_pid` if applicable.
 4. **Quantized Model** — Must fit in <48GB VRAM (GGUF Q4_K_M, ~45GB).
 
 ---
@@ -264,7 +269,7 @@ Detailed tasks: [`_pm/进度跟踪.md`](_pm/进度跟踪.md)
 
 ### Test Principles
 1. **Black-box testing** - No modification to `src/` code
-2. **Context isolation** - Each test uses independent `context_id`
+2. **Context isolation** - Each test uses independent `oid` (organization) and `pid` (person) combination
 3. **API-only operations** - All data access via HTTP API
 
 ### Test Coverage

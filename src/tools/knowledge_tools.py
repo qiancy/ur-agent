@@ -7,18 +7,24 @@ def get_chroma_client():
     return chromadb.Client()
 
 @tool
-def rag_search(query: str, oid: int) -> str:
+def rag_search(query: str, oid: int = 1) -> str:
     """
     Perform RAG (Retrieval-Augmented Generation) search within an organization.
 
     Args:
         query: Natural language query.
-        oid: Organization identifier for multi-tenant isolation.
+        oid: Organization identifier for multi-tenant isolation. Default: 1 (蜀国).
 
     Returns:
         Retrieved documents or error message.
     """
     try:
+        if not isinstance(oid, int):
+            try:
+                oid = int(oid)
+            except (ValueError, TypeError):
+                return "Error: oid must be an integer"
+        
         client = get_chroma_client()
         collection_name = f"org_{oid}"
         collection = client.get_or_create_collection(name=collection_name)
@@ -39,19 +45,25 @@ def rag_search(query: str, oid: int) -> str:
 
 
 @tool
-def store_knowledge(content: str, oid: int, title: str) -> str:
+def store_knowledge(content: str, oid: int = 1, title: str = "") -> str:
     """
     Store knowledge content in the vector database for a specific organization.
 
     Args:
         content: Knowledge content to store.
-        oid: Organization identifier for multi-tenant isolation.
+        oid: Organization identifier for multi-tenant isolation. Default: 1 (蜀国).
         title: Title for the knowledge item.
 
     Returns:
         Confirmation or error message.
     """
     try:
+        if not isinstance(oid, int):
+            try:
+                oid = int(oid)
+            except (ValueError, TypeError):
+                return "Error: oid must be an integer"
+        
         client = get_chroma_client()
         collection_name = f"org_{oid}"
         collection = client.get_or_create_collection(name=collection_name)

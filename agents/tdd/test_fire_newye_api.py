@@ -306,27 +306,29 @@ class APIClient:
 # 测试脚本
 # ============================================================================
 
-def init_campaign_via_api(context_id: int = 10, campaign_name: str = "火烧新野"):
+def init_campaign_via_api(oid: int = 10, pid: int = 101, campaign_name: str = "火烧新野"):
     """
     通过初始化API准备测试数据
     
     注意：此功能依赖后端提供的初始化API。
     如果API未实现，请先运行数据库初始化脚本：
-        python scripts/init_db.py --context-id={context_id}
+        python scripts/init_db.py --oid={oid} --pid={pid}
     
     API调用格式：
         POST /api/init/campaign
         Body: {
-            "context_id": {context_id},
+            "oid": {oid},
+            "pid": {pid},
             "campaign_name": "{campaign_name}",
             "init_all_data": true
         }
     """
-    print(f"ℹ️  初始化战役数据: context_id={context_id}, campaign={campaign_name}")
+    print(f"ℹ️  初始化战役数据: oid={oid}, pid={pid}, campaign={campaign_name}")
     print(f"ℹ️  注意：需要后端提供 /api/init/campaign API")
-    print(f"ℹ️  如API未实现，请先运行: python scripts/init_db.py --context-id={context_id}")
+    print(f"ℹ️  如API未实现，请先运行: python scripts/init_db.py --oid={oid} --pid={pid}")
     return {
-        "context_id": context_id,
+        "oid": oid,
+        "pid": pid,
         "campaign_name": campaign_name,
         "api_available": False,  # 待后端实现
         "note": "等待后端初始化API实现"
@@ -352,7 +354,8 @@ class FireNewyeTest:
         # 尝试通过API初始化
         print("\n🔄 尝试通过API初始化数据...")
         api_init_result = init_campaign_via_api(
-            context_id=10, 
+            oid=10,
+            pid=101,
             campaign_name=SHU_ORG_NAME
         )
         

@@ -14,7 +14,7 @@
 
 ```json
 {
-  "context_id": 10,
+  "oid": 10,
   "campaign_name": "火烧新野",
   "init_all_data": true
 }
@@ -22,7 +22,7 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| context_id | int | 是 | 测试上下文ID（组织ID） |
+| oid | int | 是 | 测试上下文ID（组织ID） |
 | campaign_name | string | 是 | 战役名称 |
 | init_all_data | bool | 否 | 是否初始化所有数据（默认true） |
 
@@ -33,7 +33,7 @@
   "code": 200,
   "message": "Campaign data initialized successfully",
   "data": {
-    "context_id": 10,
+    "oid": 10,
     "campaign_name": "火烧新野",
     "organizations": 2,
     "persons": 8,
@@ -67,7 +67,7 @@
 ```json
 {
   "code": 400,
-  "message": "Invalid context_id or campaign data",
+  "message": "Invalid oid or campaign data",
   "error": "Context 10 already exists"
 }
 ```
@@ -85,7 +85,7 @@ from typing import Dict, Any, List
 from pydantic import BaseModel
 
 class CampaignInitRequest(BaseModel):
-    context_id: int
+    oid: int
     campaign_name: str
     init_all_data: bool = True
 
@@ -135,7 +135,7 @@ class TransactionData(BaseModel):
 async def init_campaign(request: CampaignInitRequest):
     """
     初始化战役数据
-    为指定的 context_id 创建完整的测试数据集
+    为指定的 oid 创建完整的测试数据集
     """
     from src.db.database import (
         create_organization, query_organization,
@@ -151,7 +151,7 @@ async def init_campaign(request: CampaignInitRequest):
         return {
             "code": 200,
             "message": "No data initialization requested",
-            "data": {"context_id": request.context_id}
+            "data": {"oid": request.oid}
         }
     
     # 战役数据配置
@@ -164,16 +164,16 @@ async def init_campaign(request: CampaignInitRequest):
         )
     
     # 检查是否已存在数据
-    existing_org = query_organization(oid=request.context_id)
+    existing_org = query_organization(oid=request.oid)
     if existing_org:
         raise HTTPException(
             status_code=400,
-            detail=f"Context {request.context_id} already has data"
+            detail=f"Context {request.oid} already has data"
         )
     
     # 开始初始化
     results = {
-        "context_id": request.context_id,
+        "oid": request.oid,
         "campaign_name": request.campaign_name,
         "organizations": 0,
         "persons": 0,
@@ -186,7 +186,7 @@ async def init_campaign(request: CampaignInitRequest):
     # 初始化组织
     for org_config in campaign_config["organizations"]:
         org_id = org_config["id"]
-        if org_id == request.context_id or org_id == request.context_id + 1:
+        if org_id == request.oid or org_id == request.oid + 1:
             create_organization(
                 name=org_config["name"],
                 org_type=org_config["type"],
@@ -198,7 +198,7 @@ async def init_campaign(request: CampaignInitRequest):
     
     # 初始化人员
     for person_config in campaign_config["persons"]:
-        if person_config["org_id"] in [request.context_id, request.context_id + 1]:
+        if person_config["org_id"] in [request.oid, request.oid + 1]:
             create_person(
                 name=person_config["name"],
                 birth_date=person_config.get("birth_date")
@@ -207,7 +207,7 @@ async def init_campaign(request: CampaignInitRequest):
     
     # 初始化仓库
     for wh_config in campaign_config["warehouses"]:
-        if wh_config["org_id"] in [request.context_id, request.context_id + 1]:
+        if wh_config["org_id"] in [request.oid, request.oid + 1]:
             create_warehouse(
                 oid=wh_config["org_id"],
                 name=wh_config["name"],
@@ -219,7 +219,7 @@ async def init_campaign(request: CampaignInitRequest):
     
     # 初始化资源
     for res_config in campaign_config["resources"]:
-        if res_config["org_id"] in [request.context_id, request.context_id + 1]:
+        if res_config["org_id"] in [request.oid, request.oid + 1]:
             create_resource(
                 oid=res_config["org_id"],
                 name=res_config["name"],
@@ -234,7 +234,7 @@ async def init_campaign(request: CampaignInitRequest):
     
     # 初始化交易
     for trans_config in campaign_config["transactions"]:
-        if trans_config["org_id"] in [request.context_id, request.context_id + 1]:
+        if trans_config["org_id"] in [request.oid, request.oid + 1]:
             create_transaction(
                 amount=trans_config["amount"],
                 category=trans_config["category"],
@@ -244,8 +244,8 @@ async def init_campaign(request: CampaignInitRequest):
     
     # 获取初始化后的统计
     results["details"] = {
-        "shu_han": _get_org_stats(request.context_id),
-        "cao_wei": _get_org_stats(request.context_id + 1)
+        "shu_han": _get_org_stats(request.oid),
+        "cao_wei": _get_org_stats(request.oid + 1)
     }
     
     return {
@@ -379,27 +379,27 @@ from src.app import app
 
 client = TestClient(app)
 
-def init_campaign_data(context_id: int = 10):
+def init_campaign_data(oid: int = 10):
     """
     通过API初始化战役数据
     """
     response = client.post(
         "/api/init/campaign",
         json={
-            "context_id": context_id,
+            "oid": oid,
             "campaign_name": "火烧新野",
             "init_all_data": True
         }
     )
     
     if response.status_code == 201:
-        print(f"✅ Campaign data initialized for context {context_id}")
+        print(f"✅ Campaign data initialized for context {oid}")
         return response.json()
     else:
         raise RuntimeError(f"Failed to init campaign: {response.text}")
 
 # 在测试前调用
-init_campaign_data(context_id=10)
+init_campaign_data(oid=10)
 ```
 
 ---
@@ -415,7 +415,7 @@ init_campaign_data(context_id=10)
 │                                                             │
 │  2. 调用初始化 API                                          │
 │     POST /api/init/campaign                                 │
-│     Body: { "context_id": 10, "campaign_name": "火烧新野" } │
+│     Body: { "oid": 10, "campaign_name": "火烧新野" } │
 │                                                             │
 │  3. API 自动创建所有数据                                    │
 │     - 2个组织                                               │
@@ -425,7 +425,7 @@ init_campaign_data(context_id=10)
 │     - 10笔交易                                              │
 │                                                             │
 │  4. 测试脚本开始执行                                        │
-│     - 所有测试使用 context_id = 10                          │
+│     - 所有测试使用 oid = 10                          │
 │     - 数据完全隔离                                          │
 │     - 不直接访问数据库                                      │
 └─────────────────────────────────────────────────────────────┘
@@ -447,7 +447,7 @@ init_campaign_data(context_id=10)
 
 ## 📌 注意事项
 
-1. **数据隔离**：每个测试使用独立的 `context_id`
+1. **数据隔离**：每个测试使用独立的 `oid`
 2. **幂等性**：已存在数据时返回400错误，避免重复初始化
 3. **事务性**：建议将数据初始化包装在数据库事务中
 4. **清理**：测试结束后提供清理API `POST /api/cleanup/context/{id}`

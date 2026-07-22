@@ -31,17 +31,32 @@
 
 ## 📊 Database Schema
 
-> `context_id` 是程序运行时概念，不作为独立表。
+### Context (运行时概念)
+`context` 是程序运行时动态组合的概念，由两个核心标识组成：
+
+| 标识 | 说明 | 作用 |
+|------|------|------|
+| `oid` (organization_id) | 组织ID | 标识当前操作所属的组织/空间 |
+| `pid` (person_id) | 人员ID | 标识当前操作所属的人员/身份 |
+
+**`context = {oid, pid}` 表示 "person@organization" 上下文**
+
+例如：
+- `Zhang San @ Company` → oid=1 (公司), pid=101 (张三)
+- `Zhang San @ Home` → oid=2 (家庭), pid=101 (张三)
+- `Li Si @ School` → oid=3 (学校), pid=102 (李四)
+
+> 注意：`oid` 和 `pid` 作为组合字段存在于所有数据表中，但不作为独立表存在。每条记录通过 `(oid, pid)` 的组合实现多租户和多身份隔离。`context_id` 参数在API中已被废弃，统一使用 `oid` + `pid` 传递。
 
 | Table | Description | Key Columns |
 |-------|-------------|-------------|
-| `assets` | 资产基表 | id, context_id, name, type, status |
+| `assets` | 资产基表 | id, oid, pid, name, type, status |
 | `physical_assets` | 物理资产 (继承 assets) | id(FK→assets), quantity, warehouse |
 | `virtual_assets` | 虚拟资产 (继承 assets) | id(FK→assets), content, embedding |
-| `personnel` | 人员 | id, context_id, name, role, birth_date, health_reminders |
-| `party` | 交易参与方 | id, context_id, name, role, description |
+| `personnel` | 人员 | id, oid, pid, name, role, birth_date, health_reminders |
+| `party` | 交易参与方 | id, oid, pid, name, role, description |
 | `party_member` | 人员↔参与方 (多对多) | party_id, personnel_id, role |
-| `transactions` | 交易记录 | id, context_id, from_party_id, to_party_id, amount, category |
+| `transactions` | 交易记录 | id, oid, pid, from_party_id, to_party_id, amount, category |
 
 **ER 关系:**
 
@@ -70,14 +85,15 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/assets?context_id=1&name=&warehouse=` | 查询资产（支持按名称/仓库筛选） |
+| GET | `/assets?oid=1&name=&warehouse=` | 查询资产（支持按名称/仓库筛选） |
 | POST | `/assets` | 创建资产 |
-| POST | `/assets/transfer` | 跨 context 调拨资产 |
+| POST | `/assets/transfer` | 跨组织调拨资产 |
 
 **POST /assets**
 ```json
 {
-  "context_id": 1,
+  "oid": 1,
+  "pid": 101,
   "name": "连弩",
   "asset_type": "兵器",
   "quantity": 50,
@@ -89,8 +105,10 @@ Base URL: `http://localhost:8000`
 ```json
 {
   "asset_id": 4,
-  "from_context": 1,
-  "to_context": 2,
+  "from_oid": 1,
+  "from_pid": 101,
+  "to_oid": 2,
+  "to_pid": 102,
   "quantity": 10
 }
 ```
@@ -99,13 +117,14 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/personnel?context_id=1&name=` | 查询人员 |
+| GET | `/personnel?oid=1&name=` | 查询人员 |
 | POST | `/personnel` | 添加人员 |
 
 **POST /personnel**
 ```json
 {
-  "context_id": 1,
+  "oid": 1,
+  "pid": 102,
   "name": "诸葛亮",
   "role": "丞相",
   "birth_date": "0181-04-23"
@@ -116,7 +135,7 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/party?context_id=1&name=` | 查询参与方 |
+| GET | `/party?oid=1&name=` | 查询参与方 |
 | POST | `/party` | 创建参与方 |
 | GET | `/party/{id}/members` | 查看成员 |
 | POST | `/party/members` | 添加成员 |
@@ -124,7 +143,8 @@ Base URL: `http://localhost:8000`
 **POST /party**
 ```json
 {
-  "context_id": 1,
+  "oid": 1,
+  "pid": 101,
   "name": "蜀汉集团",
   "role": "买家",
   "description": "蜀汉政权"
@@ -136,6 +156,8 @@ Base URL: `http://localhost:8000`
 {
   "party_id": 1,
   "personnel_id": 2,
+  "oid": 1,
+  "pid": 101,
   "role": "丞相"
 }
 ```
@@ -144,13 +166,14 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/transactions?context_id=1&limit=50` | 交易记录（含参与方名称） |
+| GET | `/transactions?oid=1&limit=50` | 交易记录（含参与方名称） |
 | POST | `/transactions` | 记录交易 |
 
 **POST /transactions**
 ```json
 {
-  "context_id": 1,
+  "oid": 1,
+  "pid": 101,
   "from_party_id": 1,
   "to_party_id": 2,
   "amount": 1000.00,
@@ -163,12 +186,13 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/summary?context_id=1` | 财务摘要（流入/流出/余额） |
+| GET | `/summary?oid=1` | 财务摘要（流入/流出/余额） |
 
 **Response:**
 ```json
 {
-  "context_id": 1,
+  "oid": 1,
+  "pid": 101,
   "total_outflow": 4500.0,
   "total_inflow": 4500.0,
   "balance": 0.0,
@@ -186,7 +210,8 @@ Base URL: `http://localhost:8000`
 ```json
 {
   "message": "帮我查一下蜀国的资产情况",
-  "context_id": 1
+  "oid": 1,
+  "pid": 101
 }
 ```
 

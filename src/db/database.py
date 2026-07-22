@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS resource_warehouse (
 -- Transaction: 交易事务 (纯事件, 组织上下文来自 party)
 CREATE TABLE IF NOT EXISTS transaction (
     id              SERIAL PRIMARY KEY,
+    oid             INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
     amount          DECIMAL(15,2) NOT NULL,
     category        VARCHAR(100) NOT NULL,
     description     TEXT,
@@ -384,44 +385,45 @@ def create_resource_warehouse(resource_id: int, location_path: str,
                          fetch_returning=True)[0])
 
 
-def query_resource_warehouse(resource_id: int, location_path: str = None) -> List[Dict]:
-    sql = "SELECT * FROM resource_warehouse WHERE resource_id = %s"
-    params: list = [resource_id]
+def query_resource_warehouse(resource_id: int, location_path: str = None, oid: int = 1) -> List[Dict]:
+    sql = "SELECT * FROM resource_warehouse WHERE resource_id = %s AND oid = %s"
+    params: list = [resource_id, oid]
     if location_path:
         sql += " AND location_path LIKE %s"
         params.append(f"{location_path}%")
     return _fetch(sql, tuple(params))
 
 
-def get_resource_total(resource_id: int) -> Dict[str, Any]:
+def get_resource_total(resource_id: int, oid: int = 1) -> Dict[str, Any]:
     """Get total quantity for a resource. Priority: 'total' row > SUM."""
     rows = _fetch(
         "SELECT quantity FROM resource_warehouse "
-        "WHERE resource_id = %s AND location_path = 'total' LIMIT 1",
-        (resource_id,)
+        "WHERE resource_id = %s AND oid = %s AND location_path = 'total' LIMIT 1",
+        (resource_id, oid)
     )
     if rows:
         total_qty = float(rows[0]["quantity"])
     else:
         rows = _fetch(
             "SELECT COALESCE(SUM(quantity), 0) AS total_qty "
-            "FROM resource_warehouse WHERE resource_id = %s",
-            (resource_id,)
+            "FROM resource_warehouse WHERE resource_id = %s AND oid = %s",
+            (resource_id, oid)
         )
         total_qty = float(rows[0]["total_qty"])
-    return {"resource_id": resource_id, "total_qty": total_qty}
+    return {"resource_id": resource_id, "oid": oid, "total_qty": total_qty}
 
 
 # --- Transaction ---
 
 def create_transaction(amount: float, category: str,
-                       description: str = None) -> Dict[str, Any]:
+                        description: str = None,
+                        oid: int = 1) -> Dict[str, Any]:
     sql = """
-        INSERT INTO transaction (amount, category, description)
-        VALUES (%s, %s, %s)
+        INSERT INTO transaction (amount, category, description, oid)
+        VALUES (%s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (amount, category, description),
+    return dict(_execute(sql, (amount, category, description, oid),
                          fetch_returning=True)[0])
 
 

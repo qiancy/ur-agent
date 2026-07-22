@@ -100,6 +100,7 @@ start_backend() {
     cd "$PROJECT_ROOT"
     
     # 启动后端服务
+    cd "$PROJECT_ROOT"
     nohup uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     
@@ -107,7 +108,7 @@ start_backend() {
     echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
     
     # 等待服务启动
-    sleep 5
+    sleep 8
     
     # 检查后端是否启动成功
     if ps -p "$BACKEND_PID" > /dev/null; then
@@ -149,7 +150,7 @@ start_frontend() {
     echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
     
     # 等待服务启动
-    sleep 5
+    sleep 8
     
     # 检查前端是否启动成功
     if ps -p "$FRONTEND_PID" > /dev/null; then

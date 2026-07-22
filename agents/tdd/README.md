@@ -79,9 +79,20 @@
 
 ## 测试框架
 - 使用Python unittest
-- 基于context_id的上下文隔离测试
+- 基于oid+pid的上下文隔离测试 (context = {oid, pid})
 - 集成数据库访问测试
 - 工具函数验证测试
+
+### Context说明
+`context` 是运行时概念，由oid（组织ID）和pid（人员ID）组成，表示 "person@organization" 上下文
+
+### API参数说明
+所有API调用需传递 `oid` 和 `pid` 参数：
+- `oid`: 组织ID，标识当前操作所属的组织/空间
+- `pid`: 人员ID，标识当前操作所属的人员/身份
+
+### Context说明
+`context` 是运行时概念，由oid（组织ID）和pid（人员ID）组成，表示 "person@organization" 上下文
 
 ## 测试目标
 1. 验证所有工具函数按预期工作

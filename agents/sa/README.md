@@ -106,8 +106,9 @@ graph TD
 ```mermaid
 classDiagram
     class Agent {
-        +context_id
-        +current_context
+        +oid
+        +pid
+        +context  # runtime: {oid, pid}
         +query_asset()
         +transfer_asset()
         +record_transaction()
@@ -116,17 +117,12 @@ classDiagram
         +switch_context()
     }
     
-    class Context {
-        +id
-        +name
-        +type
-        +owner_user_id
-        +created_at
-    }
+    # context 是运行时概念，由oid和pid组成
+    # context = {oid, pid} 表示 "person@organization" 上下文
     
     class Asset {
         +id
-        +context_id
+        +oid
         +name
         +type
         +quantity
@@ -228,43 +224,59 @@ classDiagram
 ## 7. 数据库设计
 
 ### 7.1 核心表结构
-1. **contexts** — 上下文表
-   - id: 主键
-   - name: 上下文名称
-   - type: 上下文类型
-   - owner_user_id: 所有者用户ID
 
-2. **physical_assets** — 物理资产表
-   - id: 主键
-   - context_id: 上下文ID（外键）
-   - name: 资产名称
-   - type: 资产类型
-   - quantity: 数量
-   - status: 状态
-   - lifecycle_log: 生命周期日志
+#### Context (运行时概念)
+`context` 是程序运行时动态组合的概念，由两个核心标识组成：
 
-3. **virtual_assets** — 虚拟资产表
-   - id: 主键
-   - context_id: 上下文ID（外键）
-   - name: 资产名称
-   - content: 内容
-   - embedding: 向量嵌入
+| 标识 | 说明 | 作用 |
+|------|------|------|
+| `oid` (organization_id) | 组织ID | 标识当前操作所属的组织/空间 |
+| `pid` (person_id) | 人员ID | 标识当前操作所属的人员/身份 |
 
-4. **personnel** — 人员表
-   - id: 主键
-   - context_id: 上下文ID（外键）
-   - name: 姓名
-   - role: 角色
-   - birth_date: 生日
-   - health_reminders: 健康提醒（JSONB）
+**`context = {oid, pid}` 表示 "person@organization" 上下文**
 
-5. **transactions** — 交易表
-   - id: 主键
-   - context_id: 上下文ID（外键）
-   - amount: 金额
-   - category: 类别
-   - description: 描述
-   - transaction_date: 交易日期
+例如：
+- `Zhang San @ Company` → oid=1 (公司), pid=101 (张三)
+- `Zhang San @ Home` → oid=2 (家庭), pid=101 (张三)
+- `Li Si @ School` → oid=3 (学校), pid=102 (李四)
+
+> 注意：`oid` 和 `pid` 作为组合字段存在于所有数据表中，但不作为独立表存在。每条记录通过 `(oid, pid)` 的组合实现多租户和多身份隔离。`context_id` 参数在API中已被废弃，统一使用 `oid` + `pid` 传递。
+
+1. **physical_assets** — 物理资产表
+    - id: 主键
+    - oid: 组织ID
+    - pid: 人员ID
+    - name: 资产名称
+    - type: 资产类型
+    - quantity: 数量
+    - status: 状态
+    - lifecycle_log: 生命周期日志
+
+2. **virtual_assets** — 虚拟资产表
+    - id: 主键
+    - oid: 组织ID
+    - pid: 人员ID
+    - name: 资产名称
+    - content: 内容
+    - embedding: 向量嵌入
+
+3. **personnel** — 人员表
+    - id: 主键
+    - oid: 组织ID
+    - pid: 人员ID
+    - name: 姓名
+    - role: 角色
+    - birth_date: 生日
+    - health_reminders: 健康提醒（JSONB）
+
+4. **transactions** — 交易表
+     - id: 主键
+     - oid: 组织ID
+     - pid: 人员ID
+     - amount: 金额
+     - category: 类别
+     - description: 描述
+     - transaction_date: 交易日期
 
 ## 8. 设计模式应用
 

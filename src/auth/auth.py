@@ -1,68 +1,36 @@
-from typing import Optional
-from datetime import datetime, timedelta
-import os
-import jwt
-from functools import wraps
-from fastapi import HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from passlib.context import CryptContext
+from typing import Optional, Tuple
 
-# JWT配置
-SECRET_KEY = os.getenv("SECRET_KEY", "uni-resource-agent-secret-key")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-# 密码加密
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# 安全工具
-security = HTTPBearer()
-
-# JWT相关函数
-def create_access_token(data: dict):
-    """创建访问令牌"""
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password: str) -> str:
-    """获取密码哈希"""
-    return pwd_context.hash(password)
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """获取当前用户"""
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: int = payload.get("user_id")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="无效的认证令牌")
-        return user_id
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
 
 # 用户上下文管理
 class ContextManager:
-    """上下文管理器"""
+    """上下文管理器
+    
+    context 是运行时概念，由 oid 和 pid 组成
+    context = {oid, pid} 表示 "person@organization" 上下文
+    """
     
     def __init__(self):
-        self.current_context = None
+        self.current_oid = None
+        self.current_pid = None
     
-    def set_context(self, context_id: int):
-        """设置当前上下文"""
-        self.current_context = context_id
+    def set_context(self, oid: int, pid: int):
+        """设置当前上下文 (oid, pid)"""
+        self.current_oid = oid
+        self.current_pid = pid
     
-    def get_context(self) -> Optional[int]:
-        """获取当前上下文"""
-        return self.current_context
+    def get_context(self) -> Optional[Tuple[int, int]]:
+        """获取当前上下文 (oid, pid)"""
+        return (self.current_oid, self.current_pid)
     
-    def validate_context(self, context_id: int) -> bool:
+    def get_oid(self) -> Optional[int]:
+        """获取当前组织ID"""
+        return self.current_oid
+    
+    def get_pid(self) -> Optional[int]:
+        """获取当前人员ID"""
+        return self.current_pid
+    
+    def validate_context(self, oid: int, pid: int) -> bool:
         """验证上下文是否存在"""
         # 这里应该连接数据库检查上下文是否存在
         # 为简化实现，我们返回True

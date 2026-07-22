@@ -10,7 +10,7 @@ LangChain 0.1 API update:
 """
 import os
 from langchain.agents import create_openai_tools_agent, AgentExecutor
-from langchain_core.tools import Tool
+from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from langchain import hub
 
@@ -34,18 +34,14 @@ def create_uni_resource_agent():
     """Create and return a LangChain agent with all Uni-Resource tools."""
     llm = get_llm()
 
-    tools = [
-        Tool(name=t.name, func=t, description=t.description)
-        for t in ALL_TOOLS
-    ]
-
     prompt = hub.pull("hwchase17/openai-tools-agent")
 
     agent = create_openai_tools_agent(
         llm=llm,
-        tools=tools,
+        tools=ALL_TOOLS,
         prompt=prompt,
     )
+    
     return agent
 
 
@@ -54,7 +50,14 @@ if __name__ == "__main__":
     logger.info("Uni-Resource Agent started")
     logger.info("Tools: %s", [t.name for t in ALL_TOOLS])
 
-    agent_executor = AgentExecutor(agent=agent, tools=ALL_TOOLS, verbose=True, handle_parsing_errors=True)
+    agent_executor = AgentExecutor(
+        agent=agent,
+        tools=ALL_TOOLS,
+        verbose=True,
+        handle_parsing_errors=True,
+        max_iterations=20,
+        max_execution_time=30
+    )
 
     while True:
         user_input = input("\n> ")

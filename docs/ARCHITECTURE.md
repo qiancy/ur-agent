@@ -324,7 +324,7 @@ curl http://localhost:7860/health
 │   ├─────────────────────────────────────────────────────────────────┤  │
 │   │   • 每个组织数据独立隔离                                          │  │
 │   │   • 数据库表带 oid 字段                                           │  │
-│   │   • 所有查询必须包含 OID 过滤                                   │  │
+│   │   • 所有查询必须包含 oid 过滤                                   │  │
 │   │                                                                  │  │
 │   │   SQL: SELECT * FROM organization WHERE id = $oid              │  │
 │   │   SQL: SELECT * FROM resource WHERE oid = $oid                 │  │

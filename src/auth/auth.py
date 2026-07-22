@@ -27,12 +27,12 @@ JWT_EXPIRATION_HOURS = 24
 
 # ── Login name parsing ───────────────────────────────────────────────────────
 
-LOGIN_PATTERN = re.compile(r'^([a-zA-Z0-9_-]+)@([a-zA-Z0-9_-]+)\.cn$')
+LOGIN_PATTERN = re.compile(r'^([a-zA-Z0-9_-]+)@([a-zA-Z0-9_-]+)(?:\.[a-zA-Z0-9_-]+)?$')
 
 
 def parse_login_name(login: str) -> Optional[Tuple[str, str]]:
     """
-    Parse login name format: {pid}@{oid}.cn
+    Parse login name format: {pid}@{oid} or {pid}@{oid}.{suffix}.
     Returns (pid, oid) or None if invalid.
     """
     match = LOGIN_PATTERN.match(login)

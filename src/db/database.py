@@ -321,6 +321,12 @@ def query_account_by_login(login: str) -> List[Dict]:
     return _fetch(sql, (login,))
 
 
+def query_accounts_by_person_id(person_id: int) -> List[Dict]:
+    """Find all accounts for a person."""
+    sql = "SELECT * FROM account WHERE person_id = %s ORDER BY id"
+    return _fetch(sql, (person_id,))
+
+
 def update_account_password(person_id: int, password: str,
                             salt: str = None) -> int:
     sql = "UPDATE account SET password = %s, salt = %s, updated_at = CURRENT_TIMESTAMP WHERE person_id = %s"

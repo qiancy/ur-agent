@@ -12,7 +12,10 @@ Tables (v5.3):
   - transaction: 交易事务 (纯事件)
   - party: 交易参与方 (同生同死于 transaction, 记录 funds_change, reputation_change)
 
-Naming: pid = person_id, oid = org_id (统一使用短形式)
+Naming:
+- pid, oid: business identifiers (VARCHAR), unique strings (e.g. "zhangsan", "wei")
+- person_id, organization_id: database primary keys (SERIAL), internal integers
+- JWT payload: uses pid, oid (strings), NOT person_id, organization_id
 """
 
 from typing import Optional, List, Dict, Any
@@ -47,7 +50,7 @@ SCHEMA_SQL = """
 -- Organization: 组织 (个人/家庭/公司/等) + 资金, 名望
 CREATE TABLE IF NOT EXISTS organization (
     id          SERIAL PRIMARY KEY,
-    oid         VARCHAR(100) UNIQUE NOT NULL,
+    oid         VARCHAR(100) UNIQUE NOT NULL CHECK (oid ~ '^[A-Za-z0-9_-]+$'),
     name        VARCHAR(255) NOT NULL,
     type        VARCHAR(100) NOT NULL,
     description TEXT,
@@ -59,7 +62,7 @@ CREATE TABLE IF NOT EXISTS organization (
 -- Person: 人员 (纯个人信息, 无 oid)
 CREATE TABLE IF NOT EXISTS person (
     id               SERIAL PRIMARY KEY,
-    pid              VARCHAR(100) UNIQUE NOT NULL,
+    pid              VARCHAR(100) UNIQUE NOT NULL CHECK (pid ~ '^[A-Za-z0-9_-]+$'),
     name             VARCHAR(255) NOT NULL,
     birth_date       DATE,
     health_reminders JSONB,
@@ -67,58 +70,55 @@ CREATE TABLE IF NOT EXISTS person (
     updated_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Account: 认证凭据 (与 person 分离)
+-- Account: 认证凭据 (password stores the password hash)
 CREATE TABLE IF NOT EXISTS account (
-    id            SERIAL PRIMARY KEY,
-    person_id     INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
-    login         VARCHAR(150) NOT NULL UNIQUE,
-    password      TEXT NOT NULL,
-    salt          TEXT,
-    status        VARCHAR(30) NOT NULL DEFAULT 'active',
-    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Membership: 人员↔组织 (多对多, 带角色)
-CREATE TABLE IF NOT EXISTS membership (
     id          SERIAL PRIMARY KEY,
-    pid         INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
-    oid         INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
-    role        VARCHAR(100),
-    joined_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(pid, oid)
-);
-
--- Resource: 资源 (单表设计, type 区分 physical/financial/human/knowledge)
-CREATE TABLE IF NOT EXISTS resource (
-    id          SERIAL PRIMARY KEY,
-    oid         INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
-    name        VARCHAR(255) NOT NULL,
-    type        VARCHAR(100) NOT NULL,
-    status      VARCHAR(50) DEFAULT 'active',
-    unit        VARCHAR(50),
-    -- financial fields (nullable)
-    amount      DECIMAL(15,2),
-    currency    VARCHAR(20),
-    -- human fields (nullable)
-    pid         INTEGER REFERENCES person(id),
-    -- knowledge fields (nullable)
-    content     TEXT,
-    embedding   VECTOR(1024),
+    person_id   INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    login       VARCHAR(150) UNIQUE NOT NULL,
+    password    TEXT NOT NULL,
+    salt        TEXT,
+    status      VARCHAR(30) NOT NULL DEFAULT 'active',
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Membership: 人员↔组织 (多对多, 带角色)
+CREATE TABLE IF NOT EXISTS membership (
+    id              SERIAL PRIMARY KEY,
+    person_id       INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+    organization_id INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    role            VARCHAR(100),
+    joined_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(person_id, organization_id)
+);
+
+-- Resource: 资源 (单表设计, type 区分 physical/financial/human/knowledge)
+CREATE TABLE IF NOT EXISTS resource (
+    id              SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    name            VARCHAR(255) NOT NULL,
+    type            VARCHAR(100) NOT NULL,
+    status          VARCHAR(50) DEFAULT 'active',
+    unit            VARCHAR(50),
+    amount          DECIMAL(15,2),
+    currency        VARCHAR(20),
+    person_id       INTEGER REFERENCES person(id),
+    content         TEXT,
+    embedding       VECTOR(1024),
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Warehouse: 仓库
 CREATE TABLE IF NOT EXISTS warehouse (
-    id          SERIAL PRIMARY KEY,
-    oid         INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
-    name        VARCHAR(255) NOT NULL,
-    code        VARCHAR(50) NOT NULL,
-    location    VARCHAR(255),
-    description TEXT,
-    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(oid, code)
+    id              SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    name            VARCHAR(255) NOT NULL,
+    code            VARCHAR(50) NOT NULL,
+    location        VARCHAR(255),
+    description     TEXT,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_id, code)
 );
 
 -- ResourceWarehouse: 资源-仓库明细
@@ -133,21 +133,21 @@ CREATE TABLE IF NOT EXISTS resource_warehouse (
     UNIQUE(resource_id, location_path)
 );
 
--- Transaction: 交易事务 (纯事件, 组织上下文来自 party)
+-- Transaction: 交易事务
 CREATE TABLE IF NOT EXISTS transaction (
     id              SERIAL PRIMARY KEY,
-    oid             INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    organization_id INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
     amount          DECIMAL(15,2) NOT NULL,
     category        VARCHAR(100) NOT NULL,
     description     TEXT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Party: 交易参与方 (同生同死于 transaction, 记录对组织的影响)
+-- Party: 交易参与方
 CREATE TABLE IF NOT EXISTS party (
     id                  SERIAL PRIMARY KEY,
-    pid                 INTEGER NOT NULL REFERENCES person(id),
-    oid                 INTEGER NOT NULL REFERENCES organization(id),
+    person_id           INTEGER NOT NULL REFERENCES person(id),
+    organization_id     INTEGER NOT NULL REFERENCES organization(id),
     transaction_id      INTEGER NOT NULL REFERENCES transaction(id) ON DELETE CASCADE,
     role                VARCHAR(100) NOT NULL,
     description         TEXT,
@@ -157,18 +157,18 @@ CREATE TABLE IF NOT EXISTS party (
 );
 
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_membership_pid ON membership(pid);
-CREATE INDEX IF NOT EXISTS idx_membership_oid ON membership(oid);
-CREATE INDEX IF NOT EXISTS idx_resource_oid ON resource(oid);
+CREATE INDEX IF NOT EXISTS idx_membership_person ON membership(person_id);
+CREATE INDEX IF NOT EXISTS idx_membership_org ON membership(organization_id);
+CREATE INDEX IF NOT EXISTS idx_account_person ON account(person_id);
+CREATE INDEX IF NOT EXISTS idx_account_login ON account(login);
+CREATE INDEX IF NOT EXISTS idx_resource_org ON resource(organization_id);
 CREATE INDEX IF NOT EXISTS idx_resource_type ON resource(type);
-CREATE INDEX IF NOT EXISTS idx_warehouse_oid ON warehouse(oid);
+CREATE INDEX IF NOT EXISTS idx_warehouse_org ON warehouse(organization_id);
 CREATE INDEX IF NOT EXISTS idx_rw_resource ON resource_warehouse(resource_id);
 CREATE INDEX IF NOT EXISTS idx_rw_location ON resource_warehouse(location_path);
-CREATE INDEX IF NOT EXISTS idx_party_pid ON party(pid);
-CREATE INDEX IF NOT EXISTS idx_party_oid ON party(oid);
+CREATE INDEX IF NOT EXISTS idx_party_person ON party(person_id);
+CREATE INDEX IF NOT EXISTS idx_party_org ON party(organization_id);
 CREATE INDEX IF NOT EXISTS idx_party_transaction ON party(transaction_id);
-CREATE INDEX IF NOT EXISTS idx_account_person ON account(person_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_account_login ON account(login);
 """
 
 
@@ -244,8 +244,10 @@ def create_organization(name: str, org_type: str,
                         description: str = None, funds: float = 0,
                         reputation: int = 0, oid: str = None) -> Dict[str, Any]:
     import secrets as _secrets
+    import re as _re
     if oid is None:
-        oid = f"org_{name}_{_secrets.token_hex(4)}"
+        safe_name = _re.sub(r'[^a-zA-Z0-9]', '_', name).strip('_').lower()
+        oid = f"org_{safe_name}_{_secrets.token_hex(4)}"
     sql = """
         INSERT INTO organization (oid, name, type, description, funds, reputation)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -255,13 +257,13 @@ def create_organization(name: str, org_type: str,
                          fetch_returning=True)[0])
 
 
-def query_organization(oid: int = None, name: str = None,
+def query_organization(org_id: int = None, name: str = None,
                        org_type: str = None) -> List[Dict]:
     sql = "SELECT * FROM organization WHERE 1=1"
     params: list = []
-    if oid:
+    if org_id:
         sql += " AND id = %s"
-        params.append(oid)
+        params.append(org_id)
     if name:
         sql += " AND name ILIKE %s"
         params.append(f"%{name}%")
@@ -275,8 +277,10 @@ def query_organization(oid: int = None, name: str = None,
 
 def create_person(name: str, birth_date: str = None, pid: str = None) -> Dict[str, Any]:
     import secrets as _secrets
+    import re as _re
     if pid is None:
-        pid = f"person_{name}_{_secrets.token_hex(4)}"
+        safe_name = _re.sub(r'[^a-zA-Z0-9]', '_', name).strip('_').lower()
+        pid = f"person_{safe_name}_{_secrets.token_hex(4)}"
     sql = """
         INSERT INTO person (pid, name, birth_date)
         VALUES (%s, %s, %s)
@@ -329,21 +333,35 @@ def query_organization_by_oid(oid: str) -> List[Dict]:
     return _fetch(sql, (oid,))
 
 
+def resolve_organization_id(oid: Any) -> int:
+    """Resolve API-facing organization oid to internal organization.id."""
+    if oid is None:
+        raise ValueError("oid is required")
+    orgs = query_organization_by_oid(str(oid))
+    if orgs:
+        return orgs[0]["id"]
+    if isinstance(oid, int) or (isinstance(oid, str) and oid.isdigit()):
+        rows = query_organization(org_id=int(oid))
+        if rows:
+            return rows[0]["id"]
+    raise ValueError(f"Organization not found: {oid}")
+
+
 def query_membership(person_id: int, org_id: int) -> List[Dict]:
     """Find membership by person_id and org_id."""
-    sql = "SELECT * FROM membership WHERE pid = %s AND oid = %s"
+    sql = "SELECT * FROM membership WHERE person_id = %s AND organization_id = %s"
     return _fetch(sql, (person_id, org_id))
 
 
-def query_person(oid: int, name: str = None) -> List[Dict]:
+def query_person(organization_id: int, name: str = None) -> List[Dict]:
     """Find people in an org via membership."""
     sql = """
         SELECT p.*, m.role AS membership_role
         FROM person p
-        JOIN membership m ON m.pid = p.id
-        WHERE m.oid = %s
+        JOIN membership m ON m.person_id = p.id
+        WHERE m.organization_id = %s
     """
-    params: list = [oid]
+    params: list = [organization_id]
     if name:
         sql += " AND p.name ILIKE %s"
         params.append(f"%{name}%")
@@ -353,59 +371,59 @@ def query_person(oid: int, name: str = None) -> List[Dict]:
 
 # --- Membership ---
 
-def add_membership(pid: int, oid: int, role: str = None) -> Dict[str, Any]:
+def add_membership(person_id: int, organization_id: int, role: str = None) -> Dict[str, Any]:
     sql = """
-        INSERT INTO membership (pid, oid, role)
+        INSERT INTO membership (person_id, organization_id, role)
         VALUES (%s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (pid, oid, role), fetch_returning=True)[0])
+    return dict(_execute(sql, (person_id, organization_id, role), fetch_returning=True)[0])
 
 
-def get_org_members(oid: int) -> List[Dict]:
+def get_org_members(organization_id: int) -> List[Dict]:
     sql = """
-        SELECT m.id, m.role, p.name, p.id AS pid
+        SELECT m.id, m.role, p.name, p.pid
         FROM membership m
-        JOIN person p ON p.id = m.pid
-        WHERE m.oid = %s
+        JOIN person p ON p.id = m.person_id
+        WHERE m.organization_id = %s
     """
-    return _fetch(sql, (oid,))
+    return _fetch(sql, (organization_id,))
 
 
-def get_person_memberships(pid: int) -> List[Dict]:
+def get_person_memberships(person_id: int) -> List[Dict]:
     sql = """
-        SELECT m.id, m.role, o.name, o.id AS oid, o.type AS org_type
+        SELECT m.id, m.role, o.name, o.oid, o.type AS org_type
         FROM membership m
-        JOIN organization o ON o.id = m.oid
-        WHERE m.pid = %s
+        JOIN organization o ON o.id = m.organization_id
+        WHERE m.person_id = %s
     """
-    return _fetch(sql, (pid,))
+    return _fetch(sql, (person_id,))
 
 
 # --- Resource ---
 
-def create_resource(oid: int, name: str, resource_type: str,
+def create_resource(organization_id: int, name: str, resource_type: str,
                     unit: str = None, amount: float = None,
-                    currency: str = None, pid: int = None,
+                    currency: str = None, person_id: int = None,
                     content: str = None) -> Dict[str, Any]:
     sql = """
-        INSERT INTO resource (oid, name, type, unit, amount, currency, pid, content)
+        INSERT INTO resource (organization_id, name, type, unit, amount, currency, person_id, content)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (oid, name, resource_type, unit, amount, currency, pid, content),
+    return dict(_execute(sql, (organization_id, name, resource_type, unit, amount, currency, person_id, content),
                            fetch_returning=True)[0])
 
 
-def query_resource(oid: int, name: str = None,
+def query_resource(organization_id: int, name: str = None,
                    resource_type: str = None) -> List[Dict]:
     sql = """
         SELECT r.*, p.name AS person_name
         FROM resource r
-        LEFT JOIN person p ON p.id = r.pid
-        WHERE r.oid = %s AND r.status = 'active'
+        LEFT JOIN person p ON p.id = r.person_id
+        WHERE r.organization_id = %s AND r.status = 'active'
     """
-    params: list = [oid]
+    params: list = [organization_id]
     if name:
         sql += " AND r.name ILIKE %s"
         params.append(f"%{name}%")
@@ -417,20 +435,20 @@ def query_resource(oid: int, name: str = None,
 
 # --- Warehouse ---
 
-def create_warehouse(oid: int, name: str, code: str,
+def create_warehouse(organization_id: int, name: str, code: str,
                      location: str = None, description: str = None) -> Dict[str, Any]:
     sql = """
-        INSERT INTO warehouse (oid, name, code, location, description)
+        INSERT INTO warehouse (organization_id, name, code, location, description)
         VALUES (%s, %s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (oid, name, code, location, description),
+    return dict(_execute(sql, (organization_id, name, code, location, description),
                          fetch_returning=True)[0])
 
 
-def query_warehouse(oid: int, name: str = None) -> List[Dict]:
-    sql = "SELECT * FROM warehouse WHERE oid = %s"
-    params: list = [oid]
+def query_warehouse(organization_id: int, name: str = None) -> List[Dict]:
+    sql = "SELECT * FROM warehouse WHERE organization_id = %s"
+    params: list = [organization_id]
     if name:
         sql += " AND name ILIKE %s"
         params.append(f"%{name}%")
@@ -485,58 +503,56 @@ def get_resource_total(resource_id: int) -> Dict[str, Any]:
 
 def create_transaction(amount: float, category: str,
                         description: str = None,
-                        oid: int = 1) -> Dict[str, Any]:
+                        organization_id: int = 1) -> Dict[str, Any]:
     sql = """
-        INSERT INTO transaction (amount, category, description, oid)
+        INSERT INTO transaction (amount, category, description, organization_id)
         VALUES (%s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (amount, category, description, oid),
+    return dict(_execute(sql, (amount, category, description, organization_id),
                          fetch_returning=True)[0])
 
 
-def get_transactions(oid: int, limit: int = 20) -> List[Dict]:
-    """Get transactions for an org (via party join)."""
+def get_transactions(organization_id: int, limit: int = 20) -> List[Dict]:
+    """Get transactions for an org."""
     sql = """
         SELECT t.*,
                (SELECT json_agg(json_build_object(
-                   'pid', p.pid,
+                   'person_id', p.person_id,
                    'person_name', per.name,
                    'role', p.role,
                    'funds_change', p.funds_change,
                    'reputation_change', p.reputation_change
                )) FROM party p
-               JOIN person per ON per.id = p.pid
+               JOIN person per ON per.id = p.person_id
                WHERE p.transaction_id = t.id) AS parties
         FROM transaction t
-        WHERE t.id IN (
-            SELECT transaction_id FROM party WHERE oid = %s
-        )
+        WHERE t.organization_id = %s
         ORDER BY t.created_at DESC
         LIMIT %s
     """
-    return _fetch(sql, (oid, limit))
+    return _fetch(sql, (organization_id, limit))
 
 
 # --- Party ---
 
-def create_party(pid: int, oid: int, transaction_id: int,
+def create_party(person_id: int, organization_id: int, transaction_id: int,
                  role: str, description: str = None,
                  funds_change: float = 0, reputation_change: int = 0) -> Dict[str, Any]:
     sql = """
-        INSERT INTO party (pid, oid, transaction_id, role, description,
+        INSERT INTO party (person_id, organization_id, transaction_id, role, description,
                           funds_change, reputation_change)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING *
     """
-    result = dict(_execute(sql, (pid, oid, transaction_id, role, description,
+    result = dict(_execute(sql, (person_id, organization_id, transaction_id, role, description,
                                  funds_change, reputation_change),
                            fetch_returning=True)[0])
     # Auto-update organization funds and reputation
     if funds_change != 0 or reputation_change != 0:
         _execute(
             "UPDATE organization SET funds = funds + %s, reputation = reputation + %s WHERE id = %s",
-            (funds_change, reputation_change, oid)
+            (funds_change, reputation_change, organization_id)
         )
     return result
 
@@ -545,23 +561,23 @@ def query_party_by_transaction(transaction_id: int) -> List[Dict]:
     sql = """
         SELECT p.*, per.name AS person_name
         FROM party p
-        JOIN person per ON per.id = p.pid
+        JOIN person per ON per.id = p.person_id
         WHERE p.transaction_id = %s
     """
     return _fetch(sql, (transaction_id,))
 
 
-def query_party(oid: int, pid: int = None, name: str = None) -> List[Dict]:
+def query_party(organization_id: int, person_id: int = None, name: str = None) -> List[Dict]:
     sql = """
         SELECT p.*, per.name AS person_name
         FROM party p
-        JOIN person per ON per.id = p.pid
-        WHERE p.oid = %s
+        JOIN person per ON per.id = p.person_id
+        WHERE p.organization_id = %s
     """
-    params: list = [oid]
-    if pid:
-        sql += " AND p.pid = %s"
-        params.append(pid)
+    params: list = [organization_id]
+    if person_id:
+        sql += " AND p.person_id = %s"
+        params.append(person_id)
     if name:
         sql += " AND per.name ILIKE %s"
         params.append(f"%{name}%")

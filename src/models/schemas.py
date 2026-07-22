@@ -1,5 +1,7 @@
 """
 Pydantic request/response models for Uni-Resource Agent API.
+
+API-facing identifiers: pid (person.pid), oid (organization.oid) — string business keys.
 """
 from typing import Optional
 from pydantic import BaseModel
@@ -17,9 +19,9 @@ class OrgCreate(BaseModel):
 
 
 class MembershipAdd(BaseModel):
-    pid: int
-    oid: int
-    role: Optional[str] = None
+    pid: str
+    oid: str
+    role: Optional[str] = "member"
 
 
 # ── Person ───────────────────────────────────────────────────────────────────
@@ -32,13 +34,13 @@ class PersonCreate(BaseModel):
 # ── Resource ─────────────────────────────────────────────────────────────────
 
 class ResourceCreate(BaseModel):
-    oid: int
     name: str
     resource_type: str
+    oid: Optional[str] = None  # ignored, org comes from JWT/query param
     unit: Optional[str] = None
     amount: Optional[float] = None
     currency: Optional[str] = None
-    pid: Optional[int] = None
+    pid: Optional[str] = None
     content: Optional[str] = None
 
 
@@ -52,9 +54,9 @@ class ResourceWarehouseCreate(BaseModel):
 # ── Warehouse ────────────────────────────────────────────────────────────────
 
 class WarehouseCreate(BaseModel):
-    oid: int
     name: str
     code: str
+    oid: Optional[str] = None  # ignored, org comes from JWT/query param
     location: Optional[str] = None
     description: Optional[str] = None
 
@@ -70,9 +72,9 @@ class TransactionCreate(BaseModel):
 # ── Party ────────────────────────────────────────────────────────────────────
 
 class PartyCreate(BaseModel):
-    pid: int
-    oid: int
     transaction_id: int
+    pid: Optional[str] = None  # ignored, person comes from JWT
+    oid: Optional[str] = None  # ignored, org comes from JWT/query param
     role: str
     description: Optional[str] = None
     funds_change: Optional[float] = 0
@@ -83,7 +85,6 @@ class PartyCreate(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    oid: int = 1
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────

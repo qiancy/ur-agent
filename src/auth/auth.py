@@ -16,8 +16,11 @@ from jose import JWTError, jwt
 # Password hasher using argon2
 ph = PasswordHasher()
 
-# JWT configuration
-JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))
+# JWT configuration — JWT_SECRET must be set via environment variable
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is required. "
+                       "Set it before starting the server.")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
@@ -30,7 +33,7 @@ LOGIN_PATTERN = re.compile(r'^([a-zA-Z0-9_-]+)@([a-zA-Z0-9_-]+)\.cn$')
 def parse_login_name(login: str) -> Optional[Tuple[str, str]]:
     """
     Parse login name format: {pid}@{oid}.cn
-    Returns (person_pid, org_oid) or None if invalid.
+    Returns (pid, oid) or None if invalid.
     """
     match = LOGIN_PATTERN.match(login)
     if match:
@@ -53,20 +56,20 @@ def validate_oid(oid: str) -> bool:
 def hash_password(password: str) -> Tuple[str, str]:
     """
     Hash password using argon2.
-    Returns (password_hash, salt).
+    Returns (hashed_password, salt).
     """
     salt = secrets.token_hex(16)
-    password_hash = ph.hash(password + salt)
-    return password_hash, salt
+    hashed_password = ph.hash(password + salt)
+    return hashed_password, salt
 
 
-def verify_password(password: str, password_hash: str, salt: str) -> bool:
+def verify_password(password: str, stored_password: str, salt: str) -> bool:
     """
     Verify password against hash.
     Returns True if password matches, False otherwise.
     """
     try:
-        return ph.verify(password_hash, password + salt)
+        return ph.verify(stored_password, password + salt)
     except VerifyMismatchError:
         return False
 
@@ -108,28 +111,28 @@ class ContextManager:
         self.current_oid = None
         self.current_pid = None
     
-    def set_context(self, oid: int, pid: int):
+    def set_context(self, oid: str, pid: str):
         """设置当前上下文 (oid, pid)"""
         self.current_oid = oid
         self.current_pid = pid
     
-    def get_context(self) -> Optional[Tuple[int, int]]:
+    def get_context(self) -> Optional[Tuple[str, str]]:
         """获取当前上下文 (oid, pid)"""
         return (self.current_oid, self.current_pid)
     
-    def get_oid(self) -> Optional[int]:
-        """获取当前组织ID"""
+    def get_oid(self) -> Optional[str]:
+        """获取当前组织 oid"""
         return self.current_oid
     
-    def get_pid(self) -> Optional[int]:
-        """获取当前人员ID"""
+    def get_pid(self) -> Optional[str]:
+        """获取当前人员 pid"""
         return self.current_pid
     
-    def validate_context(self, oid: int, pid: int) -> bool:
-        """验证上下文是否存在"""
-        # 这里应该连接数据库检查上下文是否存在
-        # 为简化实现，我们返回True
-        return True
+    def validate_context(self, org_id: int, person_id: int) -> bool:
+        """Validate that the given person has an active membership in the organization."""
+        from src.db.database import query_membership
+        memberships = query_membership(person_id, org_id)
+        return len(memberships) > 0
 
 
 # 全局上下文管理器实例

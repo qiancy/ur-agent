@@ -26,22 +26,22 @@ async def register(body: RegisterRequest):
     if not parsed:
         raise HTTPException(400, "Invalid login format. Must be {pid}@{oid}.cn")
 
-    person_pid, org_oid = parsed
+    pid, oid = parsed
 
     # 2. Validate pid and oid format
-    if not validate_pid(person_pid):
+    if not validate_pid(pid):
         raise HTTPException(400, "Invalid pid format. Only letters, numbers, underscores, hyphens allowed.")
-    if not validate_oid(org_oid):
+    if not validate_oid(oid):
         raise HTTPException(400, "Invalid oid format. Only letters, numbers, underscores, hyphens allowed.")
 
     # 3. Check if organization exists
-    orgs = query_organization_by_oid(org_oid)
+    orgs = query_organization_by_oid(oid)
     if not orgs:
         raise HTTPException(404, "Organization not found")
     org = orgs[0]
 
     # 4. Check if person exists
-    persons = query_person_by_pid(person_pid)
+    persons = query_person_by_pid(pid)
 
     if persons:
         person = persons[0]
@@ -49,7 +49,7 @@ async def register(body: RegisterRequest):
         # Create new person
         person = create_person(
             name=body.name,
-            pid=person_pid,
+            pid=pid,
         )
 
     # 5. Check if account exists
@@ -65,11 +65,11 @@ async def register(body: RegisterRequest):
             raise HTTPException(409, "Password mismatch for existing user")
     else:
         # Create new account
-        password_hash, salt = hash_password(body.password)
+        hashed_password, salt = hash_password(body.password)
         account = create_account(
             person_id=person["id"],
             login=body.login,
-            password=password_hash,
+            password=hashed_password,
             salt=salt,
         )
 
@@ -114,7 +114,7 @@ async def login(body: LoginRequest):
     if not parsed:
         raise HTTPException(400, "Invalid login format. Must be {pid}@{oid}.cn")
 
-    person_pid, org_oid = parsed
+    pid, oid = parsed
 
     # 2. Check if account exists
     accounts = query_account_by_login(body.login)
@@ -133,12 +133,12 @@ async def login(body: LoginRequest):
         raise HTTPException(401, "Invalid credentials")
     person = persons[0]
 
-    # 5. Verify person_pid matches
-    if person["pid"] != person_pid:
+    # 5. Verify pid matches
+    if person["pid"] != pid:
         raise HTTPException(401, "Invalid credentials")
 
     # 6. Check if organization exists
-    orgs = query_organization_by_oid(org_oid)
+    orgs = query_organization_by_oid(oid)
     if not orgs:
         raise HTTPException(401, "Invalid credentials")
     org = orgs[0]
@@ -153,16 +153,13 @@ async def login(body: LoginRequest):
     if not verify_password(body.password, account["password"], account["salt"]):
         raise HTTPException(401, "Invalid password")
 
-    # 9. Create JWT token
+    # 9. Create JWT token — only business fields (pid, oid), no numeric DB IDs
     token_data = {
-        "pid": person["id"],
-        "person_pid": person["pid"],
+        "pid": person["pid"],
         "person_name": person["name"],
-        "oid": org["id"],
-        "org_oid": org["oid"],
-        "org_name": org["name"],
-        "org_type": org["type"],
-        "account_id": account["id"],
+        "oid": org["oid"],
+        "organization_name": org["name"],
+        "organization_type": org["type"],
         "role": membership["role"]
     }
     access_token = create_access_token(token_data)

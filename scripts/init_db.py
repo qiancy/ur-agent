@@ -56,11 +56,11 @@ def main():
         ("曹操", "caocao@wei.cn", "demo123"),
         ("孙权", "sunquan@wu.cn", "demo123"),
     ]:
-        password_hash, salt = hash_password(pwd)
+        hashed_password, salt = hash_password(pwd)
         accounts[person_name] = create_account(
             person_id=persons[person_name]["id"],
             login=login,
-            password=password_hash,
+            password=hashed_password,
             salt=salt,
         )
 
@@ -128,7 +128,7 @@ def main():
         ("吴国", "吴国兵力", persons["孙权"]["id"]),
     ]:
         resources[(org_name, name)] = create_resource(
-            orgs[org_name]["id"], name, "human", pid=pid
+            orgs[org_name]["id"], name, "human", person_id=pid
         )
 
     # ── Resources (knowledge) ────────────────────────────────
@@ -168,21 +168,21 @@ def main():
 
     # ── Transactions (先创建 transaction, 再创建 party) ─────
     # t1: 诸葛亮资助蜀汉军费
-    t1 = create_transaction(1000.00, "军费", "诸葛亮家资助蜀汉军费")
+    t1 = create_transaction(1000.00, "军费", "诸葛亮家资助蜀汉军费", organization_id=orgs["蜀国"]["id"])
     create_party(persons["刘备"]["id"], orgs["蜀国"]["id"], t1["id"],
                  "payer", "蜀汉集团支付", funds_change=-1000, reputation_change=-2)
     create_party(persons["诸葛亮"]["id"], orgs["蜀国"]["id"], t1["id"],
                  "payee", "诸葛亮家接收", funds_change=1000, reputation_change=2)
 
     # t2: 蜀汉发放俸禄
-    t2 = create_transaction(500.00, "俸禄", "蜀汉发放俸禄")
+    t2 = create_transaction(500.00, "俸禄", "蜀汉发放俸禄", organization_id=orgs["蜀国"]["id"])
     create_party(persons["刘备"]["id"], orgs["蜀国"]["id"], t2["id"],
                  "payer", "蜀汉集团支付俸禄", funds_change=-500, reputation_change=1)
     create_party(persons["诸葛亮"]["id"], orgs["蜀国"]["id"], t2["id"],
                  "payee", "诸葛亮接收俸禄", funds_change=500, reputation_change=0)
 
     # t3: 东吴联合抗曹军费
-    t3 = create_transaction(3000.00, "军费", "东吴联合抗曹军费")
+    t3 = create_transaction(3000.00, "军费", "东吴联合抗曹军费", organization_id=orgs["吴国"]["id"])
     create_party(persons["孙权"]["id"], orgs["吴国"]["id"], t3["id"],
                  "payer", "东吴支付军费", funds_change=-3000, reputation_change=-5)
     create_party(persons["刘备"]["id"], orgs["蜀国"]["id"], t3["id"],
@@ -191,12 +191,12 @@ def main():
     # ── Verify ─────────────────────────────────────────────
     print("\n── 验证 ──")
     for org_name, label in [("蜀国", "蜀国"), ("魏国", "魏国"), ("吴国", "吴国")]:
-        oid = orgs[org_name]["id"]
-        org = query_organization(oid=oid)[0]
-        per = query_person(oid)
-        pat = query_party(oid)
-        res = query_resource(oid)
-        print(f"\n{label} (oid={oid}):")
+        organization_id = orgs[org_name]["id"]
+        org = query_organization(org_id=organization_id)[0]
+        per = query_person(organization_id)
+        pat = query_party(organization_id)
+        res = query_resource(organization_id)
+        print(f"\n{label} (organization_id={organization_id}, oid={org['oid']}):")
         print(f"  funds={org['funds']}, reputation={org['reputation']}")
         print(f"  person:  {[p['name'] for p in per]}")
         print(f"  party:   {[(p['person_name']+'('+p['role']+',funds:'+str(p['funds_change'])+')') for p in pat]}")

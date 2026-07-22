@@ -240,6 +240,17 @@ Backend: FastAPI at `http://localhost:8000`. Full API docs: `README.md`.
 3. **Context Isolation** — Every DB query must include `oid = current_oid` and `pid = current_pid` if applicable.
 4. **Quantized Model** — Must fit in <48GB VRAM (GGUF Q4_K_M, ~45GB).
 
+### Identity Field Rules (Critical)
+
+- `pid` and `oid` are business identity fields, not database primary keys.
+- `pid` identifies a person, for example `caocao`; `oid` identifies an organization, for example `wei`.
+- `pid` and `oid` must be English-safe strings only: letters, numbers, underscore, and hyphen. No Chinese characters, spaces, `@`, `.`, or other special characters.
+- `person.pid` and `organization.oid` must be unique in the database.
+- Frontend must treat `pid` and `oid` as strings, never as numbers.
+- `person.id` and `organization.id` are database auto-increment primary keys only. They are internal implementation details.
+- JWT payload must contain only business identity fields `pid` and `oid` for identity/context. JWT must never contain `person_id`, `org_id`, `organization_id`, `person_pid`, or other database-ID-style identity fields.
+- Tables other than `person` and `organization` should use `person_id` / `organization_id` for numeric foreign keys, not `pid` / `oid`.
+
 ---
 
 ## 📊 Current Progress

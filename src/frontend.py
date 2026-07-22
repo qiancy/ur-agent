@@ -20,7 +20,7 @@ class LoginState:
         self.oid = None
         self.org_oid = None
         self.org_name = None
-        self.person_pid = None
+        self.pid = None
         self.person_name = None
         self.role = None
     
@@ -35,7 +35,7 @@ class LoginState:
         self.oid = org.get("id")
         self.org_oid = org.get("oid")
         self.org_name = org.get("name")
-        self.person_pid = person.get("pid")
+        self.pid = person.get("pid")
         self.person_name = person.get("name")
         self.role = membership.get("role")
     
@@ -44,7 +44,7 @@ class LoginState:
         self.oid = None
         self.org_oid = None
         self.org_name = None
-        self.person_pid = None
+        self.pid = None
         self.person_name = None
         self.role = None
 
@@ -80,14 +80,14 @@ def _get(path, params=None, timeout=10):
         raise
 
 
-def _post(path, body=None, timeout=10):
+def _post(path, body=None, params=None, timeout=10):
     started = time.monotonic()
-    logger.info("POST %s body=%s timeout=%s", path, body, timeout)
+    logger.info("POST %s params=%s body=%s timeout=%s", path, params, body, timeout)
     headers = {}
     if login_state.access_token:
         headers["Authorization"] = f"Bearer {login_state.access_token}"
     try:
-        r = requests.post(f"{API}{path}", json=body, timeout=timeout, headers=headers)
+        r = requests.post(f"{API}{path}", params=params, json=body, timeout=timeout, headers=headers)
         _log_response("POST", path, started, r)
         r.raise_for_status()
         return r.json()
@@ -146,16 +146,16 @@ def _load_orgs():
     """动态加载组织列表"""
     try:
         orgs = _get("/organizations")
-        return [(f"{o['name']} ({o['type']})", o["id"]) for o in orgs]
+        return [(f"{o['name']} ({o['type']})", o["oid"]) for o in orgs]
     except Exception:
         return []
 
 
-def org_id(label: str) -> int:
+def org_id(label: str) -> str:
     for name, oid in _load_orgs():
         if name == label:
             return oid
-    return 1
+    return "shu"
 
 
 # ── Tab 1: Personnel ────────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ def add_personnel_fn(org_label, name, role):
     oid = org_id(org_label)
     person = _post("/person", {"name": name.strip()})
     if role.strip():
-        _post("/organizations/members", {"pid": person["id"], "oid": oid, "role": role.strip()})
+        _post("/organizations/members", {"pid": person["pid"], "oid": oid, "role": role.strip()})
     return load_personnel(org_label)
 
 
@@ -217,7 +217,7 @@ def add_asset_fn(org_label, name, atype, amount, unit):
         body["unit"] = unit.strip()
     if amount:
         body["amount"] = float(amount)
-    _post("/resource", body)
+    _post("/resource", body, params={"oid": body["oid"]})
     return load_assets(org_label)
 
 
@@ -230,7 +230,7 @@ def load_party(org_label):
         return "暂无参与方"
     lines = []
     for p in rows:
-        pname = p.get("person_name") or f"pid:{p['pid']}"
+        pname = p.get("person_name") or f"person_id:{p.get('person_id')}"
         role = p.get("role") or "-"
         desc = p.get("description") or ""
         fc = p.get("funds_change") or 0
@@ -252,7 +252,7 @@ def add_party_fn(org_label, person_name, role, desc, funds_change, rep_change):
     people = _get("/person", {"oid": oid, "name": person_name.strip()})
     if not people:
         return f"找不到人员: {person_name}"
-    pid = people[0]["id"]
+    pid = people[0]["pid"]
     txns = _get("/transaction", {"oid": oid, "limit": 1})
     if not txns:
         return "请先创建交易记录"
@@ -266,7 +266,7 @@ def add_party_fn(org_label, person_name, role, desc, funds_change, rep_change):
         "funds_change": float(funds_change) if funds_change else 0,
         "reputation_change": int(rep_change) if rep_change else 0,
     }
-    _post("/party", body)
+    _post("/party", body, params={"oid": oid})
     return load_party(org_label)
 
 
@@ -282,7 +282,7 @@ def load_transactions(org_label):
         parties = t.get("parties") or []
         parts = []
         for p in parties:
-            pname = p.get("person_name") or f"pid:{p['pid']}"
+            pname = p.get("person_name") or f"person_id:{p.get('person_id')}"
             role = p.get("role") or ""
             fc = p.get("funds_change") or 0
             parts.append(f"{pname}({role}, {'+'if fc>=0 else ''}{fc})")
@@ -302,7 +302,7 @@ def add_transaction_fn(org_label, amount, category, desc):
         "category": category.strip() or "其他",
         "description": desc.strip() or None,
     }
-    _post("/transaction", body)
+    _post("/transaction", body, params={"oid": org_id(org_label)})
     return load_transactions(org_label)
 
 
@@ -327,7 +327,7 @@ def chat_fn(message, history, org_label):
     oid = org_id(org_label)
     logger.info("CHAT input oid=%s org=%s message=%s", oid, org_label, message)
     try:
-        resp = _post("/chat", {"message": message, "oid": oid}, timeout=40)
+        resp = _post("/chat", {"message": message}, params={"oid": oid}, timeout=40)
         reply = resp.get("response", "No response")
         logger.info("CHAT output oid=%s response=%s", oid, reply[:2000])
     except Exception as e:
@@ -489,11 +489,17 @@ def build_app():
 
 if __name__ == "__main__":
     demo = build_app()
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=False,
-        theme=gr.themes.Soft(),
-        debug=True,
-        show_error=True,
-    )
+    try:
+        demo.launch(
+            server_name="0.0.0.0",
+            server_port=7860,
+            share=False,
+            theme=gr.themes.Soft(),
+            debug=True,
+            show_error=True,
+            prevent_thread_lock=True,
+        )
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        demo.close()

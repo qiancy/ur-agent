@@ -5,7 +5,7 @@ import json
 
 from src.db.database import (
     query_person,
-    query_person_by_name,
+    resolve_organization_id,
     _execute,
 )
 
@@ -15,21 +15,18 @@ def manage_reminder(
     action: Optional[str] = None,
     person_name: Optional[str] = None,
     task: Optional[str] = None,
-    oid: int = 1,
+    oid: str = "shu",
     due_date: Optional[str] = None,
 ) -> str:
     """
     Manage health reminders for a person.
 
     Args:
-        action: Action type — 'add', 'update', or 'delete'.
+        action: Action type: add, update, or delete.
         person_name: Name of the person.
         task: Task/reminder description.
-        oid: Organization identifier. Default: 1 (蜀国).
+        oid: Organization business identifier, e.g. "shu".
         due_date: Due date for the task (optional).
-
-    Returns:
-        Operation confirmation or error message.
     """
     try:
         if not action:
@@ -41,13 +38,8 @@ def manage_reminder(
         if not task and action in ("add", "update"):
             return "Error: task is required for add/update actions"
 
-        if not isinstance(oid, int):
-            try:
-                oid = int(oid)
-            except (ValueError, TypeError):
-                return "Error: oid must be an integer"
-
-        people = query_person(oid, person_name)
+        organization_id = resolve_organization_id(oid)
+        people = query_person(organization_id, person_name)
         if not people:
             return f"Person '{person_name}' not found in org {oid}"
         person = people[0]
@@ -87,25 +79,17 @@ def manage_reminder(
 
 
 @tool
-def check_wellness(person_name: str, oid: int = 1) -> str:
+def check_wellness(person_name: str, oid: str = "shu") -> str:
     """
     Check wellness / health information for a person.
 
     Args:
         person_name: Name of the person.
-        oid: Organization identifier. Default: 1 (蜀国).
-
-    Returns:
-        Person information with health data, or error message.
+        oid: Organization business identifier, e.g. "shu".
     """
     try:
-        if not isinstance(oid, int):
-            try:
-                oid = int(oid)
-            except (ValueError, TypeError):
-                return "Error: oid must be an integer"
-        
-        people = query_person(oid, person_name)
+        organization_id = resolve_organization_id(oid)
+        people = query_person(organization_id, person_name)
         if people:
             result = people[0]
             result["oid"] = oid

@@ -6,6 +6,7 @@ import json
 from src.db.database import (
     create_transaction,
     get_transactions,
+    resolve_organization_id,
     _fetch,
 )
 
@@ -15,18 +16,16 @@ def record_transaction(
     amount: Optional[float] = None,
     category: Optional[str] = None,
     description: Optional[str] = None,
-    oid: int = 1,
+    oid: str = "shu",
 ) -> str:
     """
     Record a financial transaction.
 
     Args:
         amount: Transaction amount (positive).
-        category: Transaction category (e.g. '军费', '俸禄', '军需').
+        category: Transaction category.
         description: Transaction description.
-
-    Returns:
-        Transaction confirmation as JSON or error message.
+        oid: Organization business identifier, e.g. "shu".
     """
     try:
         if amount is None:
@@ -37,12 +36,13 @@ def record_transaction(
             return "Error: description is required"
         if amount <= 0:
             return "Error: Transaction amount must be positive"
-        
+
+        organization_id = resolve_organization_id(oid)
         result = create_transaction(
             amount=amount,
             category=category,
             description=description,
-            oid=oid,
+            organization_id=organization_id,
         )
         return json.dumps(result, default=str, ensure_ascii=False)
     except Exception as e:
@@ -50,28 +50,17 @@ def record_transaction(
 
 
 @tool
-def get_transaction_history(
-    oid: int = 1,
-    person_name: Optional[str] = None
-) -> str:
+def get_transaction_history(oid: str = "shu", person_name: Optional[str] = None) -> str:
     """
     Get transaction history for a specific organization.
 
     Args:
-        oid: Organization identifier for multi-tenant isolation.
-        person_name: Filter by person name (optional).
-
-    Returns:
-        JSON string with transaction history or error message.
+        oid: Organization business identifier, e.g. "shu".
+        person_name: Filter by person name (optional; not implemented yet).
     """
     try:
-        if not isinstance(oid, int):
-            try:
-                oid = int(oid)
-            except (ValueError, TypeError):
-                return "Error: oid must be an integer"
-        
-        txns = get_transactions(oid)
+        organization_id = resolve_organization_id(oid)
+        txns = get_transactions(organization_id)
         if txns:
             return json.dumps(txns, default=str, ensure_ascii=False)
         return f"No transactions found for org {oid}"
@@ -80,23 +69,21 @@ def get_transaction_history(
 
 
 @tool
-def get_summary(oid: int = 1) -> str:
+def get_summary(oid: str = "shu") -> str:
     """
-    Get financial summary: total outflow and transaction count for an organization.
+    Get financial summary for an organization.
 
     Args:
-        oid: Organization identifier for multi-tenant isolation. Default: 1 (蜀国).
-
-    Returns:
-        JSON string with financial summary.
+        oid: Organization business identifier, e.g. "shu".
     """
     try:
+        organization_id = resolve_organization_id(oid)
         outflow_rows = _fetch(
             "SELECT COALESCE(SUM(t.amount), 0) AS total "
             "FROM transaction t "
             "JOIN party p ON p.transaction_id = t.id "
-            "WHERE p.oid = %s AND p.role = 'payer'",
-            (oid,),
+            "WHERE p.organization_id = %s AND p.role = 'payer'",
+            (organization_id,),
         )
         total_outflow = float(outflow_rows[0]["total"])
 
@@ -104,8 +91,8 @@ def get_summary(oid: int = 1) -> str:
             "SELECT COUNT(DISTINCT t.id) AS cnt "
             "FROM transaction t "
             "JOIN party p ON p.transaction_id = t.id "
-            "WHERE p.oid = %s",
-            (oid,),
+            "WHERE p.organization_id = %s",
+            (organization_id,),
         )
 
         summary = {

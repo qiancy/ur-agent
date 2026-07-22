@@ -4,7 +4,7 @@ Database module for Uni-Resource Agent.
 Tables (v5.3):
   - organization: 组织 (个人/家庭/公司/等) + funds, reputation
   - person: 人员 (纯个人信息)
-  - account: 认证凭据 (login, password, salt, status)
+  - account: 认证凭据 (login, password, salt, status, system_role)
   - membership: 人员↔组织 (多对多, 带角色)
   - resource: 资源 (单表, type 区分 physical/financial/human/knowledge)
   - warehouse: 仓库
@@ -15,7 +15,7 @@ Tables (v5.3):
 Naming:
 - pid, oid: business identifiers (VARCHAR), unique strings (e.g. "zhangsan", "wei")
 - person_id, organization_id: database primary keys (SERIAL), internal integers
-- JWT payload: uses pid, oid (strings), NOT person_id, organization_id
+- JWT payload: uses pid, oid, system_role, role; NOT person_id, organization_id
 """
 
 from typing import Optional, List, Dict, Any
@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS account (
     password    TEXT NOT NULL,
     salt        TEXT,
     status      VARCHAR(30) NOT NULL DEFAULT 'active',
+    system_role VARCHAR(30) NOT NULL DEFAULT 'user',
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -156,11 +157,46 @@ CREATE TABLE IF NOT EXISTS party (
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Campaign import batch metadata
+CREATE TABLE IF NOT EXISTS campaign_import (
+    id              SERIAL PRIMARY KEY,
+    campaign_code   VARCHAR(100) NOT NULL,
+    campaign_name   VARCHAR(255) NOT NULL,
+    source_file     VARCHAR(255),
+    imported_by_pid VARCHAR(100) NOT NULL,
+    status          VARCHAR(30) NOT NULL DEFAULT 'active',
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at      TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS campaign_import_org (
+    id                  SERIAL PRIMARY KEY,
+    campaign_import_id  INTEGER NOT NULL REFERENCES campaign_import(id) ON DELETE CASCADE,
+    organization_id     INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    created_by_import   BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE(campaign_import_id, organization_id)
+);
+
+CREATE TABLE IF NOT EXISTS campaign_event (
+    id                  SERIAL PRIMARY KEY,
+    campaign_import_id  INTEGER NOT NULL REFERENCES campaign_import(id) ON DELETE CASCADE,
+    organization_id     INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    seq                 INTEGER NOT NULL,
+    title               VARCHAR(255) NOT NULL,
+    description         TEXT,
+    payload             JSONB,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(campaign_import_id, organization_id, seq)
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_membership_person ON membership(person_id);
 CREATE INDEX IF NOT EXISTS idx_membership_org ON membership(organization_id);
 CREATE INDEX IF NOT EXISTS idx_account_person ON account(person_id);
 CREATE INDEX IF NOT EXISTS idx_account_login ON account(login);
+CREATE INDEX IF NOT EXISTS idx_campaign_import_status ON campaign_import(status);
+CREATE INDEX IF NOT EXISTS idx_campaign_event_import ON campaign_event(campaign_import_id);
+CREATE INDEX IF NOT EXISTS idx_campaign_event_org ON campaign_event(organization_id);
 CREATE INDEX IF NOT EXISTS idx_resource_org ON resource(organization_id);
 CREATE INDEX IF NOT EXISTS idx_resource_type ON resource(type);
 CREATE INDEX IF NOT EXISTS idx_warehouse_org ON warehouse(organization_id);
@@ -178,6 +214,9 @@ def init_database(drop_all: bool = False):
         cur = conn.cursor()
         if drop_all:
             cur.execute("""
+                DROP TABLE IF EXISTS campaign_event CASCADE;
+                DROP TABLE IF EXISTS campaign_import_org CASCADE;
+                DROP TABLE IF EXISTS campaign_import CASCADE;
                 DROP TABLE IF EXISTS party CASCADE;
                 DROP TABLE IF EXISTS transaction CASCADE;
                 DROP TABLE IF EXISTS resource_warehouse CASCADE;
@@ -196,6 +235,8 @@ def init_database(drop_all: bool = False):
                 DROP TABLE IF EXISTS party_member CASCADE;
             """)
         cur.execute(SCHEMA_SQL)
+        cur.execute("ALTER TABLE account ADD COLUMN IF NOT EXISTS system_role VARCHAR(30) NOT NULL DEFAULT 'user'")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_account_system_role ON account(system_role)")
         conn.commit()
         logger.info("Database initialized successfully")
     except Exception as e:
@@ -305,13 +346,13 @@ def query_person_by_pid(pid: str) -> List[Dict]:
 # --- Account ---
 
 def create_account(person_id: int, login: str, password: str,
-                   salt: str = None) -> Dict[str, Any]:
+                   salt: str = None, system_role: str = "user") -> Dict[str, Any]:
     sql = """
-        INSERT INTO account (person_id, login, password, salt)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO account (person_id, login, password, salt, system_role)
+        VALUES (%s, %s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (person_id, login, password, salt),
+    return dict(_execute(sql, (person_id, login, password, salt, system_role),
                          fetch_returning=True)[0])
 
 
@@ -588,3 +629,175 @@ def query_party(organization_id: int, person_id: int = None, name: str = None) -
         sql += " AND per.name ILIKE %s"
         params.append(f"%{name}%")
     return _fetch(sql, tuple(params))
+
+
+# --- Campaign ---
+
+def create_campaign_import(campaign_code: str, campaign_name: str,
+                           source_file: str, imported_by_pid: str) -> Dict[str, Any]:
+    sql = """
+        INSERT INTO campaign_import (campaign_code, campaign_name, source_file, imported_by_pid)
+        VALUES (%s, %s, %s, %s)
+        RETURNING *
+    """
+    return dict(_execute(sql, (campaign_code, campaign_name, source_file, imported_by_pid),
+                         fetch_returning=True)[0])
+
+
+def add_campaign_import_org(campaign_import_id: int, organization_id: int,
+                            created_by_import: bool) -> Dict[str, Any]:
+    sql = """
+        INSERT INTO campaign_import_org (campaign_import_id, organization_id, created_by_import)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (campaign_import_id, organization_id)
+        DO UPDATE SET created_by_import = campaign_import_org.created_by_import OR EXCLUDED.created_by_import
+        RETURNING *
+    """
+    return dict(_execute(sql, (campaign_import_id, organization_id, created_by_import),
+                         fetch_returning=True)[0])
+
+
+def create_campaign_event(campaign_import_id: int, organization_id: int, seq: int,
+                          title: str, description: str = None,
+                          payload: Dict[str, Any] = None) -> Dict[str, Any]:
+    import json
+    sql = """
+        INSERT INTO campaign_event (campaign_import_id, organization_id, seq, title, description, payload)
+        VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+        RETURNING *
+    """
+    return dict(_execute(sql, (
+        campaign_import_id, organization_id, seq, title, description,
+        json.dumps(payload or {}, ensure_ascii=False),
+    ), fetch_returning=True)[0])
+
+
+def list_campaign_imports_for_orgs(organization_ids: List[int] = None,
+                                   include_all: bool = False) -> List[Dict[str, Any]]:
+    if include_all:
+        sql = """
+            SELECT ci.*,
+                   COALESCE(json_agg(DISTINCT jsonb_build_object(
+                       'id', o.id, 'oid', o.oid, 'name', o.name, 'type', o.type
+                   )) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
+            FROM campaign_import ci
+            LEFT JOIN campaign_import_org cio ON cio.campaign_import_id = ci.id
+            LEFT JOIN organization o ON o.id = cio.organization_id
+            WHERE ci.status = 'active'
+            GROUP BY ci.id
+            ORDER BY ci.created_at DESC, ci.id DESC
+        """
+        return _fetch(sql)
+
+    if not organization_ids:
+        return []
+    sql = """
+        SELECT ci.*,
+               COALESCE(json_agg(DISTINCT jsonb_build_object(
+                   'id', o.id, 'oid', o.oid, 'name', o.name, 'type', o.type
+               )) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
+        FROM campaign_import ci
+        JOIN campaign_import_org cio_filter ON cio_filter.campaign_import_id = ci.id
+        LEFT JOIN campaign_import_org cio ON cio.campaign_import_id = ci.id
+        LEFT JOIN organization o ON o.id = cio.organization_id
+        WHERE ci.status = 'active'
+          AND cio_filter.organization_id = ANY(%s)
+        GROUP BY ci.id
+        ORDER BY ci.created_at DESC, ci.id DESC
+    """
+    return _fetch(sql, (organization_ids,))
+
+
+def get_campaign_import(campaign_import_id: int) -> List[Dict[str, Any]]:
+    return _fetch("SELECT * FROM campaign_import WHERE id = %s", (campaign_import_id,))
+
+
+def get_campaign_import_org_ids(campaign_import_id: int) -> List[int]:
+    rows = _fetch(
+        "SELECT organization_id FROM campaign_import_org WHERE campaign_import_id = %s",
+        (campaign_import_id,)
+    )
+    return [row["organization_id"] for row in rows]
+
+
+def get_campaign_replay(campaign_import_id: int, organization_ids: List[int] = None,
+                        include_all: bool = False) -> List[Dict[str, Any]]:
+    sql = """
+        SELECT ce.id, ce.seq, ce.title, ce.description, ce.payload,
+               o.oid, o.name AS organization_name, o.type AS organization_type
+        FROM campaign_event ce
+        JOIN organization o ON o.id = ce.organization_id
+        WHERE ce.campaign_import_id = %s
+    """
+    params: list = [campaign_import_id]
+    if not include_all:
+        if not organization_ids:
+            return []
+        sql += " AND ce.organization_id = ANY(%s)"
+        params.append(organization_ids)
+    sql += " ORDER BY ce.seq, ce.id"
+    return _fetch(sql, tuple(params))
+
+
+def delete_campaign_import(campaign_import_id: int) -> Dict[str, Any]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM campaign_import WHERE id = %s", (campaign_import_id,))
+        campaign = cur.fetchone()
+        if not campaign:
+            conn.rollback()
+            return {"deleted": False, "reason": "not_found"}
+
+        cur.execute(
+            "SELECT organization_id FROM campaign_import_org WHERE campaign_import_id = %s AND created_by_import = TRUE",
+            (campaign_import_id,)
+        )
+        org_ids = [row["organization_id"] for row in cur.fetchall()]
+
+        cur.execute("DELETE FROM campaign_event WHERE campaign_import_id = %s", (campaign_import_id,))
+        deleted_events = cur.rowcount
+
+        deleted = {
+            "events": deleted_events,
+            "parties": 0,
+            "transactions": 0,
+            "resource_warehouse": 0,
+            "resources": 0,
+            "warehouses": 0,
+            "memberships": 0,
+            "organizations": 0,
+        }
+
+        if org_ids:
+            cur.execute("DELETE FROM party WHERE organization_id = ANY(%s)", (org_ids,))
+            deleted["parties"] = cur.rowcount
+            cur.execute("DELETE FROM transaction WHERE organization_id = ANY(%s)", (org_ids,))
+            deleted["transactions"] = cur.rowcount
+            cur.execute("""
+                DELETE FROM resource_warehouse rw
+                USING resource r
+                WHERE rw.resource_id = r.id AND r.organization_id = ANY(%s)
+            """, (org_ids,))
+            deleted["resource_warehouse"] = cur.rowcount
+            cur.execute("DELETE FROM resource WHERE organization_id = ANY(%s)", (org_ids,))
+            deleted["resources"] = cur.rowcount
+            cur.execute("DELETE FROM warehouse WHERE organization_id = ANY(%s)", (org_ids,))
+            deleted["warehouses"] = cur.rowcount
+            cur.execute("DELETE FROM membership WHERE organization_id = ANY(%s)", (org_ids,))
+            deleted["memberships"] = cur.rowcount
+            cur.execute("DELETE FROM organization WHERE id = ANY(%s)", (org_ids,))
+            deleted["organizations"] = cur.rowcount
+
+        cur.execute(
+            "UPDATE campaign_import SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = %s RETURNING *",
+            (campaign_import_id,)
+        )
+        updated = dict(cur.fetchone())
+        conn.commit()
+        return {"deleted": True, "campaign_import": updated, "counts": deleted}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

@@ -23,6 +23,7 @@ def main():
     # ── Organizations (with oid for authentication) ──────
     orgs = {}
     for name, otype, desc, funds, rep, oid in [
+        ("系统空间", "system", "系统全局管理空间", 0, 0, "system"),
         ("蜀国", "company", "蜀汉政权", 50000, 80, "shu"),
         ("魏国", "company", "曹魏政权", 80000, 90, "wei"),
         ("吴国", "company", "东吴政权", 60000, 75, "wu"),
@@ -34,6 +35,7 @@ def main():
     # ── Person (with pid for authentication) ──────
     persons = {}
     for name, pid in [
+        ("超级用户", "super"),
         ("张飞", "zhangfei"),
         ("诸葛亮", "zhugeliang"),
         ("关羽", "guanyu"),
@@ -50,11 +52,12 @@ def main():
 
     # ── Account (认证凭据, 仅给有密码的角色) ──────
     accounts = {}
-    for person_name, login, pwd in [
-        ("诸葛亮", "zhugeliang@shu.cn", "demo123"),
-        ("刘备", "liubei@shu.cn", "demo123"),
-        ("曹操", "caocao@wei.cn", "demo123"),
-        ("孙权", "sunquan@wu.cn", "demo123"),
+    for person_name, login, pwd, system_role in [
+        ("超级用户", "super@system.cn", "demo123", "super"),
+        ("诸葛亮", "zhugeliang@shu.cn", "demo123", "user"),
+        ("刘备", "liubei@shu.cn", "demo123", "user"),
+        ("曹操", "caocao@wei.cn", "demo123", "user"),
+        ("孙权", "sunquan@wu.cn", "demo123", "user"),
     ]:
         hashed_password, salt = hash_password(pwd)
         accounts[person_name] = create_account(
@@ -62,10 +65,12 @@ def main():
             login=login,
             password=hashed_password,
             salt=salt,
+            system_role=system_role,
         )
 
     # ── Membership (person ↔ org, 带 role) ──────────────────
     links = [
+        ("超级用户", "系统空间", "admin"),
         ("刘备", "蜀国", "主公"),
         ("诸葛亮", "蜀国", "丞相"),
         ("张飞", "蜀国", "将军"),

@@ -99,3 +99,9 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     login: str  # {pid}@{oid}.cn
     password: str
+
+
+# ── Campaign ─────────────────────────────────────────────────────────────────
+
+class CampaignImportRequest(BaseModel):
+    campaign_code: str

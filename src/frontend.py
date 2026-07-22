@@ -3,6 +3,7 @@ Uni-Resource Agent — Gradio frontend (v5.2).
 
 Connects to FastAPI backend at http://localhost:8000.
 """
+import os
 import time
 from typing import List
 
@@ -13,6 +14,7 @@ from src.logging_config import setup_logging
 
 logger = setup_logging("frontend")
 API = "http://localhost:8000"
+BROWSER_STATE_SECRET = os.getenv("BROWSER_STATE_SECRET") or os.getenv("JWT_SECRET") or "unires-dev-browser-state-secret"
 
 
 # ── Login state ──────────────────────────────────────────────────────────────
@@ -290,6 +292,53 @@ def logout_fn():
     )
 
 
+def restore_login_fn(state):
+    state = state or _empty_login_state()
+    if not _is_logged_in(state):
+        empty = _empty_login_state()
+        return (
+            empty,
+            "未登录",
+            _auth_header(empty),
+            gr.update(value=_org_labels()[0], choices=_org_labels(), interactive=True),
+            *_show_home(),
+            *_blank_workspace(),
+        )
+
+    try:
+        org_label = _current_org_label(state)
+        per, ast, tx, summary, campaigns, chatbot, chat_input = _workspace_payload(org_label, state)
+        return (
+            state,
+            "已恢复登录",
+            _auth_header(state),
+            gr.update(value=org_label, choices=[org_label], interactive=False),
+            *_show_workspace(),
+            per,
+            ast,
+            tx,
+            summary,
+            campaigns,
+            chatbot,
+            chat_input,
+        )
+    except Exception:
+        logger.exception("Restore login failed")
+        empty = _empty_login_state()
+        return (
+            empty,
+            "登录已失效，请重新登录",
+            _auth_header(empty),
+            gr.update(value=_org_labels()[0], choices=_org_labels(), interactive=True),
+            *_show_home(),
+            *_blank_workspace(),
+        )
+
+
+def restore_login_view_fn(state):
+    return restore_login_fn(state)[1:]
+
+
 # ── Tab 1: Personnel ────────────────────────────────────────────────────────
 
 def load_personnel(org_label, state=None):
@@ -501,10 +550,14 @@ def load_campaigns(state=None):
 def import_campaign_fn(campaign_code, state):
     if not _is_logged_in(state):
         return "请先登录", ""
+    if not _is_super(state):
+        return load_campaigns(state), "导入失败：需要系统超级用户账号 super@system.cn 登录。普通用户和组织级 admin 不能导入战役。"
     try:
         code = (campaign_code or "fire_xinye").strip() or "fire_xinye"
         resp = _post("/campaigns/import", {"campaign_code": code}, timeout=30, state=state)
         campaign = resp.get("campaign_import", {})
+        if resp.get("already_imported"):
+            return load_campaigns(state), f"已存在 active 战役：#{campaign.get('id')} {campaign.get('campaign_name')}，无需重复导入"
         return load_campaigns(state), f"导入成功：#{campaign.get('id')} {campaign.get('campaign_name')}"
     except Exception as e:
         logger.exception("Campaign import failed")
@@ -538,6 +591,8 @@ def replay_campaign_fn(campaign_import_id, state):
 def delete_campaign_fn(campaign_import_id, state):
     if not _is_logged_in(state):
         return "请先登录", ""
+    if not _is_super(state):
+        return load_campaigns(state), "删除失败：需要系统超级用户账号 super@system.cn 登录。普通用户和组织级 admin 不能删除战役。"
     if not campaign_import_id:
         return load_campaigns(state), "请输入战役批次 ID"
     try:
@@ -575,7 +630,7 @@ def build_app():
     default_org = org_labels[0]
 
     with gr.Blocks(title="Uni-Resource Agent") as demo:
-        session_state = gr.State(_empty_login_state())
+        session_state = gr.BrowserState(_empty_login_state(), storage_key="unires_agent_login_state", secret=BROWSER_STATE_SECRET)
         landing_panel = gr.Group(visible=True)
         auth_panel = gr.Group(visible=False)
         workspace_panel = gr.Group(visible=False)
@@ -674,6 +729,13 @@ def build_app():
                             scale=4,
                         )
                         chat_send = gr.Button("发送", variant="primary", scale=1)
+
+        session_state.change(
+            restore_login_view_fn,
+            [session_state],
+            [auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input],
+            queue=False,
+        )
 
         # ── Navigation ───────────────────────────────────────────────
         enter_login_btn.click(open_auth_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel])

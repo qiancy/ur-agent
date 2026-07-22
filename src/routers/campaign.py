@@ -26,6 +26,7 @@ from src.db.database import (
     create_warehouse,
     delete_campaign_import,
     get_campaign_import,
+    get_active_campaign_import_by_code,
     get_campaign_import_org_ids,
     get_campaign_replay,
     list_campaign_imports_for_orgs,
@@ -104,6 +105,14 @@ async def list_campaign_templates(request: Request):
 async def import_campaign(body: CampaignImportRequest, request: Request):
     payload = require_system_super(request)
     template, path = _load_template(body.campaign_code)
+
+    existing = get_active_campaign_import_by_code(template["campaign_code"])
+    if existing:
+        return {
+            "campaign_import": existing[0],
+            "already_imported": True,
+            "message": "Campaign already imported and active",
+        }
 
     campaign = create_campaign_import(
         campaign_code=template["campaign_code"],

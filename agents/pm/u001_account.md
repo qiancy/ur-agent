@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS account (
     id SERIAL PRIMARY KEY,
     person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
     login VARCHAR(150) NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
+    password TEXT NOT NULL,
     salt TEXT,
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -120,7 +120,7 @@ POST /auth/register
 7. 如果 account 不存在，创建：
    - `person_id = person.id`
    - `login = request.login`
-   - `password_hash = hash(password)`
+   - `password = hash(password)`
    - `salt` 按哈希方案处理
    - `status = active`
 8. 如果 account 已存在：
@@ -189,12 +189,12 @@ POST /auth/login
 ```sql
 SELECT role
 FROM membership
-WHERE pid = :person_id
-  AND oid = :organization_id;
+WHERE pid = :pid
+  AND oid = :oid;
 ```
 
 9. membership 不存在返回 401 或 403。
-10. 校验 `account.password_hash`。
+10. 校验 `account.password`。
 11. 签发 JWT。
 12. 返回 token 和登录上下文。
 
@@ -202,10 +202,10 @@ WHERE pid = :person_id
 
 ```json
 {
-  "person_id": 8,
+  "pid": 8,
   "person_pid": "caocao",
   "person_name": "曹操",
-  "org_id": 2,
+  "oid": 2,
   "org_oid": "wei",
   "org_name": "魏国",
   "org_type": "company",
@@ -311,10 +311,10 @@ zhugeliang@shu.cn / demo123
 
 ## 8. 验收标准
 
-- `caocao@wei.cn / demo123` 登录成功，返回 `org_id=2`、`org_oid=wei`。
+- `caocao@wei.cn / demo123` 登录成功，返回 `oid=2`、`org_oid=wei`。
 - `caocao@shu.cn / demo123` 登录失败，因为 membership 不存在。
 - `caocao@wei.cn / wrong` 登录失败，返回 401。
 - `caocao@unknown.cn / demo123` 登录失败。
 - `曹操@魏国.cn / demo123` 登录失败。
 - `account.status != active` 登录失败，返回 403。
-- 登录成功后，前端和 `/chat` 使用 token 或登录态中的 `org_id`。
+- 登录成功后，前端和 `/chat` 使用 token 或登录态中的 `oid`。

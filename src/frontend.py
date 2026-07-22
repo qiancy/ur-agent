@@ -12,6 +12,44 @@ from src.logging_config import setup_logging
 logger = setup_logging("frontend")
 API = "http://localhost:8000"
 
+# ── Login state ──────────────────────────────────────────────────────────────
+
+class LoginState:
+    def __init__(self):
+        self.access_token = None
+        self.oid = None
+        self.org_oid = None
+        self.org_name = None
+        self.person_pid = None
+        self.person_name = None
+        self.role = None
+    
+    def is_logged_in(self):
+        return self.access_token is not None
+    
+    def set_from_response(self, resp):
+        self.access_token = resp.get("access_token")
+        person = resp.get("person", {})
+        org = resp.get("organization", {})
+        membership = resp.get("membership", {})
+        self.oid = org.get("id")
+        self.org_oid = org.get("oid")
+        self.org_name = org.get("name")
+        self.person_pid = person.get("pid")
+        self.person_name = person.get("name")
+        self.role = membership.get("role")
+    
+    def clear(self):
+        self.access_token = None
+        self.oid = None
+        self.org_oid = None
+        self.org_name = None
+        self.person_pid = None
+        self.person_name = None
+        self.role = None
+
+login_state = LoginState()
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _log_response(method, path, started, response):
@@ -29,8 +67,11 @@ def _log_response(method, path, started, response):
 def _get(path, params=None, timeout=10):
     started = time.monotonic()
     logger.info("GET %s params=%s timeout=%s", path, params, timeout)
+    headers = {}
+    if login_state.access_token:
+        headers["Authorization"] = f"Bearer {login_state.access_token}"
     try:
-        r = requests.get(f"{API}{path}", params=params, timeout=timeout)
+        r = requests.get(f"{API}{path}", params=params, timeout=timeout, headers=headers)
         _log_response("GET", path, started, r)
         r.raise_for_status()
         return r.json()
@@ -42,14 +83,61 @@ def _get(path, params=None, timeout=10):
 def _post(path, body=None, timeout=10):
     started = time.monotonic()
     logger.info("POST %s body=%s timeout=%s", path, body, timeout)
+    headers = {}
+    if login_state.access_token:
+        headers["Authorization"] = f"Bearer {login_state.access_token}"
     try:
-        r = requests.post(f"{API}{path}", json=body, timeout=timeout)
+        r = requests.post(f"{API}{path}", json=body, timeout=timeout, headers=headers)
         _log_response("POST", path, started, r)
         r.raise_for_status()
         return r.json()
     except Exception as e:
         logger.exception("POST %s failed after %.2fs: %s", path, time.monotonic() - started, e)
         raise
+
+
+# ── Authentication ───────────────────────────────────────────────────────────
+
+def login_fn(login, password):
+    """Login user and update state."""
+    if not login.strip() or not password.strip():
+        return "请输入登录名和密码", login_state.org_name or "未登录"
+    
+    try:
+        resp = _post("/auth/login", {"login": login.strip(), "password": password.strip()})
+        login_state.set_from_response(resp)
+        org_name = resp.get("organization", {}).get("name", "未知")
+        person_name = resp.get("person", {}).get("name", "未知")
+        return f"✅ 登录成功：{person_name} @ {org_name}", org_name
+    except Exception as e:
+        logger.exception("Login failed")
+        return f"❌ 登录失败：{e}", login_state.org_name or "未登录"
+
+
+def register_fn(login, password, name, role):
+    """Register new user."""
+    if not login.strip() or not password.strip() or not name.strip():
+        return "请填写完整信息"
+    
+    try:
+        resp = _post("/auth/register", {
+            "login": login.strip(),
+            "password": password.strip(),
+            "name": name.strip(),
+            "role": role.strip() or "member"
+        })
+        person_name = resp.get("person", {}).get("name", "未知")
+        org_name = resp.get("organization", {}).get("name", "未知")
+        return f"✅ 注册成功：{person_name} @ {org_name}"
+    except Exception as e:
+        logger.exception("Register failed")
+        return f"❌ 注册失败：{e}"
+
+
+def logout_fn():
+    """Logout user and clear state."""
+    login_state.clear()
+    return "已退出登录", "未登录"
 
 
 # ── org selector ─────────────────────────────────────────────────────────────
@@ -258,12 +346,43 @@ def build_app():
     with gr.Blocks(title="Uni-Resource Agent") as demo:
         gr.Markdown("# Uni-Resource Agent\n**万物皆资源 — One AI. All Your Worlds.**")
 
+        # ── Login Section ────────────────────────────────────────────────
+        with gr.Row():
+            with gr.Column(scale=1):
+                login_status = gr.Markdown("未登录")
+                with gr.Row():
+                    login_input = gr.Textbox(label="登录名", placeholder="caocao@wei.cn", scale=2)
+                    login_pwd = gr.Textbox(label="密码", placeholder="密码", type="password", scale=1)
+                    login_btn = gr.Button("登录", variant="primary")
+                login_btn.click(
+                    login_fn,
+                    [login_input, login_pwd],
+                    [login_status, gr.State("")]
+                )
+            
+            with gr.Column(scale=1):
+                with gr.Row():
+                    reg_login = gr.Textbox(label="登录名", placeholder="newuser@wei.cn")
+                    reg_pwd = gr.Textbox(label="密码", placeholder="密码", type="password")
+                with gr.Row():
+                    reg_name = gr.Textbox(label="姓名", placeholder="用户名")
+                    reg_role = gr.Textbox(label="角色", placeholder="member")
+                    reg_btn = gr.Button("注册", variant="secondary")
+                reg_output = gr.Markdown()
+                reg_btn.click(
+                    register_fn,
+                    [reg_login, reg_pwd, reg_name, reg_role],
+                    reg_output
+                )
+        
         with gr.Row():
             org_selector = gr.Dropdown(
                 choices=org_labels,
                 value=org_labels[0],
                 label="当前组织",
             )
+            logout_btn = gr.Button("退出登录")
+            logout_btn.click(logout_fn, [], [login_status, gr.State("")])
 
         with gr.Tabs():
             # ── Personnel ──────────────────────────────────────────────

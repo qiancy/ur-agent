@@ -19,6 +19,7 @@ gradio
 python-jose
 passlib
 python-multipart
+argon2-cffi
 
 # Vector Database
 chromadb

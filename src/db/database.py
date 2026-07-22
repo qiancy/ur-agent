@@ -46,6 +46,7 @@ SCHEMA_SQL = """
 -- Organization: 组织 (个人/家庭/公司/等) + 资金, 名望
 CREATE TABLE IF NOT EXISTS organization (
     id          SERIAL PRIMARY KEY,
+    oid         VARCHAR(100) UNIQUE NOT NULL,
     name        VARCHAR(255) NOT NULL,
     type        VARCHAR(100) NOT NULL,
     description TEXT,
@@ -57,7 +58,10 @@ CREATE TABLE IF NOT EXISTS organization (
 -- Person: 人员 (纯个人信息, 无 oid)
 CREATE TABLE IF NOT EXISTS person (
     id               SERIAL PRIMARY KEY,
+    pid              VARCHAR(100) UNIQUE NOT NULL,
     name             VARCHAR(255) NOT NULL,
+    password         TEXT,
+    salt             TEXT,
     birth_date       DATE,
     health_reminders JSONB,
     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -224,13 +228,16 @@ def _execute(sql: str, params: tuple = (), fetch_returning: bool = False) -> Any
 
 def create_organization(name: str, org_type: str,
                         description: str = None, funds: float = 0,
-                        reputation: int = 0) -> Dict[str, Any]:
+                        reputation: int = 0, oid: str = None) -> Dict[str, Any]:
+    import secrets as _secrets
+    if oid is None:
+        oid = f"org_{name}_{_secrets.token_hex(4)}"
     sql = """
-        INSERT INTO organization (name, type, description, funds, reputation)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO organization (oid, name, type, description, funds, reputation)
+        VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (name, org_type, description, funds, reputation),
+    return dict(_execute(sql, (oid, name, org_type, description, funds, reputation),
                          fetch_returning=True)[0])
 
 
@@ -252,19 +259,42 @@ def query_organization(oid: int = None, name: str = None,
 
 # --- Person ---
 
-def create_person(name: str, birth_date: str = None) -> Dict[str, Any]:
+def create_person(name: str, birth_date: str = None, pid: str = None,
+                  password: str = None, salt: str = None) -> Dict[str, Any]:
+    import secrets as _secrets
+    if pid is None:
+        pid = f"person_{name}_{_secrets.token_hex(4)}"
     sql = """
-        INSERT INTO person (name, birth_date)
-        VALUES (%s, %s)
+        INSERT INTO person (pid, name, password, salt, birth_date)
+        VALUES (%s, %s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (name, birth_date), fetch_returning=True)[0])
+    return dict(_execute(sql, (pid, name, password, salt, birth_date),
+                         fetch_returning=True)[0])
 
 
 def query_person_by_name(name: str) -> List[Dict]:
     """Find person by name (global, not org-scoped)."""
     sql = "SELECT * FROM person WHERE name ILIKE %s"
     return _fetch(sql, (f"%{name}%",))
+
+
+def query_person_by_pid(pid: str) -> List[Dict]:
+    """Find person by pid (unique identifier)."""
+    sql = "SELECT * FROM person WHERE pid = %s"
+    return _fetch(sql, (pid,))
+
+
+def query_organization_by_oid(oid: str) -> List[Dict]:
+    """Find organization by oid (unique identifier)."""
+    sql = "SELECT * FROM organization WHERE oid = %s"
+    return _fetch(sql, (oid,))
+
+
+def query_membership(person_id: int, org_id: int) -> List[Dict]:
+    """Find membership by person_id and org_id."""
+    sql = "SELECT * FROM membership WHERE pid = %s AND oid = %s"
+    return _fetch(sql, (person_id, org_id))
 
 
 def query_person(oid: int, name: str = None) -> List[Dict]:
@@ -385,32 +415,32 @@ def create_resource_warehouse(resource_id: int, location_path: str,
                          fetch_returning=True)[0])
 
 
-def query_resource_warehouse(resource_id: int, location_path: str = None, oid: int = 1) -> List[Dict]:
-    sql = "SELECT * FROM resource_warehouse WHERE resource_id = %s AND oid = %s"
-    params: list = [resource_id, oid]
+def query_resource_warehouse(resource_id: int, location_path: str = None) -> List[Dict]:
+    sql = "SELECT * FROM resource_warehouse WHERE resource_id = %s"
+    params: list = [resource_id]
     if location_path:
         sql += " AND location_path LIKE %s"
         params.append(f"{location_path}%")
     return _fetch(sql, tuple(params))
 
 
-def get_resource_total(resource_id: int, oid: int = 1) -> Dict[str, Any]:
+def get_resource_total(resource_id: int) -> Dict[str, Any]:
     """Get total quantity for a resource. Priority: 'total' row > SUM."""
     rows = _fetch(
         "SELECT quantity FROM resource_warehouse "
-        "WHERE resource_id = %s AND oid = %s AND location_path = 'total' LIMIT 1",
-        (resource_id, oid)
+        "WHERE resource_id = %s AND location_path = 'total' LIMIT 1",
+        (resource_id,)
     )
     if rows:
         total_qty = float(rows[0]["quantity"])
     else:
         rows = _fetch(
             "SELECT COALESCE(SUM(quantity), 0) AS total_qty "
-            "FROM resource_warehouse WHERE resource_id = %s AND oid = %s",
-            (resource_id, oid)
+            "FROM resource_warehouse WHERE resource_id = %s",
+            (resource_id,)
         )
         total_qty = float(rows[0]["total_qty"])
-    return {"resource_id": resource_id, "oid": oid, "total_qty": total_qty}
+    return {"resource_id": resource_id, "total_qty": total_qty}
 
 
 # --- Transaction ---

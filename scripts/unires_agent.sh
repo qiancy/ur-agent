@@ -64,6 +64,7 @@ init_database() {
     
     # 尝试使用项目根目录下的init_db.py文件
     if [ -f "$PROJECT_ROOT/scripts/init_db.py" ]; then
+        # 初始化时 drop_all=True 以应用新的 schema
         python3 "$PROJECT_ROOT/scripts/init_db.py"
     else
         # 如果没有这个文件，创建一个简单的数据库初始化
@@ -103,7 +104,7 @@ start_backend() {
     
     # 启动后端服务
     cd "$PROJECT_ROOT"
-    nohup uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 &
+    nohup python3 -m uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     
     # 保存PID
@@ -146,6 +147,41 @@ restart_backend() {
     start_backend
 }
 
+find_project_frontend_pids() {
+    local PROJECT_ROOT="$1"
+    local REAL_ROOT
+    REAL_ROOT="$(cd "$PROJECT_ROOT" && pwd -P)"
+    ps -eo pid=,comm=,args= | awk \
+        -v script="$PROJECT_ROOT/src/frontend.py" \
+        -v real_script="$REAL_ROOT/src/frontend.py" \
+        '$2 ~ /^python/ && (index($0, script) || index($0, real_script)) {print $1}'
+}
+
+is_port_listening() {
+    local PORT="$1"
+    ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${PORT}$"
+}
+
+stop_pid_gracefully() {
+    local PID="$1"
+    local LABEL="$2"
+    if ! ps -p "$PID" > /dev/null; then
+        return 0
+    fi
+    echo -e "${YELLOW}停止${LABEL} (PID: $PID)${NC}"
+    kill "$PID" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+        if ! ps -p "$PID" > /dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    if ps -p "$PID" > /dev/null; then
+        echo -e "${YELLOW}${LABEL}未正常退出，强制停止 (PID: $PID)${NC}"
+        kill -KILL "$PID" 2>/dev/null || true
+    fi
+}
+
 # 启动前端服务
 start_frontend() {
     echo -e "${YELLOW}启动前端服务...${NC}"
@@ -159,11 +195,27 @@ start_frontend() {
         PID=$(cat "$FRONTEND_PID_FILE")
         if ps -p "$PID" > /dev/null; then
             echo -e "${RED}前端服务已在运行 (PID: $PID)${NC}"
+            echo -e "${YELLOW}如需重启，请执行: $0 frontend restart${NC}"
             return 1
         else
             echo -e "${YELLOW}PID文件存在但进程不存在，清理旧的PID文件${NC}"
             rm -f "$FRONTEND_PID_FILE"
         fi
+    fi
+
+    EXISTING_PIDS=$(find_project_frontend_pids "$PROJECT_ROOT")
+    if [ -n "$EXISTING_PIDS" ]; then
+        FIRST_PID=$(echo "$EXISTING_PIDS" | head -n 1)
+        echo "$FIRST_PID" > "$FRONTEND_PID_FILE"
+        echo -e "${RED}前端服务已在运行 (PID: $FIRST_PID)${NC}"
+        echo -e "${YELLOW}如需重启，请执行: $0 frontend restart${NC}"
+        return 1
+    fi
+
+    if is_port_listening 7860; then
+        echo -e "${RED}端口 7860 已被占用，前端无法启动${NC}"
+        echo -e "${YELLOW}请先释放端口，或检查占用进程: ss -ltnp | grep ':7860'${NC}"
+        return 1
     fi
     
     # 切换到项目根目录
@@ -177,7 +229,7 @@ start_frontend() {
     fi
 
     # 启动前端服务（调试模式在 src/frontend.py 的 demo.launch 中开启）
-    PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 nohup python3 -u "$PROJECT_ROOT/src/frontend.py" > "$FRONTEND_LOG" 2>&1 &
+    PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 nohup setsid python3 -u "$PROJECT_ROOT/src/frontend.py" > "$FRONTEND_LOG" 2>&1 < /dev/null &
     FRONTEND_PID=$!
     
     # 保存PID
@@ -200,15 +252,31 @@ start_frontend() {
 
 # 停止前端服务
 stop_frontend() {
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    STOPPED=false
+
     if [ -f "$FRONTEND_PID_FILE" ]; then
         PID=$(cat "$FRONTEND_PID_FILE")
         if ps -p "$PID" > /dev/null; then
-            echo -e "${YELLOW}停止前端服务 (PID: $PID)${NC}"
-            kill "$PID"
+            stop_pid_gracefully "$PID" "前端服务"
+            STOPPED=true
         fi
         rm -f "$FRONTEND_PID_FILE"
-    else
-        echo -e "${YELLOW}未找到前端服务PID文件${NC}"
+    fi
+
+    PIDS=$(find_project_frontend_pids "$PROJECT_ROOT")
+    if [ -n "$PIDS" ]; then
+        for PID in $PIDS; do
+            if ps -p "$PID" > /dev/null; then
+                stop_pid_gracefully "$PID" "前端服务"
+                STOPPED=true
+            fi
+        done
+    fi
+
+    if [ "$STOPPED" = false ]; then
+        echo -e "${YELLOW}前端服务未运行${NC}"
     fi
 }
 
@@ -265,8 +333,19 @@ check_status() {
             echo -e "${RED}前端服务PID文件存在但进程不存在${NC}"
             rm -f "$FRONTEND_PID_FILE"
         fi
-    else
-        echo -e "${YELLOW}前端服务未运行${NC}"
+    fi
+    if [ "$FRONTEND_RUNNING" = false ]; then
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+        EXISTING_PIDS=$(find_project_frontend_pids "$PROJECT_ROOT")
+        if [ -n "$EXISTING_PIDS" ]; then
+            FIRST_PID=$(echo "$EXISTING_PIDS" | head -n 1)
+            echo "$FIRST_PID" > "$FRONTEND_PID_FILE"
+            echo -e "${GREEN}前端服务运行中 (PID: $FIRST_PID)${NC}"
+            FRONTEND_RUNNING=true
+        else
+            echo -e "${YELLOW}前端服务未运行${NC}"
+        fi
     fi
     
     if [ "$BACKEND_RUNNING" = false ] && [ "$FRONTEND_RUNNING" = false ]; then
@@ -368,15 +447,23 @@ main() {
                     stop_frontend
                     ;;
                 status)
+                    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+                    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
                     if [ -f "$FRONTEND_PID_FILE" ]; then
                         PID=$(cat "$FRONTEND_PID_FILE")
                         if ps -p "$PID" > /dev/null; then
                             echo -e "${GREEN}前端服务运行中 (PID: $PID)${NC}"
+                            return 0
                         else
                             echo -e "${RED}前端服务PID文件存在但进程不存在${NC}"
                             rm -f "$FRONTEND_PID_FILE"
-                            return 1
                         fi
+                    fi
+                    EXISTING_PIDS=$(find_project_frontend_pids "$PROJECT_ROOT")
+                    if [ -n "$EXISTING_PIDS" ]; then
+                        FIRST_PID=$(echo "$EXISTING_PIDS" | head -n 1)
+                        echo "$FIRST_PID" > "$FRONTEND_PID_FILE"
+                        echo -e "${GREEN}前端服务运行中 (PID: $FIRST_PID)${NC}"
                     else
                         echo -e "${YELLOW}前端服务未运行${NC}"
                         return 1

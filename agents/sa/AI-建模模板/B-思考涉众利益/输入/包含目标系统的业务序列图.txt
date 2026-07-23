@@ -1,0 +1,36 @@
+@startuml
+
+participant "时间\n«业务实体»" as SJ
+participant "智慧公寓系统\n«业务实体»" as ZHGYXT
+participant "房东\n«业务工人»" as FD
+participant "水表\n«业务实体»" as SB
+participant "电表\n«业务实体»" as DB
+participant "微信\n«业务实体»" as WX
+
+SJ -> ZHGYXT : 计算费用
+activate ZHGYXT
+loop 每个房间
+  ZHGYXT -> ZHGYXT : 翻查合同看每个租客的租金
+  ZHGYXT -> ZHGYXT : 记录租金、水电费物管费、\n水电上次读数信息
+  ZHGYXT -> SB : 提供读数
+  activate SB
+  deactivate SB
+  ZHGYXT -> DB : 提供读数
+  activate DB
+  deactivate DB  
+  ZHGYXT -> ZHGYXT : 计算应收费用
+end  
+ZHGYXT -> ZHGYXT : 通知房东
+activate ZHGYXT
+ZHGYXT --> FD
+deactivate ZHGYXT
+deactivate ZHGYXT
+FD -> ZHGYXT : 确认收租数据
+activate ZHGYXT
+loop 每个房间
+  ZHGYXT -> ZHGYXT : 通知租客交租
+  activate ZHGYXT
+  ZHGYXT -> WX : 发消息
+  deactivate ZHGYXT
+end  
+@enduml

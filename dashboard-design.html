@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uni-Resource Agent - Dashboard Design</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #4338ca;
+            --primary-light: #6366f1;
+            --secondary: #0f172a;
+            --accent: #8b5cf6;
+            --light: #f8fafc;
+            --dark: #0f172a;
+            --gray: #94a3b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border-radius: 12px;
+            --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --transition: all 0.3s ease;
+            --sidebar-width: 280px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            color: var(--dark);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Header Styles */
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, #7c3aed 100%);
+            color: white;
+            padding: 0 2rem;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--box-shadow);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo i {
+            font-size: 1.8rem;
+        }
+
+        .logo h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .context-display {
+            background-color: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* Main Layout */
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            box-shadow: var(--box-shadow);
+            padding: 1.5rem 0;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 60px);
+            border-right: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .nav-item {
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: var(--transition);
+            border-left: 3px solid transparent;
+            margin: 0 0.5rem;
+            border-radius: 8px;
+        }
+
+        .nav-item:hover {
+            background-color: rgba(67, 56, 202, 0.1);
+        }
+
+        .nav-item.active {
+            background-color: rgba(67, 56, 202, 0.2);
+            border-left: 3px solid var(--primary);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .nav-item i {
+            width: 20px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .content-header {
+            margin-bottom: 2rem;
+        }
+
+        .content-header h2 {
+            font-size: 2rem;
+            color: var(--secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .content-header p {
+            color: var(--gray);
+            font-size: 1.1rem;
+        }
+
+        /* Dashboard Widgets */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .widget {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            padding: 1.5rem;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .widget:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .widget-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .widget-header h3 {
+            font-size: 1.2rem;
+            color: var(--secondary);
+        }
+
+        .widget-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+
+        .widget-icon.physical {
+            background-color: #dbeafe;
+            color: var(--primary-light);
+        }
+
+        .widget-icon.knowledge {
+            background-color: #f0f9ff;
+            color: #0284c7;
+        }
+
+        .widget-icon.personnel {
+            background-color: #f0f4ff;
+            color: #4338ca;
+        }
+
+        .widget-icon.financial {
+            background-color: #f0fdf4;
+            color: var(--success);
+        }
+
+        .widget-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--secondary);
+        }
+
+        .widget-description {
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+
+        .chart-container {
+            height: 200px;
+            margin-top: 1rem;
+        }
+
+        /* Resource Table */
+        .resource-table {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .table-header h3 {
+            font-size: 1.3rem;
+            color: var(--secondary);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.8rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            color: var(--gray);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        tr:hover {
+            background-color: #f8fafc;
+        }
+
+        .status {
+            padding: 0.3rem 0.6rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status.active {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .status.inactive {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
+        /* Chat Interface */
+        .chat-container {
+            background: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .chat-header h3 {
+            font-size: 1.2rem;
+            color: var(--secondary);
+        }
+
+        .chat-messages {
+            height: 300px;
+            overflow-y: auto;
+            padding: 1rem 0;
+            border-bottom: 1px solid #e2e8f0;
+            margin-bottom: 1rem;
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.8rem;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+
+        .user-message {
+            background-color: #dbeafe;
+            margin-left: 20%;
+            border-radius: 18px 18px 18px 4px;
+        }
+
+        .bot-message {
+            background-color: #f1f5f9;
+            margin-right: 20%;
+            border-radius: 18px 18px 4px 18px;
+        }
+
+        .chat-input {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 0.8rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .chat-input button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.2rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .chat-input button:hover {
+            background-color: #3730a3;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                flex-direction: row;
+                justify-content: space-around;
+                padding: 1rem 0;
+                border-right: none;
+                border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            }
+            
+            .nav-item {
+                border-left: none;
+                border-bottom: 3px solid transparent;
+                margin: 0;
+            }
+            
+            .nav-item.active {
+                border-bottom: 3px solid var(--primary);
+                border-left: none;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .widget {
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="logo">
+            <i class="fas fa-cube"></i>
+            <h1>Uni-Resource Agent</h1>
+        </div>
+        <div class="context-display">oid: 1, pid: 101</div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="nav-item active">
+                <i class="fas fa-box"></i>
+                <span>Physical</span>
+            </div>
+            <div class="nav-item">
+                <i class="fas fa-book"></i>
+                <span>Knowledge</span>
+            </div>
+            <div class="nav-item">
+                <i class="fas fa-users"></i>
+                <span>Personnel</span>
+            </div>
+            <div class="nav-item">
+                <i class="fas fa-wallet"></i>
+                <span>Financial</span>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <div class="content-header">
+                <h2>Resource Dashboard</h2>
+                <p>Overview of all your resources and activities</p>
+            </div>
+
+            <!-- Dashboard Widgets -->
+            <div class="dashboard-grid">
+                <div class="widget">
+                    <div class="widget-header">
+                        <h3>Physical Assets</h3>
+                        <div class="widget-icon physical">
+                            <i class="fas fa-box"></i>
+                        </div>
+                    </div>
+                    <div class="widget-value">24</div>
+                    <div class="widget-description">Total assets</div>
+                    <div class="chart-container">
+                        <canvas id="physicalChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="widget">
+                    <div class="widget-header">
+                        <h3>Knowledge Base</h3>
+                        <div class="widget-icon knowledge">
+                            <i class="fas fa-book"></i>
+                        </div>
+                    </div>
+                    <div class="widget-value">87</div>
+                    <div class="widget-description">Documents</div>
+                    <div class="chart-container">
+                        <canvas id="knowledgeChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="widget">
+                    <div class="widget-header">
+                        <h3>Personnel</h3>
+                        <div class="widget-icon personnel">
+                            <i class="fas fa-users"></i>
+                        </div>
+                    </div>
+                    <div class="widget-value">12</div>
+                    <div class="widget-description">Active members</div>
+                    <div class="chart-container">
+                        <canvas id="personnelChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="widget">
+                    <div class="widget-header">
+                        <h3>Financial</h3>
+                        <div class="widget-icon financial">
+                            <i class="fas fa-wallet"></i>
+                        </div>
+                    </div>
+                    <div class="widget-value">$24,560</div>
+                    <div class="widget-description">Total balance</div>
+                    <div class="chart-container">
+                        <canvas id="financialChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resource Table -->
+            <div class="resource-table">
+                <div class="table-header">
+                    <h3>Recent Assets</h3>
+                    <button>View All</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Asset Name</th>
+                            <th>Type</th>
+                            <th>Quantity</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Laptop Pro X1</td>
+                            <td>Computer</td>
+                            <td>3</td>
+                            <td><span class="status active">Active</span></td>
+                        </tr>
+                        <tr>
+                            <td>Executive Desk</td>
+                            <td>Furniture</td>
+                            <td>1</td>
+                            <td><span class="status active">Active</span></td>
+                        </tr>
+                        <tr>
+                            <td>Company Car</td>
+                            <td>Vehicle</td>
+                            <td>1</td>
+                            <td><span class="status active">Active</span></td>
+                        </tr>
+                        <tr>
+                            <td>Office Printer</td>
+                            <td>Equipment</td>
+                            <td>2</td>
+                            <td><span class="status inactive">Maintenance</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Chat Interface -->
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h3>AI Assistant</h3>
+                    <span><i class="fas fa-circle-dot" style="color: #10b981;"></i> Online</span>
+                </div>
+                <div class="chat-messages">
+                    <div class="message bot-message">
+                        Hello! I'm your Uni-Resource Agent assistant. How can I help you today?
+                    </div>
+                    <div class="message user-message">
+                        Can you show me the financial summary?
+                    </div>
+                    <div class="message bot-message">
+                        Sure! Here's your financial summary:<br>
+                        - Income: $15,200<br>
+                        - Expenses: $8,640<br>
+                        - Balance: $6,560
+                    </div>
+                </div>
+                <div class="chat-input">
+                    <input type="text" placeholder="Type your message here...">
+                    <button><i class="fas fa-paper-plane"></i> Send</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Initialize charts
+        document.addEventListener('DOMContentLoaded', function() {
+            // Physical Assets Chart
+            const physicalCtx = document.getElementById('physicalChart').getContext('2d');
+            new Chart(physicalCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Active', 'In Repair', 'Maintenance'],
+                    datasets: [{
+                        data: [18, 3, 3],
+                        backgroundColor: [
+                            '#dbeafe',
+                            '#93c5fd',
+                            '#60a5fa'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            display: false
+                        },
+                        x: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Knowledge Base Chart
+            const knowledgeCtx = document.getElementById('knowledgeChart').getContext('2d');
+            new Chart(knowledgeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Documents', 'Articles', 'Manuals'],
+                    datasets: [{
+                        data: [45, 20, 22],
+                        backgroundColor: [
+                            '#f0f9ff',
+                            '#dbeafe',
+                            '#93c5fd'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    cutout: '70%'
+                }
+            });
+
+            // Personnel Chart
+            const personnelCtx = document.getElementById('personnelChart').getContext('2d');
+            new Chart(personnelCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+                    datasets: [{
+                        data: [8, 9, 10, 11, 12],
+                        borderColor: '#4338ca',
+                        backgroundColor: 'rgba(67, 56, 202, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            display: false
+                        },
+                        x: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Financial Chart
+            const financialCtx = document.getElementById('financialChart').getContext('2d');
+            new Chart(financialCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Income', 'Expenses'],
+                    datasets: [{
+                        data: [15200, 8640],
+                        backgroundColor: [
+                            '#f0fdf4',
+                            '#10b981'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            display: false
+                        },
+                        x: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Navigation switching
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update dashboard content based on selection
+                    const resourceType = this.querySelector('span').textContent;
+                    const widgetIcons = document.querySelectorAll('.widget-icon');
+                    const widgetHeaders = document.querySelectorAll('.widget-header h3');
+                    
+                    widgetIcons.forEach(icon => {
+                        icon.className = 'widget-icon ' + resourceType.toLowerCase();
+                    });
+                    
+                    widgetHeaders.forEach((header, index) => {
+                        const titles = ['Physical Assets', 'Knowledge Base', 'Personnel', 'Financial'];
+                        header.textContent = titles[index];
+                    });
+                });
+            });
+        });
+    </script>
+</body>
+</html>

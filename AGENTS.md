@@ -94,6 +94,8 @@ uni-resource-agent/
 ├── agents/                   # ← Agent specifications (root level)
 │   ├── DBA_AGENT.md          # PostgreSQL数据库管理规范
 │   ├── TDD_AGENT.md          # 测试驱动开发规范
+│   ├── sa/                 # ← 软件方法建模相关文件
+│   │   └── modeling/   # ← 建模相关文件
 │   ├── dba/                  # 数据库管理相关文件
 │   └── tdd/                  # 测试相关文件
 │       ├── README.md
@@ -127,9 +129,7 @@ uni-resource-agent/
 ├── docs/
 │   ├── API.md                # API documentation
 │   └── (removed - moved to agents/DBA_AGENT.md)
-└── tdd/                      # Test scripts (root level - deprecated)
-    ├── test_three_kingdoms_http.py
-    └── test_three_kingdoms.py
+├── AI-prompt/              # ← AI建模提示词
 └── agents/
     └── tdd/                  # Test scripts (moved here)
         ├── TDD.md            # TDD规范文档
@@ -318,6 +318,8 @@ Detailed tasks: [`_pm/进度跟踪.md`](_pm/进度跟踪.md)
 | `AGENTS.md` | ✅ Updated | Added TDD section with test coverage and principles, updated links |
 | `docs/ARCHITECTURE.md` | ✅ Created | Added comprehensive architecture documentation |
 | `README.md` | ✅ Updated | Added documentation links and architecture summary |
+| `agents/sa/modeling/场景.md` | ✅ Added | 场景文档 |
+| `agents/sa/modeling/改进方案.md` | ✅ Added | 业务流程改进方案 |
 | `agents/tdd/回归测试计划.md` | ✅ Updated | 回归测试计划文档，包含API依赖说明 |
 | `agents/tdd/测试执行指南.md` | ✅ Created | 测试执行指南 |
 | `agents/tdd/初始化API实现建议.md` | ✅ Created | 初始化API实现建议和API调用说明 |

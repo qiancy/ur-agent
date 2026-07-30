@@ -111,9 +111,9 @@ graph TD
 ```mermaid
 classDiagram
     class Agent {
-        +oid
-        +pid
-        +context  # runtime: {oid, pid}
+        +ouid
+        +puid
+        +context  # runtime: {ouid, puid}
         +query_asset()
         +transfer_asset()
         +record_transaction()
@@ -122,12 +122,12 @@ classDiagram
         +switch_context()
     }
     
-    # context 是运行时概念，由oid和pid组成
-    # context = {oid, pid} 表示 "person@organization" 上下文
+    # context 是运行时概念，由ouid和puid组成
+    # context = {ouid, puid} 表示 "person@organization" 上下文
     
     class Asset {
         +id
-        +oid
+        +ouid
         +name
         +type
         +quantity
@@ -261,22 +261,22 @@ classDiagram
 
 | 标识 | 说明 | 作用 |
 |------|------|------|
-| `oid` (organization_id) | 组织ID | 标识当前操作所属的组织/空间 |
-| `pid` (person_id) | 人员ID | 标识当前操作所属的人员/身份 |
+| `ouid` (organization_id) | 组织ID | 标识当前操作所属的组织/空间 |
+| `puid` (person_id) | 人员ID | 标识当前操作所属的人员/身份 |
 
-**`context = {oid, pid}` 表示 "person@organization" 上下文**
+**`context = {ouid, puid}` 表示 "person@organization" 上下文**
 
 例如：
-- `Zhang San @ Company` → oid=1 (公司), pid=101 (张三)
-- `Zhang San @ Home` → oid=2 (家庭), pid=101 (张三)
-- `Li Si @ School` → oid=3 (学校), pid=102 (李四)
+- `Zhang San @ Company` → ouid=shu (公司), puid=liubei (张三)
+- `Zhang San @ Home` → ouid=home (家庭), puid=liubei (张三)
+- `Li Si @ School` → ouid=school (学校), puid=lisi (李四)
 
-> 注意：`oid` 和 `pid` 作为组合字段存在于所有数据表中，但不作为独立表存在。每条记录通过 `(oid, pid)` 的组合实现多租户和多身份隔离。`context_id` 参数在API中已被废弃，统一使用 `oid` + `pid` 传递。
+> 注意：`ouid` 和 `puid` 作为组合字段存在于所有数据表中，但不作为独立表存在。每条记录通过 `(ouid, puid)` 的组合实现多租户和多身份隔离。`context_id` 参数在API中已被废弃，统一使用 `ouid` + `puid` 传递。
 
 1. **physical_assets** — 物理资产表
     - id: 主键
-    - oid: 组织ID
-    - pid: 人员ID
+    - ouid: 组织ID
+    - puid: 人员ID
     - name: 资产名称
     - type: 资产类型
     - quantity: 数量
@@ -285,16 +285,16 @@ classDiagram
 
 2. **virtual_assets** — 虚拟资产表
     - id: 主键
-    - oid: 组织ID
-    - pid: 人员ID
+    - ouid: 组织ID
+    - puid: 人员ID
     - name: 资产名称
     - content: 内容
     - embedding: 向量嵌入
 
 3. **personnel** — 人员表
     - id: 主键
-    - oid: 组织ID
-    - pid: 人员ID
+    - ouid: 组织ID
+    - puid: 人员ID
     - name: 姓名
     - role: 角色
     - birth_date: 生日
@@ -302,8 +302,8 @@ classDiagram
 
 4. **transactions** — 交易表
      - id: 主键
-     - oid: 组织ID
-     - pid: 人员ID
+     - ouid: 组织ID
+     - puid: 人员ID
      - amount: 金额
      - category: 类别
      - description: 描述

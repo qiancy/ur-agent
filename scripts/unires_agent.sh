@@ -4,8 +4,8 @@
 # 包含启动、停止、状态检查功能
 
 # 配置
-BACKEND_PID_FILE="/tmp/uni_resource_agent_backend.pid"
-FRONTEND_PID_FILE="/tmp/uni_resource_agent_frontend.pid"
+BACKEND_PROCESS_ID_FILE="/tmp/uni_resource_agent_backend.process_id"
+FRONTEND_PROCESS_ID_FILE="/tmp/uni_resource_agent_frontend.process_id"
 BACKEND_LOG="/tmp/uni_resource_agent_backend.log"
 FRONTEND_LOG="/tmp/uni_resource_agent_frontend.log"
 
@@ -88,14 +88,14 @@ start_backend() {
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
     
     # 检查是否已在运行
-    if [ -f "$BACKEND_PID_FILE" ]; then
-        PID=$(cat "$BACKEND_PID_FILE")
-        if ps -p "$PID" > /dev/null; then
-            echo -e "${RED}后端服务已在运行 (PID: $PID)${NC}"
+    if [ -f "$BACKEND_PROCESS_ID_FILE" ]; then
+        PROCESS_ID=$(cat "$BACKEND_PROCESS_ID_FILE")
+        if ps -p "$PROCESS_ID" > /dev/null; then
+            echo -e "${RED}后端服务已在运行 (PROCESS_ID: $PROCESS_ID)${NC}"
             return 1
         else
-            echo -e "${YELLOW}PID文件存在但进程不存在，清理旧的PID文件${NC}"
-            rm -f "$BACKEND_PID_FILE"
+            echo -e "${YELLOW}进程编号文件存在但进程不存在，清理旧的进程编号文件${NC}"
+            rm -f "$BACKEND_PROCESS_ID_FILE"
         fi
     fi
     
@@ -108,36 +108,36 @@ start_backend() {
     export PYTHONUNBUFFERED=1
     export JWT_SECRET="${JWT_SECRET:-unires-dev-jwt-secret}"
     nohup setsid python3 -m uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 < /dev/null &
-    BACKEND_PID=$!
+    BACKEND_PROCESS_ID=$!
     
-    # 保存PID
-    echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
+    # 保存进程编号
+    echo "$BACKEND_PROCESS_ID" > "$BACKEND_PROCESS_ID_FILE"
     
     # 等待服务启动
     sleep 8
     
     # 检查后端是否启动成功
-    if ps -p "$BACKEND_PID" > /dev/null; then
-        echo -e "${GREEN}后端服务启动成功 (PID: $BACKEND_PID)${NC}"
+    if ps -p "$BACKEND_PROCESS_ID" > /dev/null; then
+        echo -e "${GREEN}后端服务启动成功 (PROCESS_ID: $BACKEND_PROCESS_ID)${NC}"
         echo -e "${GREEN}后端服务运行在端口 8000${NC}"
     else
         echo -e "${RED}后端服务启动失败${NC}"
-        rm -f "$BACKEND_PID_FILE"
+        rm -f "$BACKEND_PROCESS_ID_FILE"
         exit 1
     fi
 }
 
 # 停止后端服务
 stop_backend() {
-    if [ -f "$BACKEND_PID_FILE" ]; then
-        PID=$(cat "$BACKEND_PID_FILE")
-        if ps -p "$PID" > /dev/null; then
-            echo -e "${YELLOW}停止后端服务 (PID: $PID)${NC}"
-            kill "$PID"
+    if [ -f "$BACKEND_PROCESS_ID_FILE" ]; then
+        PROCESS_ID=$(cat "$BACKEND_PROCESS_ID_FILE")
+        if ps -p "$PROCESS_ID" > /dev/null; then
+            echo -e "${YELLOW}停止后端服务 (PROCESS_ID: $PROCESS_ID)${NC}"
+            kill "$PROCESS_ID"
         fi
-        rm -f "$BACKEND_PID_FILE"
+        rm -f "$BACKEND_PROCESS_ID_FILE"
     else
-        echo -e "${YELLOW}未找到后端服务PID文件${NC}"
+        echo -e "${YELLOW}未找到后端服务进程编号文件${NC}"
     fi
 }
 
@@ -150,11 +150,11 @@ restart_backend() {
     start_backend
 }
 
-find_project_frontend_pids() {
+find_project_frontend_process_ids() {
     local PROJECT_ROOT="$1"
     local REAL_ROOT
     REAL_ROOT="$(cd "$PROJECT_ROOT" && pwd -P)"
-    ps -eo pid=,comm=,args= | awk \
+    ps -eo p"id=,comm=,args=" | awk \
         -v script="$PROJECT_ROOT/src/frontend.py" \
         -v real_script="$REAL_ROOT/src/frontend.py" \
         '$2 ~ /^python/ && (index($0, script) || index($0, real_script)) {print $1}'
@@ -165,23 +165,23 @@ is_port_listening() {
     ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${PORT}$"
 }
 
-stop_pid_gracefully() {
-    local PID="$1"
+stop_process_gracefully() {
+    local PROCESS_ID="$1"
     local LABEL="$2"
-    if ! ps -p "$PID" > /dev/null; then
+    if ! ps -p "$PROCESS_ID" > /dev/null; then
         return 0
     fi
-    echo -e "${YELLOW}停止${LABEL} (PID: $PID)${NC}"
-    kill "$PID" 2>/dev/null || true
+    echo -e "${YELLOW}停止${LABEL} (PROCESS_ID: $PROCESS_ID)${NC}"
+    kill "$PROCESS_ID" 2>/dev/null || true
     for _ in 1 2 3 4 5; do
-        if ! ps -p "$PID" > /dev/null; then
+        if ! ps -p "$PROCESS_ID" > /dev/null; then
             return 0
         fi
         sleep 1
     done
-    if ps -p "$PID" > /dev/null; then
-        echo -e "${YELLOW}${LABEL}未正常退出，强制停止 (PID: $PID)${NC}"
-        kill -KILL "$PID" 2>/dev/null || true
+    if ps -p "$PROCESS_ID" > /dev/null; then
+        echo -e "${YELLOW}${LABEL}未正常退出，强制停止 (PROCESS_ID: $PROCESS_ID)${NC}"
+        kill -KILL "$PROCESS_ID" 2>/dev/null || true
     fi
 }
 
@@ -194,23 +194,23 @@ start_frontend() {
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
     
     # 检查是否已在运行
-    if [ -f "$FRONTEND_PID_FILE" ]; then
-        PID=$(cat "$FRONTEND_PID_FILE")
-        if ps -p "$PID" > /dev/null; then
-            echo -e "${RED}前端服务已在运行 (PID: $PID)${NC}"
+    if [ -f "$FRONTEND_PROCESS_ID_FILE" ]; then
+        PROCESS_ID=$(cat "$FRONTEND_PROCESS_ID_FILE")
+        if ps -p "$PROCESS_ID" > /dev/null; then
+            echo -e "${RED}前端服务已在运行 (PROCESS_ID: $PROCESS_ID)${NC}"
             echo -e "${YELLOW}如需重启，请执行: $0 frontend restart${NC}"
             return 1
         else
-            echo -e "${YELLOW}PID文件存在但进程不存在，清理旧的PID文件${NC}"
-            rm -f "$FRONTEND_PID_FILE"
+            echo -e "${YELLOW}进程编号文件存在但进程不存在，清理旧的进程编号文件${NC}"
+            rm -f "$FRONTEND_PROCESS_ID_FILE"
         fi
     fi
 
-    EXISTING_PIDS=$(find_project_frontend_pids "$PROJECT_ROOT")
-    if [ -n "$EXISTING_PIDS" ]; then
-        FIRST_PID=$(echo "$EXISTING_PIDS" | head -n 1)
-        echo "$FIRST_PID" > "$FRONTEND_PID_FILE"
-        echo -e "${RED}前端服务已在运行 (PID: $FIRST_PID)${NC}"
+    EXISTING_PROCESS_IDS=$(find_project_frontend_process_ids "$PROJECT_ROOT")
+    if [ -n "$EXISTING_PROCESS_IDS" ]; then
+        FIRST_PROCESS_ID=$(echo "$EXISTING_PROCESS_IDS" | head -n 1)
+        echo "$FIRST_PROCESS_ID" > "$FRONTEND_PROCESS_ID_FILE"
+        echo -e "${RED}前端服务已在运行 (PROCESS_ID: $FIRST_PROCESS_ID)${NC}"
         echo -e "${YELLOW}如需重启，请执行: $0 frontend restart${NC}"
         return 1
     fi
@@ -233,22 +233,22 @@ start_frontend() {
 
     # 启动前端服务（调试模式在 src/frontend.py 的 demo.launch 中开启）
     PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 JWT_SECRET="${JWT_SECRET:-unires-dev-jwt-secret}" BROWSER_STATE_SECRET="${BROWSER_STATE_SECRET:-${JWT_SECRET:-unires-dev-jwt-secret}}" nohup setsid python3 -u "$PROJECT_ROOT/src/frontend.py" > "$FRONTEND_LOG" 2>&1 < /dev/null &
-    FRONTEND_PID=$!
+    FRONTEND_PROCESS_ID=$!
     
-    # 保存PID
-    echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
+    # 保存进程编号
+    echo "$FRONTEND_PROCESS_ID" > "$FRONTEND_PROCESS_ID_FILE"
     
     # 等待服务启动
     sleep 8
     
     # 检查前端是否启动成功
-    if ps -p "$FRONTEND_PID" > /dev/null; then
-        echo -e "${GREEN}前端服务启动成功 (PID: $FRONTEND_PID)${NC}"
+    if ps -p "$FRONTEND_PROCESS_ID" > /dev/null; then
+        echo -e "${GREEN}前端服务启动成功 (PROCESS_ID: $FRONTEND_PROCESS_ID)${NC}"
         echo -e "${GREEN}前端服务运行在端口 7860${NC}"
         echo -e "${YELLOW}前端调试日志: $FRONTEND_LOG${NC}"
     else
         echo -e "${RED}前端服务启动失败${NC}"
-        rm -f "$FRONTEND_PID_FILE"
+        rm -f "$FRONTEND_PROCESS_ID_FILE"
         exit 1
     fi
 }
@@ -259,20 +259,20 @@ stop_frontend() {
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
     STOPPED=false
 
-    if [ -f "$FRONTEND_PID_FILE" ]; then
-        PID=$(cat "$FRONTEND_PID_FILE")
-        if ps -p "$PID" > /dev/null; then
-            stop_pid_gracefully "$PID" "前端服务"
+    if [ -f "$FRONTEND_PROCESS_ID_FILE" ]; then
+        PROCESS_ID=$(cat "$FRONTEND_PROCESS_ID_FILE")
+        if ps -p "$PROCESS_ID" > /dev/null; then
+            stop_process_gracefully "$PROCESS_ID" "前端服务"
             STOPPED=true
         fi
-        rm -f "$FRONTEND_PID_FILE"
+        rm -f "$FRONTEND_PROCESS_ID_FILE"
     fi
 
-    PIDS=$(find_project_frontend_pids "$PROJECT_ROOT")
-    if [ -n "$PIDS" ]; then
-        for PID in $PIDS; do
-            if ps -p "$PID" > /dev/null; then
-                stop_pid_gracefully "$PID" "前端服务"
+    PROCESS_IDS=$(find_project_frontend_process_ids "$PROJECT_ROOT")
+    if [ -n "$PROCESS_IDS" ]; then
+        for PROCESS_ID in $PROCESS_IDS; do
+            if ps -p "$PROCESS_ID" > /dev/null; then
+                stop_process_gracefully "$PROCESS_ID" "前端服务"
                 STOPPED=true
             fi
         done
@@ -313,38 +313,38 @@ check_status() {
     FRONTEND_RUNNING=false
     
     # 检查后端服务
-    if [ -f "$BACKEND_PID_FILE" ]; then
-        PID=$(cat "$BACKEND_PID_FILE")
-        if ps -p "$PID" > /dev/null; then
-            echo -e "${GREEN}后端服务运行中 (PID: $PID)${NC}"
+    if [ -f "$BACKEND_PROCESS_ID_FILE" ]; then
+        PROCESS_ID=$(cat "$BACKEND_PROCESS_ID_FILE")
+        if ps -p "$PROCESS_ID" > /dev/null; then
+            echo -e "${GREEN}后端服务运行中 (PROCESS_ID: $PROCESS_ID)${NC}"
             BACKEND_RUNNING=true
         else
-            echo -e "${RED}后端服务PID文件存在但进程不存在${NC}"
-            rm -f "$BACKEND_PID_FILE"
+            echo -e "${RED}后端服务进程编号文件存在但进程不存在${NC}"
+            rm -f "$BACKEND_PROCESS_ID_FILE"
         fi
     else
         echo -e "${YELLOW}后端服务未运行${NC}"
     fi
     
     # 检查前端服务
-    if [ -f "$FRONTEND_PID_FILE" ]; then
-        PID=$(cat "$FRONTEND_PID_FILE")
-        if ps -p "$PID" > /dev/null; then
-            echo -e "${GREEN}前端服务运行中 (PID: $PID)${NC}"
+    if [ -f "$FRONTEND_PROCESS_ID_FILE" ]; then
+        PROCESS_ID=$(cat "$FRONTEND_PROCESS_ID_FILE")
+        if ps -p "$PROCESS_ID" > /dev/null; then
+            echo -e "${GREEN}前端服务运行中 (PROCESS_ID: $PROCESS_ID)${NC}"
             FRONTEND_RUNNING=true
         else
-            echo -e "${RED}前端服务PID文件存在但进程不存在${NC}"
-            rm -f "$FRONTEND_PID_FILE"
+            echo -e "${RED}前端服务进程编号文件存在但进程不存在${NC}"
+            rm -f "$FRONTEND_PROCESS_ID_FILE"
         fi
     fi
     if [ "$FRONTEND_RUNNING" = false ]; then
         SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-        EXISTING_PIDS=$(find_project_frontend_pids "$PROJECT_ROOT")
-        if [ -n "$EXISTING_PIDS" ]; then
-            FIRST_PID=$(echo "$EXISTING_PIDS" | head -n 1)
-            echo "$FIRST_PID" > "$FRONTEND_PID_FILE"
-            echo -e "${GREEN}前端服务运行中 (PID: $FIRST_PID)${NC}"
+        EXISTING_PROCESS_IDS=$(find_project_frontend_process_ids "$PROJECT_ROOT")
+        if [ -n "$EXISTING_PROCESS_IDS" ]; then
+            FIRST_PROCESS_ID=$(echo "$EXISTING_PROCESS_IDS" | head -n 1)
+            echo "$FIRST_PROCESS_ID" > "$FRONTEND_PROCESS_ID_FILE"
+            echo -e "${GREEN}前端服务运行中 (PROCESS_ID: $FIRST_PROCESS_ID)${NC}"
             FRONTEND_RUNNING=true
         else
             echo -e "${YELLOW}前端服务未运行${NC}"
@@ -415,13 +415,13 @@ main() {
                     stop_backend
                     ;;
                 status)
-                    if [ -f "$BACKEND_PID_FILE" ]; then
-                        PID=$(cat "$BACKEND_PID_FILE")
-                        if ps -p "$PID" > /dev/null; then
-                            echo -e "${GREEN}后端服务运行中 (PID: $PID)${NC}"
+                    if [ -f "$BACKEND_PROCESS_ID_FILE" ]; then
+                        PROCESS_ID=$(cat "$BACKEND_PROCESS_ID_FILE")
+                        if ps -p "$PROCESS_ID" > /dev/null; then
+                            echo -e "${GREEN}后端服务运行中 (PROCESS_ID: $PROCESS_ID)${NC}"
                         else
-                            echo -e "${RED}后端服务PID文件存在但进程不存在${NC}"
-                            rm -f "$BACKEND_PID_FILE"
+                            echo -e "${RED}后端服务进程编号文件存在但进程不存在${NC}"
+                            rm -f "$BACKEND_PROCESS_ID_FILE"
                             return 1
                         fi
                     else
@@ -452,21 +452,21 @@ main() {
                 status)
                     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
                     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-                    if [ -f "$FRONTEND_PID_FILE" ]; then
-                        PID=$(cat "$FRONTEND_PID_FILE")
-                        if ps -p "$PID" > /dev/null; then
-                            echo -e "${GREEN}前端服务运行中 (PID: $PID)${NC}"
+                    if [ -f "$FRONTEND_PROCESS_ID_FILE" ]; then
+                        PROCESS_ID=$(cat "$FRONTEND_PROCESS_ID_FILE")
+                        if ps -p "$PROCESS_ID" > /dev/null; then
+                            echo -e "${GREEN}前端服务运行中 (PROCESS_ID: $PROCESS_ID)${NC}"
                             return 0
                         else
-                            echo -e "${RED}前端服务PID文件存在但进程不存在${NC}"
-                            rm -f "$FRONTEND_PID_FILE"
+                            echo -e "${RED}前端服务进程编号文件存在但进程不存在${NC}"
+                            rm -f "$FRONTEND_PROCESS_ID_FILE"
                         fi
                     fi
-                    EXISTING_PIDS=$(find_project_frontend_pids "$PROJECT_ROOT")
-                    if [ -n "$EXISTING_PIDS" ]; then
-                        FIRST_PID=$(echo "$EXISTING_PIDS" | head -n 1)
-                        echo "$FIRST_PID" > "$FRONTEND_PID_FILE"
-                        echo -e "${GREEN}前端服务运行中 (PID: $FIRST_PID)${NC}"
+                    EXISTING_PROCESS_IDS=$(find_project_frontend_process_ids "$PROJECT_ROOT")
+                    if [ -n "$EXISTING_PROCESS_IDS" ]; then
+                        FIRST_PROCESS_ID=$(echo "$EXISTING_PROCESS_IDS" | head -n 1)
+                        echo "$FIRST_PROCESS_ID" > "$FRONTEND_PROCESS_ID_FILE"
+                        echo -e "${GREEN}前端服务运行中 (PROCESS_ID: $FIRST_PROCESS_ID)${NC}"
                     else
                         echo -e "${YELLOW}前端服务未运行${NC}"
                         return 1

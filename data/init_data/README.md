@@ -1,8 +1,8 @@
 # 4个空间的模拟数据
 
-> **Context说明**: `context` 是运行时概念，由 `oid` (组织ID) 和 `pid` (人员ID) 组成，表示 "person@organization" 上下文
+> **Context说明**: `context` 是运行时概念，由 `ouid` (组织ID) 和 `puid` (人员ID) 组成，表示 "person@organization" 上下文
 
-## 公司空间 (oid: 1, pid: 101)
+## 公司空间 (ouid: 1, puid: 101)
 
 {
   "name": "公司",
@@ -40,7 +40,7 @@
   ]
 }
 
-## 家庭空间 (oid: 2, pid: 102)
+## 家庭空间 (ouid: 2, puid: 102)
 {
   "name": "家庭",
   "type": "home",
@@ -77,7 +77,7 @@
   ]
 }
 
-## 家庭空间2 (oid: 3, pid: 103)
+## 家庭空间2 (ouid: 3, puid: 103)
 {
   "name": "家庭2",
   "type": "family",
@@ -108,7 +108,7 @@
   ]
 }
 
-## 学校空间 (oid: 4, pid: 104)
+## 学校空间 (ouid: 4, puid: 104)
 {
   "name": "学校",
   "type": "school",

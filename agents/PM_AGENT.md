@@ -463,7 +463,7 @@ entity Organization {
     name : String
     type : String
     description : String
-    oid : String
+    ouid : String
 }
 
 entity Personnel {

@@ -84,11 +84,11 @@ except: print('?')
 }
 
 get_unires_info() {
-    local backend frontend backend_pid frontend_pid
+    local backend frontend backend_process_id frontend_process_id
     # 后端
-    if [ -f /tmp/uni_resource_agent_backend.pid ]; then
-        backend_pid=$(cat /tmp/uni_resource_agent_backend.pid 2>/dev/null || echo "")
-        if [ -n "$backend_pid" ] && kill -0 "$backend_pid" 2>/dev/null; then
+    if [ -f /tmp/uni_resource_agent_backend.process_id ]; then
+        backend_process_id=$(cat /tmp/uni_resource_agent_backend.process_id 2>/dev/null || echo "")
+        if [ -n "$backend_process_id" ] && kill -0 "$backend_process_id" 2>/dev/null; then
             backend="up"
         else
             backend="down"
@@ -102,9 +102,9 @@ get_unires_info() {
         fi
     fi
     # 前端
-    if [ -f /tmp/uni_resource_agent_frontend.pid ]; then
-        frontend_pid=$(cat /tmp/uni_resource_agent_frontend.pid 2>/dev/null || echo "")
-        if [ -n "$frontend_pid" ] && kill -0 "$frontend_pid" 2>/dev/null; then
+    if [ -f /tmp/uni_resource_agent_frontend.process_id ]; then
+        frontend_process_id=$(cat /tmp/uni_resource_agent_frontend.process_id 2>/dev/null || echo "")
+        if [ -n "$frontend_process_id" ] && kill -0 "$frontend_process_id" 2>/dev/null; then
             frontend="up"
         else
             frontend="down"

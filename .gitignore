@@ -47,3 +47,5 @@ output/
 .venv/
 
 .opencode/
+opencode.json
+docs/superpowers/

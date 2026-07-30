@@ -35,13 +35,30 @@ Four resource types. One AI Agent. Multiple isolated spaces.
 
 **Killer Feature**: Multi-Context Space (MCS)
 - One user, multiple identities: `Zhang San @ Company / Home / Family / School`
-- Data isolated by `oid` (organization) + `pid` (person) combination
+- Data isolated by `ouid` (organization) + `puid` (person) combination
 - Switch spaces, Agent adapts instantly
 
-**Context Format**: `context = {oid, pid}`
-- `oid`: Organization ID - identifies the organization/space
-- `pid`: Person ID - identifies the person/identity
-- Example: `Zhang San @ Company` → `oid=1, pid=101`
+**Context Format**: `context = {ouid, puid}`
+- `ouid`: Organization ID - identifies the organization/space
+- `puid`: Person ID - identifies the person/identity
+- Example: `Zhang San @ Company` → `ouid=company, puid=zhangsan`
+
+### Product Positioning
+
+**Primary target organization**: data-sensitive small and medium organizations whose resources are scattered and who do not have the budget, time, or process maturity for heavyweight ERP/OA systems.
+
+Typical organizations include small companies, school labs, community groups, family businesses, care teams, project-based teams, and small ecommerce sellers. The most important buyer/user is the resource coordinator: admin, finance operator, warehouse keeper, office manager, family manager, or project owner.
+
+**Pain points addressed**:
+- Physical goods, personnel, knowledge documents, and transactions are scattered across spreadsheets, chat groups, paper records, and individual memory.
+- One person may act in multiple spaces, such as company, family, school, and project, and data must not leak across contexts.
+- Small organizations need lightweight query, record, transfer, reminder, and summary workflows instead of a full ERP stack.
+- Privacy-sensitive assets, personnel, finance, and internal knowledge should remain local.
+- AI must operate on real resources, not only answer as a chatbot.
+
+**Product promise**: a local AI resource management assistant for small organizations that protects privacy, separates contexts, and turns natural language into concrete resource operations.
+
+**MVP priority**: satisfy a real small-business inventory scenario first, such as a Taobao seller's warehouse with purchases, sales, stock locations, and basic cash flow. The Three Kingdoms "Fire at Xinye" campaign remains the best demo/regression scenario for showing timeline, camps, tasks, activities, supplies, and information/logistics/personnel flows.
 
 ---
 ## 🏠 Environment
@@ -65,7 +82,7 @@ This system is running in a Kubernetes pod environment with the following constr
 | Vector DB | ChromaDB |
 | Backend | FastAPI + JWT |
 | Frontend | Gradio |
-| Database | PostgreSQL (context isolation via oid+pid) |
+| Database | PostgreSQL (context isolation via ouid+puid) |
 
 ### Model Strategy (Development vs Production)
 
@@ -237,19 +254,19 @@ Backend: FastAPI at `http://localhost:8000`. Full API docs: `README.md`.
 
 1. **Zero Cloud API (Production)** — Core inference for user data runs locally on AMD ROCm. No external model APIs for business logic.
 2. **Privacy First** — No user data leaves the machine. Cloud APIs allowed for development only (code generation, no user data).
-3. **Context Isolation** — Every DB query must include `oid = current_oid` and `pid = current_pid` if applicable.
+3. **Context Isolation** — Every DB query must include `ouid = current_ouid` and `puid = current_puid` if applicable.
 4. **Quantized Model** — Must fit in <48GB VRAM (GGUF Q4_K_M, ~45GB).
 
 ### Identity Field Rules (Critical)
 
-- `pid` and `oid` are business identity fields, not database primary keys.
-- `pid` identifies a person, for example `caocao`; `oid` identifies an organization, for example `wei`.
-- `pid` and `oid` must be English-safe strings only: letters, numbers, underscore, and hyphen. No Chinese characters, spaces, `@`, `.`, or other special characters.
-- `person.pid` and `organization.oid` must be unique in the database.
-- Frontend must treat `pid` and `oid` as strings, never as numbers.
+- `puid` and `ouid` are business identity fields, not database primary keys.
+- `puid` identifies a person, for example `caocao`; `ouid` identifies an organization, for example `wei`.
+- `puid` and `ouid` must be English-safe strings only: letters, numbers, underscore, and hyphen. No Chinese characters, spaces, `@`, `.`, or other special characters.
+- `person.puid` and `organization.ouid` must be unique in the database.
+- Frontend must treat `puid` and `ouid` as strings, never as numbers.
 - `person.id` and `organization.id` are database auto-increment primary keys only. They are internal implementation details.
-- JWT payload must contain only business identity fields `pid` and `oid` for identity/context. JWT must never contain `person_id`, `org_id`, `organization_id`, `person_pid`, or other database-ID-style identity fields.
-- Tables other than `person` and `organization` should use `person_id` / `organization_id` for numeric foreign keys, not `pid` / `oid`.
+- JWT payload must contain only business identity fields `puid` and `ouid` for identity/context. JWT must never contain `person_id`, `org_id`, `organization_id`, `person_puid`, or other database-ID-style identity fields.
+- Tables other than `person` and `organization` should use `person_id` / `organization_id` for numeric foreign keys, not `puid` / `ouid`.
 
 ---
 
@@ -280,7 +297,7 @@ Detailed tasks: [`_pm/进度跟踪.md`](_pm/进度跟踪.md)
 
 ### Test Principles
 1. **Black-box testing** - No modification to `src/` code
-2. **Context isolation** - Each test uses independent `oid` (organization) and `pid` (person) combination
+2. **Context isolation** - Each test uses independent `ouid` (organization) and `puid` (person) combination
 3. **API-only operations** - All data access via HTTP API
 
 ### Test Coverage

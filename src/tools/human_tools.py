@@ -15,7 +15,7 @@ def manage_reminder(
     action: Optional[str] = None,
     person_name: Optional[str] = None,
     task: Optional[str] = None,
-    oid: str = "shu",
+    ouid: str = "shu",
     due_date: Optional[str] = None,
 ) -> str:
     """
@@ -25,7 +25,7 @@ def manage_reminder(
         action: Action type: add, update, or delete.
         person_name: Name of the person.
         task: Task/reminder description.
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
         due_date: Due date for the task (optional).
     """
     try:
@@ -38,10 +38,10 @@ def manage_reminder(
         if not task and action in ("add", "update"):
             return "Error: task is required for add/update actions"
 
-        organization_id = resolve_organization_id(oid)
+        organization_id = resolve_organization_id(ouid)
         people = query_person(organization_id, person_name)
         if not people:
-            return f"Person '{person_name}' not found in org {oid}"
+            return f"Person '{person_name}' not found in org {ouid}"
         person = people[0]
 
         current = person.get("health_reminders") or {}
@@ -79,21 +79,21 @@ def manage_reminder(
 
 
 @tool
-def check_wellness(person_name: str, oid: str = "shu") -> str:
+def check_wellness(person_name: str, ouid: str = "shu") -> str:
     """
     Check wellness / health information for a person.
 
     Args:
         person_name: Name of the person.
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
     """
     try:
-        organization_id = resolve_organization_id(oid)
+        organization_id = resolve_organization_id(ouid)
         people = query_person(organization_id, person_name)
         if people:
             result = people[0]
-            result["oid"] = oid
+            result["ouid"] = ouid
             return json.dumps(result, default=str, ensure_ascii=False)
-        return f"Person '{person_name}' not found in org {oid}"
+        return f"Person '{person_name}' not found in org {ouid}"
     except Exception as e:
         return f"Error checking wellness: {e}"

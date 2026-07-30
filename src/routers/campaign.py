@@ -31,8 +31,8 @@ from src.db.database import (
     get_campaign_replay,
     list_campaign_imports_for_orgs,
     query_membership,
-    query_organization_by_oid,
-    query_person_by_pid,
+    query_organization_by_ouid,
+    query_person_by_puid,
 )
 
 router = APIRouter(prefix="/campaigns", tags=["campaign"])
@@ -55,7 +55,7 @@ def _load_template(campaign_code: str) -> tuple[Dict[str, Any], Path]:
 
 
 def _find_or_create_org(org_cfg: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
-    rows = query_organization_by_oid(org_cfg["oid"])
+    rows = query_organization_by_ouid(org_cfg["ouid"])
     if rows:
         return rows[0], False
     return create_organization(
@@ -64,15 +64,15 @@ def _find_or_create_org(org_cfg: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
         description=org_cfg.get("description"),
         funds=org_cfg.get("funds", 0),
         reputation=org_cfg.get("reputation", 0),
-        oid=org_cfg["oid"],
+        ouid=org_cfg["ouid"],
     ), True
 
 
 def _find_or_create_person(person_cfg: Dict[str, Any]) -> Dict[str, Any]:
-    rows = query_person_by_pid(person_cfg["pid"])
+    rows = query_person_by_puid(person_cfg["puid"])
     if rows:
         return rows[0]
-    return create_person(name=person_cfg["name"], pid=person_cfg["pid"])
+    return create_person(name=person_cfg["name"], puid=person_cfg["puid"])
 
 
 def _direction_amount(direction: str, amount: float) -> float:
@@ -118,7 +118,7 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
         campaign_code=template["campaign_code"],
         campaign_name=template["campaign_name"],
         source_file=str(path.relative_to(REPO_ROOT)),
-        imported_by_pid=payload["pid"],
+        imported_by_puid=payload["puid"],
     )
 
     orgs: Dict[str, Dict[str, Any]] = {}
@@ -131,38 +131,38 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
     try:
         for org_cfg in template.get("organizations", []):
             org, created = _find_or_create_org(org_cfg)
-            orgs[org["oid"]] = org
+            orgs[org["ouid"]] = org
             add_campaign_import_org(campaign["id"], org["id"], created)
 
         for person_cfg in template.get("persons", []):
             person = _find_or_create_person(person_cfg)
-            people[person["pid"]] = person
+            people[person["puid"]] = person
 
         for member_cfg in template.get("memberships", []):
-            person = people.get(member_cfg["pid"])
-            org = orgs.get(member_cfg["oid"])
+            person = people.get(member_cfg["puid"])
+            org = orgs.get(member_cfg["ouid"])
             if not person or not org:
                 raise HTTPException(400, "Invalid membership in campaign template")
             if not query_membership(person["id"], org["id"]):
                 add_membership(person["id"], org["id"], member_cfg.get("role", "member"))
 
         for wh_cfg in template.get("warehouses", []):
-            org = orgs.get(wh_cfg["oid"])
+            org = orgs.get(wh_cfg["ouid"])
             if not org:
                 raise HTTPException(400, "Invalid warehouse organization in campaign template")
             wh = create_warehouse(
                 org["id"], wh_cfg["name"], wh_cfg["code"],
                 wh_cfg.get("location"), wh_cfg.get("description")
             )
-            warehouses[(org["oid"], wh["code"])] = wh
+            warehouses[(org["ouid"], wh["code"])] = wh
 
         for res_cfg in template.get("resources", []):
-            org = orgs.get(res_cfg["oid"])
+            org = orgs.get(res_cfg["ouid"])
             if not org:
                 raise HTTPException(400, "Invalid resource organization in campaign template")
             person_id = None
-            if res_cfg.get("pid"):
-                person = people.get(res_cfg["pid"])
+            if res_cfg.get("puid"):
+                person = people.get(res_cfg["puid"])
                 if person:
                     person_id = person["id"]
             res = create_resource(
@@ -177,7 +177,7 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
             )
             resources.append(res)
             if res_cfg.get("warehouse_code") and res_cfg.get("amount") is not None:
-                wh = warehouses.get((org["oid"], res_cfg["warehouse_code"]))
+                wh = warehouses.get((org["ouid"], res_cfg["warehouse_code"]))
                 if wh:
                     create_resource_warehouse(
                         res["id"], wh["code"], res_cfg["amount"], res_cfg.get("unit")
@@ -187,7 +187,7 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
                     )
 
         for tx_cfg in template.get("transactions", []):
-            org = orgs.get(tx_cfg["oid"])
+            org = orgs.get(tx_cfg["ouid"])
             if not org:
                 raise HTTPException(400, "Invalid transaction organization in campaign template")
             tx = create_transaction(
@@ -198,7 +198,7 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
             )
             transactions.append(tx)
             for party_cfg in tx_cfg.get("parties", []):
-                person = people.get(party_cfg["pid"])
+                person = people.get(party_cfg["puid"])
                 if not person:
                     raise HTTPException(400, "Invalid transaction party in campaign template")
                 create_party(
@@ -212,7 +212,7 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
                 )
 
         for event_cfg in template.get("events", []):
-            org = orgs.get(event_cfg["oid"])
+            org = orgs.get(event_cfg["ouid"])
             if not org:
                 raise HTTPException(400, "Invalid event organization in campaign template")
             event = create_campaign_event(
@@ -276,7 +276,7 @@ async def replay_campaign(campaign_import_id: int, request: Request):
                 "description": row["description"],
                 "payload": row["payload"],
                 "organization": {
-                    "oid": row["oid"],
+                    "ouid": row["ouid"],
                     "name": row["organization_name"],
                     "type": row["organization_type"],
                 },

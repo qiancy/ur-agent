@@ -8,7 +8,7 @@ LangChain 0.1 版本 API 变更导致的兼容性问题：
 
 1. **工具输入格式不匹配**：
    - Agent 使用 OpenAI Tools 格式传递工具参数
-   - 参数以 JSON 字符串形式传递，如：`'{"name": "", "oid": 10, "resource_type": null}'`
+   - 参数以 JSON 字符串形式传递，如：`'{"name": "", "ouid": "shu", "resource_type": null}'`
    - 但 `StructuredTool._parse_input()` 期望直接接收 dict
    - 原始实现将 JSON 字符串视为简单字符串，导致验证失败
 
@@ -19,7 +19,7 @@ LangChain 0.1 版本 API 变更导致的兼容性问题：
 ### 错误日志
 ```
 pydantic.v1.error_wrappers.ValidationError: 1 validation error for query_resource_toolSchema
-oid
+ouid
   field required (type=value_error.missing)
 ```
 

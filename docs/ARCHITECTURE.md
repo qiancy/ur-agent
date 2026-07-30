@@ -323,11 +323,11 @@ curl http://localhost:7860/health
 │   │                    Context Isolation                            │  │
 │   ├─────────────────────────────────────────────────────────────────┤  │
 │   │   • 每个组织数据独立隔离                                          │  │
-│   │   • 数据库表带 oid 字段                                           │  │
-│   │   • 所有查询必须包含 oid 过滤                                   │  │
+│   │   • 数据库表带 ouid 字段                                           │  │
+│   │   • 所有查询必须包含 ouid 过滤                                   │  │
 │   │                                                                  │  │
-│   │   SQL: SELECT * FROM organization WHERE id = $oid              │  │
-│   │   SQL: SELECT * FROM resource WHERE oid = $oid                 │  │
+│   │   SQL: SELECT * FROM organization WHERE id = $ouid              │  │
+│   │   SQL: SELECT * FROM resource WHERE ouid = $ouid                 │  │
 │   └─────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
 │   ┌─────────────────────────────────────────────────────────────────┐  │
@@ -427,7 +427,7 @@ uni-resource-agent/
 | **API优先设计** | FastAPI提供完整的REST API |
 | **数据库隔离** | Frontend无法直接访问DB |
 | **安全认证** | JWT + CORS配置 |
-| **上下文隔离** | 通过oid实现多租户 |
+| **上下文隔离** | 通过ouid实现多租户 |
 | **AI集成** | LangChain Agent在Backend层 |
 
 ### ⚠️ 注意事项

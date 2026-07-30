@@ -7,6 +7,36 @@
 
 ---
 
+## 🎯 Product Positioning
+
+Uni-Resource Agent 的第一目标组织是：**数据敏感、资源分散、没有重型 ERP 能力的中小型组织**。
+
+典型用户包括小公司、学校或实验室、社区机构、家庭企业、养老照护团队、项目制团队，以及电商小卖家。核心购买者不是普通员工，而是资源协调者：行政、财务、仓管、办公室主任、家庭管理者或项目负责人。
+
+### 解决的痛点
+
+1. **资源分散**：物品、人员、知识文档、收支记录分散在 Excel、群聊、纸质记录和个人经验里，查询、交接和复盘成本高。
+2. **上下文混乱**：同一个人可能同时属于公司、家庭、项目组或学校，不同身份下的数据不能混在一起。
+3. **小组织用不起复杂系统**：ERP、OA、资产系统、知识库和财务系统太重，小组织更需要能问、能查、能记、能办的轻量系统。
+4. **隐私和本地化要求**：人员、财务、资产和内部知识不适合上传到云端 AI，系统应支持本地模型、本地数据库和本地知识库。
+5. **AI 不能只聊天**：用户需要 AI 连接真实业务资源，可靠完成查询资产、记录交易、管理提醒和检索知识。
+
+### 买点与卖点
+
+买点：
+- 一个入口管理物品、知识、人员和财务。
+- 用自然语言查询、记录、调拨、提醒和总结。
+- 通过 Multi-Context Space 隔离公司、家庭、学校、项目等不同空间。
+- 本地部署，数据不出组织。
+
+卖点：
+
+> 给没有重型信息化能力的小组织，一个能本地运行、保护隐私、真正管资源的 AI 助手。
+
+当前 MVP 的优先业务场景是**淘宝卖家的轻量仓库管理**，覆盖买入、卖出、库存位置和基础收支；**火烧新野**作为演示和回归测试场景，用于展示时间线、阵营、任务、活动、物资，以及信息流、物流、人流的统一建模。
+
+---
+
 ## 🏗 Architecture
 
 ```
@@ -36,27 +66,26 @@
 
 | 标识 | 说明 | 作用 |
 |------|------|------|
-| `oid` (organization_id) | 组织ID | 标识当前操作所属的组织/空间 |
-| `pid` (person_id) | 人员ID | 标识当前操作所属的人员/身份 |
+| `ouid` | 组织业务标识 | 标识当前操作所属的组织/空间，例如 `shu`、`wei` |
+| `puid` | 人员业务标识 | 标识当前操作所属的人员/身份，例如 `liubei`、`caocao` |
 
-**`context = {oid, pid}` 表示 "person@organization" 上下文**
+**`context = {ouid, puid}` 表示 "person@organization" 上下文**
 
 例如：
-- `Zhang San @ Company` → oid=1 (公司), pid=101 (张三)
-- `Zhang San @ Home` → oid=2 (家庭), pid=101 (张三)
-- `Li Si @ School` → oid=3 (学校), pid=102 (李四)
+- `Zhang San @ Company` → ouid=company, puid=zhangsan
+- `Zhang San @ Home` → ouid=home, puid=zhangsan
+- `Li Si @ School` → ouid=school, puid=lisi
 
-> 注意：`oid` 和 `pid` 作为组合字段存在于所有数据表中，但不作为独立表存在。每条记录通过 `(oid, pid)` 的组合实现多租户和多身份隔离。`context_id` 参数在API中已被废弃，统一使用 `oid` + `pid` 传递。
+> 注意：`ouid` 和 `puid` 作为业务标识，通过 `person_id` / `organization_id` 数字外键实现多租户隔离。`context_id` 参数在 API 中已被废弃，统一使用 `ouid` + `puid` 传递。
 
 | Table | Description | Key Columns |
 |-------|-------------|-------------|
-| `assets` | 资产基表 | id, oid, pid, name, type, status |
-| `physical_assets` | 物理资产 (继承 assets) | id(FK→assets), quantity, warehouse |
+| `resource` | 资源 | id, organization_id, ouid, puid, name, type |
 | `virtual_assets` | 虚拟资产 (继承 assets) | id(FK→assets), content, embedding |
-| `personnel` | 人员 | id, oid, pid, name, role, birth_date, health_reminders |
-| `party` | 交易参与方 | id, oid, pid, name, role, description |
+| `personnel` | 人员 | id, ouid, puid, name, role, birth_date, health_reminders |
+| `party` | 交易参与方 | id, ouid, puid, name, role, description |
 | `party_member` | 人员↔参与方 (多对多) | party_id, personnel_id, role |
-| `transactions` | 交易记录 | id, oid, pid, from_party_id, to_party_id, amount, category |
+| `transactions` | 交易记录 | id, ouid, puid, from_party_id, to_party_id, amount, category |
 
 **ER 关系:**
 
@@ -85,15 +114,15 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/assets?oid=1&name=&warehouse=` | 查询资产（支持按名称/仓库筛选） |
+| GET | `/assets?ouid=shu&name=&warehouse=` | 查询资产（支持按名称/仓库筛选） |
 | POST | `/assets` | 创建资产 |
 | POST | `/assets/transfer` | 跨组织调拨资产 |
 
 **POST /assets**
 ```json
 {
-  "oid": 1,
-  "pid": 101,
+  "ouid": "shu",
+  "puid": "liubei",
   "name": "连弩",
   "asset_type": "兵器",
   "quantity": 50,
@@ -105,10 +134,10 @@ Base URL: `http://localhost:8000`
 ```json
 {
   "asset_id": 4,
-  "from_oid": 1,
-  "from_pid": 101,
-  "to_oid": 2,
-  "to_pid": 102,
+  "from_ouid": "shu",
+  "from_puid": "liubei",
+  "to_ouid": "wei",
+  "to_puid": "caocao",
   "quantity": 10
 }
 ```
@@ -117,14 +146,14 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/personnel?oid=1&name=` | 查询人员 |
+| GET | `/personnel?ouid=shu&name=` | 查询人员 |
 | POST | `/personnel` | 添加人员 |
 
 **POST /personnel**
 ```json
 {
-  "oid": 1,
-  "pid": 102,
+  "ouid": "shu",
+  "puid": "lisi",
   "name": "诸葛亮",
   "role": "丞相",
   "birth_date": "0181-04-23"
@@ -135,7 +164,7 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/party?oid=1&name=` | 查询参与方 |
+| GET | `/party?ouid=shu&name=` | 查询参与方 |
 | POST | `/party` | 创建参与方 |
 | GET | `/party/{id}/members` | 查看成员 |
 | POST | `/party/members` | 添加成员 |
@@ -143,8 +172,8 @@ Base URL: `http://localhost:8000`
 **POST /party**
 ```json
 {
-  "oid": 1,
-  "pid": 101,
+  "ouid": "shu",
+  "puid": "liubei",
   "name": "蜀汉集团",
   "role": "买家",
   "description": "蜀汉政权"
@@ -156,8 +185,8 @@ Base URL: `http://localhost:8000`
 {
   "party_id": 1,
   "personnel_id": 2,
-  "oid": 1,
-  "pid": 101,
+  "ouid": "shu",
+  "puid": "liubei",
   "role": "丞相"
 }
 ```
@@ -166,14 +195,14 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/transactions?oid=1&limit=50` | 交易记录（含参与方名称） |
+| GET | `/transactions?ouid=shu&limit=50` | 交易记录（含参与方名称） |
 | POST | `/transactions` | 记录交易 |
 
 **POST /transactions**
 ```json
 {
-  "oid": 1,
-  "pid": 101,
+  "ouid": "shu",
+  "puid": "liubei",
   "from_party_id": 1,
   "to_party_id": 2,
   "amount": 1000.00,
@@ -186,13 +215,13 @@ Base URL: `http://localhost:8000`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/summary?oid=1` | 财务摘要（流入/流出/余额） |
+| GET | `/summary?ouid=shu` | 财务摘要（流入/流出/余额） |
 
 **Response:**
 ```json
 {
-  "oid": 1,
-  "pid": 101,
+  "ouid": "shu",
+  "puid": "liubei",
   "total_outflow": 4500.0,
   "total_inflow": 4500.0,
   "balance": 0.0,
@@ -210,8 +239,8 @@ Base URL: `http://localhost:8000`
 ```json
 {
   "message": "帮我查一下蜀国的资产情况",
-  "oid": 1,
-  "pid": 101
+  "ouid": "shu",
+  "puid": "liubei"
 }
 ```
 

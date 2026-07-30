@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Database module for Uni-Resource Agent.
 
@@ -13,9 +14,9 @@ Tables (v5.3):
   - party: 交易参与方 (同生同死于 transaction, 记录 funds_change, reputation_change)
 
 Naming:
-- pid, oid: business identifiers (VARCHAR), unique strings (e.g. "zhangsan", "wei")
+- puid, ouid: business identifiers (VARCHAR), unique strings (e.g. "zhangsan", "wei")
 - person_id, organization_id: database primary keys (SERIAL), internal integers
-- JWT payload: uses pid, oid, system_role, role; NOT person_id, organization_id
+- JWT payload: uses puid, ouid, system_role, role; NOT person_id, organization_id
 """
 
 from typing import Optional, List, Dict, Any
@@ -27,7 +28,7 @@ from src.logging_config import get_logger
 logger = get_logger("db")
 
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "127.0.0.1"),
+    "host": os.getenv("DB_HOST", "localhost"),
     "database": os.getenv("DB_NAME", "unires"),
     "user": os.getenv("DB_USER", "unires"),
     "password": os.getenv("DB_PASSWORD", "demo123"),
@@ -50,7 +51,7 @@ SCHEMA_SQL = """
 -- Organization: 组织 (个人/家庭/公司/等) + 资金, 名望
 CREATE TABLE IF NOT EXISTS organization (
     id          SERIAL PRIMARY KEY,
-    oid         VARCHAR(100) UNIQUE NOT NULL CHECK (oid ~ '^[A-Za-z0-9_-]+$'),
+    ouid        VARCHAR(100) UNIQUE NOT NULL CHECK (ouid ~ '^[A-Za-z0-9_-]+$'),
     name        VARCHAR(255) NOT NULL,
     type        VARCHAR(100) NOT NULL,
     description TEXT,
@@ -59,10 +60,10 @@ CREATE TABLE IF NOT EXISTS organization (
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Person: 人员 (纯个人信息, 无 oid)
+-- Person: 人员 (纯个人信息, 无 ouid)
 CREATE TABLE IF NOT EXISTS person (
     id               SERIAL PRIMARY KEY,
-    pid              VARCHAR(100) UNIQUE NOT NULL CHECK (pid ~ '^[A-Za-z0-9_-]+$'),
+    puid             VARCHAR(100) UNIQUE NOT NULL CHECK (puid ~ '^[A-Za-z0-9_-]+$'),
     name             VARCHAR(255) NOT NULL,
     birth_date       DATE,
     health_reminders JSONB,
@@ -105,9 +106,10 @@ CREATE TABLE IF NOT EXISTS resource (
     currency        VARCHAR(20),
     person_id       INTEGER REFERENCES person(id),
     content         TEXT,
-    embedding       VECTOR(1024),
+    embedding       TEXT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_resource_org_name UNIQUE (organization_id, name)
 );
 
 -- Warehouse: 仓库
@@ -163,7 +165,7 @@ CREATE TABLE IF NOT EXISTS campaign_import (
     campaign_code   VARCHAR(100) NOT NULL,
     campaign_name   VARCHAR(255) NOT NULL,
     source_file     VARCHAR(255),
-    imported_by_pid VARCHAR(100) NOT NULL,
+    imported_by_puid VARCHAR(100) NOT NULL,
     status          VARCHAR(30) NOT NULL DEFAULT 'active',
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at      TIMESTAMP
@@ -194,6 +196,7 @@ CREATE INDEX IF NOT EXISTS idx_membership_person ON membership(person_id);
 CREATE INDEX IF NOT EXISTS idx_membership_org ON membership(organization_id);
 CREATE INDEX IF NOT EXISTS idx_account_person ON account(person_id);
 CREATE INDEX IF NOT EXISTS idx_account_login ON account(login);
+CREATE INDEX IF NOT EXISTS idx_account_system_role ON account(system_role);
 CREATE INDEX IF NOT EXISTS idx_campaign_import_status ON campaign_import(status);
 CREATE INDEX IF NOT EXISTS idx_campaign_event_import ON campaign_event(campaign_import_id);
 CREATE INDEX IF NOT EXISTS idx_campaign_event_org ON campaign_event(organization_id);
@@ -235,8 +238,6 @@ def init_database(drop_all: bool = False):
                 DROP TABLE IF EXISTS party_member CASCADE;
             """)
         cur.execute(SCHEMA_SQL)
-        cur.execute("ALTER TABLE account ADD COLUMN IF NOT EXISTS system_role VARCHAR(30) NOT NULL DEFAULT 'user'")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_account_system_role ON account(system_role)")
         conn.commit()
         logger.info("Database initialized successfully")
     except Exception as e:
@@ -256,7 +257,7 @@ def _fetch(sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
-        return cur.fetchall()
+        return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -267,7 +268,7 @@ def _execute(sql: str, params: tuple = (), fetch_returning: bool = False) -> Any
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params)
         if fetch_returning:
-            result = cur.fetchall()
+            result = [dict(row) for row in cur.fetchall()]
             conn.commit()
             return result
         conn.commit()
@@ -283,18 +284,18 @@ def _execute(sql: str, params: tuple = (), fetch_returning: bool = False) -> Any
 
 def create_organization(name: str, org_type: str,
                         description: str = None, funds: float = 0,
-                        reputation: int = 0, oid: str = None) -> Dict[str, Any]:
+                        reputation: int = 0, ouid: str = None) -> Dict[str, Any]:
     import secrets as _secrets
     import re as _re
-    if oid is None:
+    if ouid is None:
         safe_name = _re.sub(r'[^a-zA-Z0-9]', '_', name).strip('_').lower()
-        oid = f"org_{safe_name}_{_secrets.token_hex(4)}"
+        ouid = f"org_{safe_name}_{_secrets.token_hex(4)}"
     sql = """
-        INSERT INTO organization (oid, name, type, description, funds, reputation)
+        INSERT INTO organization (ouid, name, type, description, funds, reputation)
         VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (oid, name, org_type, description, funds, reputation),
+    return dict(_execute(sql, (ouid, name, org_type, description, funds, reputation),
                          fetch_returning=True)[0])
 
 
@@ -316,18 +317,18 @@ def query_organization(org_id: int = None, name: str = None,
 
 # --- Person ---
 
-def create_person(name: str, birth_date: str = None, pid: str = None) -> Dict[str, Any]:
+def create_person(name: str, birth_date: str = None, puid: str = None) -> Dict[str, Any]:
     import secrets as _secrets
     import re as _re
-    if pid is None:
+    if puid is None:
         safe_name = _re.sub(r'[^a-zA-Z0-9]', '_', name).strip('_').lower()
-        pid = f"person_{safe_name}_{_secrets.token_hex(4)}"
+        puid = f"person_{safe_name}_{_secrets.token_hex(4)}"
     sql = """
-        INSERT INTO person (pid, name, birth_date)
+        INSERT INTO person (puid, name, birth_date)
         VALUES (%s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (pid, name, birth_date),
+    return dict(_execute(sql, (puid, name, birth_date),
                          fetch_returning=True)[0])
 
 
@@ -337,10 +338,10 @@ def query_person_by_name(name: str) -> List[Dict]:
     return _fetch(sql, (f"%{name}%",))
 
 
-def query_person_by_pid(pid: str) -> List[Dict]:
-    """Find person by pid (unique identifier)."""
-    sql = "SELECT * FROM person WHERE pid = %s"
-    return _fetch(sql, (pid,))
+def query_person_by_puid(puid: str) -> List[Dict]:
+    """Find person by puid (unique identifier)."""
+    sql = "SELECT * FROM person WHERE puid = %s"
+    return _fetch(sql, (puid,))
 
 
 # --- Account ---
@@ -374,24 +375,20 @@ def update_account_password(person_id: int, password: str,
     return _execute(sql, (password, salt, person_id))
 
 
-def query_organization_by_oid(oid: str) -> List[Dict]:
-    """Find organization by oid (unique identifier)."""
-    sql = "SELECT * FROM organization WHERE oid = %s"
-    return _fetch(sql, (oid,))
+def query_organization_by_ouid(ouid: str) -> List[Dict]:
+    """Find organization by ouid (unique identifier)."""
+    sql = "SELECT * FROM organization WHERE ouid = %s"
+    return _fetch(sql, (ouid,))
 
 
-def resolve_organization_id(oid: Any) -> int:
-    """Resolve API-facing organization oid to internal organization.id."""
-    if oid is None:
-        raise ValueError("oid is required")
-    orgs = query_organization_by_oid(str(oid))
+def resolve_organization_id(ouid: Any) -> int:
+    """Resolve API-facing organization ouid to internal organization.id."""
+    if ouid is None:
+        raise ValueError("ouid is required")
+    orgs = query_organization_by_ouid(str(ouid))
     if orgs:
         return orgs[0]["id"]
-    if isinstance(oid, int) or (isinstance(oid, str) and oid.isdigit()):
-        rows = query_organization(org_id=int(oid))
-        if rows:
-            return rows[0]["id"]
-    raise ValueError(f"Organization not found: {oid}")
+    raise ValueError(f"Organization not found: {ouid}")
 
 
 def query_membership(person_id: int, org_id: int) -> List[Dict]:
@@ -429,7 +426,7 @@ def add_membership(person_id: int, organization_id: int, role: str = None) -> Di
 
 def get_org_members(organization_id: int) -> List[Dict]:
     sql = """
-        SELECT m.id, m.role, p.name, p.pid
+        SELECT m.id, m.role, p.name, p.puid
         FROM membership m
         JOIN person p ON p.id = m.person_id
         WHERE m.organization_id = %s
@@ -439,7 +436,7 @@ def get_org_members(organization_id: int) -> List[Dict]:
 
 def get_person_memberships(person_id: int) -> List[Dict]:
     sql = """
-        SELECT m.id, m.role, o.name, o.oid, o.type AS org_type
+        SELECT m.id, m.role, o.name, o.ouid, o.type AS org_type
         FROM membership m
         JOIN organization o ON o.id = m.organization_id
         WHERE m.person_id = %s
@@ -478,6 +475,30 @@ def query_resource(organization_id: int, name: str = None,
         sql += " AND r.type = %s"
         params.append(resource_type)
     return _fetch(sql, tuple(params))
+
+
+def resolve_product_uid(org_id: int, product_uid: str) -> int:
+    """Resolve seller product business UID to internal resource.id within an org."""
+    rows = _fetch(
+        """
+        SELECT id FROM resource
+        WHERE organization_id = %s AND name = %s AND status = 'active'
+        """,
+        (org_id, product_uid),
+    )
+    if not rows:
+        raise ValueError(f"Product not found: {product_uid}")
+    return rows[0]["id"]
+
+
+def verify_org_owns_resource(resource_id: int, org_id: int):
+    rows = _fetch(
+        "SELECT id FROM resource WHERE id = %s AND organization_id = %s",
+        (resource_id, org_id),
+    )
+    if not rows:
+        from fastapi import HTTPException
+        raise HTTPException(403, "Resource does not belong to this organization")
 
 
 # --- Warehouse ---
@@ -606,25 +627,31 @@ def create_party(person_id: int, organization_id: int, transaction_id: int,
 
 def query_party_by_transaction(transaction_id: int) -> List[Dict]:
     sql = """
-        SELECT p.*, per.name AS person_name
+        SELECT p.*, per.puid AS puid, per.name AS person_name, org.ouid AS ouid
         FROM party p
         JOIN person per ON per.id = p.person_id
+        JOIN organization org ON org.id = p.organization_id
         WHERE p.transaction_id = %s
     """
     return _fetch(sql, (transaction_id,))
 
 
-def query_party(organization_id: int, person_id: int = None, name: str = None) -> List[Dict]:
+def query_party(organization_id: int, person_id: int = None,
+                name: str = None, puid: str = None) -> List[Dict]:
     sql = """
-        SELECT p.*, per.name AS person_name
+        SELECT p.*, per.puid AS puid, per.name AS person_name, org.ouid AS ouid
         FROM party p
         JOIN person per ON per.id = p.person_id
+        JOIN organization org ON org.id = p.organization_id
         WHERE p.organization_id = %s
     """
     params: list = [organization_id]
     if person_id:
         sql += " AND p.person_id = %s"
         params.append(person_id)
+    if puid:
+        sql += " AND per.puid = %s"
+        params.append(puid)
     if name:
         sql += " AND per.name ILIKE %s"
         params.append(f"%{name}%")
@@ -634,13 +661,13 @@ def query_party(organization_id: int, person_id: int = None, name: str = None) -
 # --- Campaign ---
 
 def create_campaign_import(campaign_code: str, campaign_name: str,
-                           source_file: str, imported_by_pid: str) -> Dict[str, Any]:
+                           source_file: str, imported_by_puid: str) -> Dict[str, Any]:
     sql = """
-        INSERT INTO campaign_import (campaign_code, campaign_name, source_file, imported_by_pid)
+        INSERT INTO campaign_import (campaign_code, campaign_name, source_file, imported_by_puid)
         VALUES (%s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (campaign_code, campaign_name, source_file, imported_by_pid),
+    return dict(_execute(sql, (campaign_code, campaign_name, source_file, imported_by_puid),
                          fetch_returning=True)[0])
 
 
@@ -677,13 +704,13 @@ def list_campaign_imports_for_orgs(organization_ids: List[int] = None,
     if include_all:
         sql = """
             SELECT ci.*,
-                   COALESCE(json_agg(DISTINCT jsonb_build_object(
-                       'id', o.id, 'oid', o.oid, 'name', o.name, 'type', o.type
-                   )) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
-            FROM campaign_import ci
-            LEFT JOIN campaign_import_org cio ON cio.campaign_import_id = ci.id
-            LEFT JOIN organization o ON o.id = cio.organization_id
-            WHERE ci.status = 'active'
+               COALESCE(json_agg(DISTINCT jsonb_build_object(
+                   'id', o.id, 'ouid', o.ouid, 'name', o.name, 'type', o.type
+               )) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
+        FROM campaign_import ci
+        LEFT JOIN campaign_import_org cio ON cio.campaign_import_id = ci.id
+        LEFT JOIN organization o ON o.id = cio.organization_id
+        WHERE ci.status = 'active'
             GROUP BY ci.id
             ORDER BY ci.created_at DESC, ci.id DESC
         """
@@ -694,7 +721,7 @@ def list_campaign_imports_for_orgs(organization_ids: List[int] = None,
     sql = """
         SELECT ci.*,
                COALESCE(json_agg(DISTINCT jsonb_build_object(
-                   'id', o.id, 'oid', o.oid, 'name', o.name, 'type', o.type
+                   'id', o.id, 'ouid', o.ouid, 'name', o.name, 'type', o.type
                )) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
         FROM campaign_import ci
         JOIN campaign_import_org cio_filter ON cio_filter.campaign_import_id = ci.id
@@ -735,7 +762,7 @@ def get_campaign_replay(campaign_import_id: int, organization_ids: List[int] = N
                         include_all: bool = False) -> List[Dict[str, Any]]:
     sql = """
         SELECT ce.id, ce.seq, ce.title, ce.description, ce.payload,
-               o.oid, o.name AS organization_name, o.type AS organization_type
+               o.ouid, o.name AS organization_name, o.type AS organization_type
         FROM campaign_event ce
         JOIN organization o ON o.id = ce.organization_id
         WHERE ce.campaign_import_id = %s

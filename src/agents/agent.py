@@ -30,15 +30,16 @@ def get_llm():
     )
 
 
-def create_uni_resource_agent():
-    """Create and return a LangChain agent with all Uni-Resource tools."""
+def create_uni_resource_agent(tools: list = None):
+    """Create and return a LangChain agent with the given tools (or all tools by default)."""
     llm = get_llm()
 
     prompt = hub.pull("hwchase17/openai-tools-agent")
+    resolved_tools = tools if tools is not None else ALL_TOOLS
 
     agent = create_openai_tools_agent(
         llm=llm,
-        tools=ALL_TOOLS,
+        tools=resolved_tools,
         prompt=prompt,
     )
     

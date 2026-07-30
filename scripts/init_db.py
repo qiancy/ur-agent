@@ -20,9 +20,9 @@ from src.auth.auth import hash_password
 def main():
     init_database(drop_all=True)
 
-    # ── Organizations (with oid for authentication) ──────
+    # ── Organizations ──────────────────────────────────────────
     orgs = {}
-    for name, otype, desc, funds, rep, oid in [
+    for name, otype, desc, funds, rep, ouid in [
         ("系统空间", "system", "系统全局管理空间", 0, 0, "system"),
         ("蜀国", "company", "蜀汉政权", 50000, 80, "shu"),
         ("魏国", "company", "曹魏政权", 80000, 90, "wei"),
@@ -30,11 +30,11 @@ def main():
         ("刘备", "personal", "刘备个人组织", 5000, 70, "liubei"),
         ("诸葛亮", "personal", "诸葛亮个人组织", 8000, 85, "zhugeliang"),
     ]:
-        orgs[name] = create_organization(name, otype, desc, funds, rep, oid=oid)
+        orgs[name] = create_organization(name, otype, desc, funds, rep, ouid=ouid)
 
-    # ── Person (with pid for authentication) ──────
+    # ── Persons ───────────────────────────────────────────────
     persons = {}
-    for name, pid in [
+    for name, puid in [
         ("超级用户", "super"),
         ("张飞", "zhangfei"),
         ("诸葛亮", "zhugeliang"),
@@ -48,7 +48,7 @@ def main():
         ("孙权", "sunquan"),
         ("周瑜", "zhouyu"),
     ]:
-        persons[name] = create_person(name=name, pid=pid)
+        persons[name] = create_person(name=name, puid=puid)
 
     # ── Account (认证凭据, 仅给有密码的角色) ──────
     accounts = {}
@@ -127,13 +127,13 @@ def main():
         )
 
     # ── Resources (human) ────────────────────────────────────
-    for org_name, name, pid in [
+    for org_name, name, person_db_id in [
         ("蜀国", "蜀国兵力", persons["张飞"]["id"]),
         ("魏国", "魏国兵力", persons["曹操"]["id"]),
         ("吴国", "吴国兵力", persons["孙权"]["id"]),
     ]:
         resources[(org_name, name)] = create_resource(
-            orgs[org_name]["id"], name, "human", person_id=pid
+            orgs[org_name]["id"], name, "human", person_id=person_db_id
         )
 
     # ── Resources (knowledge) ────────────────────────────────
@@ -201,7 +201,7 @@ def main():
         per = query_person(organization_id)
         pat = query_party(organization_id)
         res = query_resource(organization_id)
-        print(f"\n{label} (organization_id={organization_id}, oid={org['oid']}):")
+        print(f"\n{label} (organization_id={organization_id}, ouid={org['ouid']}):")
         print(f"  funds={org['funds']}, reputation={org['reputation']}")
         print(f"  person:  {[p['name'] for p in per]}")
         print(f"  party:   {[(p['person_name']+'('+p['role']+',funds:'+str(p['funds_change'])+')') for p in pat]}")

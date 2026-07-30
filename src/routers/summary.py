@@ -15,7 +15,7 @@ async def get_summary(request: Request):
     org_rows = _fetch("SELECT funds, reputation FROM organization WHERE id = %s", (org_id,))
     if not org_rows:
         return {
-            "oid": ctx["oid"],
+            "ouid": ctx["ouid"],
             "funds": 0.0,
             "reputation": 0,
             "total_outflow": 0.0,
@@ -37,7 +37,7 @@ async def get_summary(request: Request):
         "WHERE p.organization_id = %s", (org_id,))
 
     return {
-        "oid": ctx["oid"],
+        "ouid": ctx["ouid"],
         "funds": float(org["funds"]),
         "reputation": org["reputation"],
         "total_outflow": total_outflow,

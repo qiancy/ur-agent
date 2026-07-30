@@ -70,7 +70,7 @@ SHU_RESOURCES = [
     {"name": "蜀国军费", "type": "financial", "unit": "两黄金", "amount": 1900},
     {"name": "稿赏银", "type": "financial", "unit": "两白银", "amount": 800},
     # 人力
-    {"name": "蜀国兵力", "type": "human", "pid": 1, "content": "火攻部队"},
+    {"name": "蜀国兵力", "type": "human", "puid": "liubei", "content": "火攻部队"},
     # 知识
     {"name": "火攻计策", "type": "knowledge", "content": "火油倾泻+青铜镜点火"},
     {"name": "火烧新野计划", "type": "knowledge", "content": "伏兵林中，切断退路"},
@@ -103,10 +103,10 @@ TRANSACTIONS = [
 
 # 仓库设置
 WAREHOUSES = [
-    {"name": "蜀国武库", "code": "A", "location": "成都", "oid": 10},
-    {"name": "蜀国军械库", "code": "B", "location": "成都", "oid": 10},
-    {"name": "新野前线补给", "code": "C", "location": "新野", "oid": 10},
-    {"name": "曹魏新野粮仓", "code": "D", "location": "新野", "oid": 11},
+    {"name": "蜀国武库", "code": "A", "location": "成都", "ouid": "fire_xinye_shu"},
+    {"name": "蜀国军械库", "code": "B", "location": "成都", "ouid": "fire_xinye_shu"},
+    {"name": "新野前线补给", "code": "C", "location": "新野", "ouid": "fire_xinye_shu"},
+    {"name": "曹魏新野粮仓", "code": "D", "location": "新野", "ouid": "fire_xinye_wei"},
 ]
 
 # 资源仓库分布
@@ -160,10 +160,10 @@ class APIClient:
         response = requests.get(url, params=params)
         return response.json()
     
-    def post(self, endpoint: str, data: Dict = None) -> Dict[str, Any]:
+    def post(self, endpoint: str, data: Dict = None, params: Dict = None) -> Dict[str, Any]:
         """POST请求"""
         url = f"{self.base_url}/{endpoint}"
-        response = requests.post(url, json=data)
+        response = requests.post(url, json=data, params=params)
         return response.json()
     
     def create_organization(self, name: str, org_type: str, description: str = None) -> Dict[str, Any]:
@@ -181,20 +181,20 @@ class APIClient:
             data["birth_date"] = birth_date
         return self.post("person", data)
     
-    def add_membership(self, pid: int, oid: int, role: str = None) -> Dict[str, Any]:
+    def add_membership(self, puid: str, ouid: str, role: str = None) -> Dict[str, Any]:
         """添加组织成员"""
-        data = {"pid": pid, "oid": oid}
+        data = {"puid": puid, "ouid": ouid}
         if role:
             data["role"] = role
         return self.post("organizations/members", data)
     
-    def create_resource(self, oid: int, name: str, resource_type: str,
+    def create_resource(self, ouid: str, name: str, resource_type: str,
                         unit: str = None, amount: float = None,
-                        content: str = None, pid: int = None,
+                        content: str = None, puid: str = None,
                         currency: str = None) -> Dict[str, Any]:
         """创建资源"""
         data = {
-            "oid": oid,
+            "ouid": ouid,
             "name": name,
             "resource_type": resource_type
         }
@@ -204,17 +204,17 @@ class APIClient:
             data["amount"] = amount
         if content:
             data["content"] = content
-        if pid:
-            data["pid"] = pid
+        if puid:
+            data["puid"] = puid
         if currency:
             data["currency"] = currency
         return self.post("resource", data)
     
-    def create_warehouse(self, oid: int, name: str, code: str,
+    def create_warehouse(self, ouid: str, name: str, code: str,
                          location: str = None) -> Dict[str, Any]:
         """创建仓库"""
         data = {
-            "oid": oid,
+            "ouid": ouid,
             "name": name,
             "code": code
         }
@@ -223,7 +223,8 @@ class APIClient:
         return self.post("warehouse", data)
     
     def create_resource_warehouse(self, resource_id: int, location_path: str,
-                                   quantity: float, unit: str = None) -> Dict[str, Any]:
+                                    quantity: float, unit: str = None,
+                                    ouid: str = None) -> Dict[str, Any]:
         """创建资源-仓库明细"""
         data = {
             "resource_id": resource_id,
@@ -232,10 +233,11 @@ class APIClient:
         }
         if unit:
             data["unit"] = unit
-        return self.post("resource-warehouse", data)
-    
+        params = {"ouid": ouid} if ouid else None
+        return self.post("resource-warehouse", data, params=params)
+
     def create_transaction(self, amount: float, category: str,
-                          description: str = None) -> Dict[str, Any]:
+                           description: str = None) -> Dict[str, Any]:
         """创建交易"""
         data = {
             "amount": amount,
@@ -245,12 +247,12 @@ class APIClient:
             data["description"] = description
         return self.post("transaction", data)
     
-    def create_party(self, pid: int, oid: int, transaction_id: int,
+    def create_party(self, puid: str, ouid: str, transaction_id: int,
                      role: str, description: str = None) -> Dict[str, Any]:
         """创建参与方"""
         data = {
-            "pid": pid,
-            "oid": oid,
+            "puid": puid,
+            "ouid": ouid,
             "transaction_id": transaction_id,
             "role": role
         }
@@ -267,68 +269,71 @@ class APIClient:
             params["org_type"] = org_type
         return self.get("organizations", params)
     
-    def query_person(self, oid: int, name: str = None) -> List[Dict]:
+    def query_person(self, ouid: str, name: str = None) -> List[Dict]:
         """查询人员"""
-        params = {"oid": oid}
+        params = {"ouid": ouid}
         if name:
             params["name"] = name
         return self.get("person", params)
     
-    def query_resource(self, oid: int, resource_type: str = None) -> List[Dict]:
+    def query_resource(self, ouid: str, resource_type: str = None) -> List[Dict]:
         """查询资源"""
-        params = {"oid": oid}
+        params = {"ouid": ouid}
         if resource_type:
             params["resource_type"] = resource_type
         return self.get("resource", params)
     
-    def query_warehouse(self, oid: int) -> List[Dict]:
+    def query_warehouse(self, ouid: str) -> List[Dict]:
         """查询仓库"""
-        return self.get("warehouse", {"oid": oid})
+        return self.get("warehouse", {"ouid": ouid})
     
-    def query_resource_warehouse(self, resource_id: int) -> List[Dict]:
+    def query_resource_warehouse(self, resource_id: int, ouid: str = None) -> List[Dict]:
         """查询资源-仓库明细"""
-        return self.get("resource-warehouse", {"resource_id": resource_id})
+        params = {"resource_id": resource_id}
+        if ouid:
+            params["ouid"] = ouid
+        return self.get("resource-warehouse", params)
     
-    def query_transaction(self, oid: int) -> List[Dict]:
+    def query_transaction(self, ouid: str) -> List[Dict]:
         """查询交易"""
-        return self.get("transaction", {"oid": oid})
+        return self.get("transaction", {"ouid": ouid})
     
-    def query_party(self, oid: int) -> List[Dict]:
+    def query_party(self, ouid: str) -> List[Dict]:
         """查询参与方"""
-        return self.get("party", {"oid": oid})
+        return self.get("party", {"ouid": ouid})
     
-    def get_summary(self, oid: int) -> Dict[str, Any]:
+    def get_summary(self, ouid: str) -> Dict[str, Any]:
         """获取财务汇总"""
-        return self.get("summary", {"oid": oid})
+        return self.get("summary", {"ouid": ouid})
 
 
 # ============================================================================
 # 测试脚本
 # ============================================================================
 
-def init_campaign_via_api(oid: int = 10, pid: int = 101, campaign_name: str = "火烧新野"):
+def init_campaign_via_api(ouid: str = 10, puid: str = 101, campaign_name: str = "火烧新野"):
     """
     通过初始化API准备测试数据
     
     注意：此功能依赖后端提供的初始化API。
     如果API未实现，请先运行数据库初始化脚本：
-        python scripts/init_db.py --oid={oid} --pid={pid}
+        python scripts/init_db.py --ouid={ouid} --puid={puid}
     
     API调用格式：
         POST /api/init/campaign
         Body: {
-            "oid": {oid},
-            "pid": {pid},
+            "ouid": {ouid},
+            "puid": {puid},
             "campaign_name": "{campaign_name}",
             "init_all_data": true
         }
     """
-    print(f"ℹ️  初始化战役数据: oid={oid}, pid={pid}, campaign={campaign_name}")
+    print(f"ℹ️  初始化战役数据: ouid={ouid}, puid={puid}, campaign={campaign_name}")
     print(f"ℹ️  注意：需要后端提供 /api/init/campaign API")
-    print(f"ℹ️  如API未实现，请先运行: python scripts/init_db.py --oid={oid} --pid={pid}")
+    print(f"ℹ️  如API未实现，请先运行: python scripts/init_db.py --ouid={ouid} --puid={puid}")
     return {
-        "oid": oid,
-        "pid": pid,
+        "ouid": ouid,
+        "puid": puid,
         "campaign_name": campaign_name,
         "api_available": False,  # 待后端实现
         "note": "等待后端初始化API实现"
@@ -340,8 +345,8 @@ class FireNewyeTest:
     
     def __init__(self, api: APIClient):
         self.api = api
-        self.shu_org_id = None
-        self.wei_org_id = None
+        self.shu_org_ouid = None
+        self.wei_org_ouid = None
         self.personnel_ids = {}
         self.resource_ids = {}
         
@@ -354,8 +359,8 @@ class FireNewyeTest:
         # 尝试通过API初始化
         print("\n🔄 尝试通过API初始化数据...")
         api_init_result = init_campaign_via_api(
-            oid=10,
-            pid=101,
+            ouid="fire_xinye_shu",
+            puid="liubei",
             campaign_name=SHU_ORG_NAME
         )
         
@@ -375,47 +380,47 @@ class FireNewyeTest:
         
         for org in all_orgs:
             if org["name"] == SHU_ORG_NAME:
-                self.shu_org_id = org["id"]
+                self.shu_org_ouid = org["ouid"]
                 shu_found = True
-                print(f"  ✓ 蜀汉指挥部已存在: {self.shu_org_id}")
+                print(f"  ✓ 蜀汉指挥部已存在: {self.shu_org_ouid}")
                 break
         
         if not shu_found:
             shu_org = self.api.create_organization(
                 SHU_ORG_NAME, SHU_ORG_TYPE, SHU_ORG_DESCRIPTION
             )
-            self.shu_org_id = shu_org["id"]
-            print(f"  ✓ 蜀汉指挥部创建: {self.shu_org_id}")
+            self.shu_org_ouid = shu_org["ouid"]
+            print(f"  ✓ 蜀汉指挥部创建: {self.shu_org_ouid}")
         
         for org in all_orgs:
             if org["name"] == WEI_ORG_NAME:
-                self.wei_org_id = org["id"]
+                self.wei_org_ouid = org["ouid"]
                 wei_found = True
-                print(f"  ✓ 曹魏防线已存在: {self.wei_org_id}")
+                print(f"  ✓ 曹魏防线已存在: {self.wei_org_ouid}")
                 break
         
         if not wei_found:
             wei_org = self.api.create_organization(
                 WEI_ORG_NAME, WEI_ORG_TYPE, WEI_ORG_DESCRIPTION
             )
-            self.wei_org_id = wei_org["id"]
-            print(f"  ✓ 曹魏防线创建: {self.wei_org_id}")
+            self.wei_org_ouid = wei_org["ouid"]
+            print(f"  ✓ 曹魏防线创建: {self.wei_org_ouid}")
         
         # 创建默认人员用于交易
-        default_person = self.api.query_person(self.shu_org_id, name="默认人员")
+        default_person = self.api.query_person(self.shu_org_ouid, name="默认人员")
         if not default_person:
             default_p = self.api.create_person("默认人员")
-            self.api.add_membership(default_p["id"], self.shu_org_id, "财务专员")
-            self.default_person_id = default_p["id"]
+            self.api.add_membership(default_p["puid"], self.shu_org_ouid, "财务专员")
+            self.default_person_puid = default_p["puid"]
         else:
-            self.default_person_id = default_person[0]["id"]
+            self.default_person_puid = default_person[0]["puid"]
         
         # 2. 创建人员
         print("\n👤 创建人员...")
         
         for p in SHU_PERSONNEL:
             # 查询是否已存在
-            people = self.api.query_person(self.shu_org_id, name=p["name"])
+            people = self.api.query_person(self.shu_org_ouid, name=p["name"])
             if people:
                 self.personnel_ids[p["name"]] = people[0]["id"]
                 print(f"  ✓ 蜀汉人员已存在: {p['name']}")
@@ -423,18 +428,18 @@ class FireNewyeTest:
                 person = self.api.create_person(p["name"], p["birth_date"])
                 self.personnel_ids[p["name"]] = person["id"]
                 # 添加到组织
-                self.api.add_membership(person["id"], self.shu_org_id, p["role"])
+                self.api.add_membership(person["puid"], self.shu_org_ouid, p["role"])
                 print(f"  ✓ 蜀汉人员创建: {p['name']} ({p['role']})")
         
         for p in WEI_PERSONNEL:
-            people = self.api.query_person(self.wei_org_id, name=p["name"])
+            people = self.api.query_person(self.wei_org_ouid, name=p["name"])
             if people:
                 self.personnel_ids[p["name"]] = people[0]["id"]
                 print(f"  ✓ 曹魏人员已存在: {p['name']}")
             else:
                 person = self.api.create_person(p["name"], p["birth_date"])
                 self.personnel_ids[p["name"]] = person["id"]
-                self.api.add_membership(person["id"], self.wei_org_id, p["role"])
+                self.api.add_membership(person["puid"], self.wei_org_ouid, p["role"])
                 print(f"  ✓ 曹魏人员创建: {p['name']} ({p['role']})")
         
         # 3. 创建资源
@@ -443,7 +448,7 @@ class FireNewyeTest:
         for r in SHU_RESOURCES + WEI_LOSS_RESOURCES:
             # 查询是否已存在
             resources = self.api.query_resource(
-                self.shu_org_id if r in SHU_RESOURCES else self.wei_org_id,
+                self.shu_org_ouid if r in SHU_RESOURCES else self.wei_org_ouid,
                 resource_type=r["type"]
             )
             existing = [res for res in resources if res["name"] == r["name"]]
@@ -453,13 +458,13 @@ class FireNewyeTest:
                 print(f"  ✓ 资源已存在: {r['name']}")
             else:
                 resource = self.api.create_resource(
-                    oid=self.shu_org_id if r in SHU_RESOURCES else self.wei_org_id,
+                    ouid=self.shu_org_ouid if r in SHU_RESOURCES else self.wei_org_ouid,
                     name=r["name"],
                     resource_type=r["type"],
                     unit=r.get("unit"),
                     amount=r.get("amount"),
                     content=r.get("content"),
-                    pid=r.get("pid")
+                    puid=r.get("puid")
                 )
                 self.resource_ids[r["name"]] = resource["id"]
                 print(f"  ✓ 资源创建: {r['name']} ({r['type']})")
@@ -468,7 +473,7 @@ class FireNewyeTest:
         print("\n🏭 创建仓库...")
         
         for w in WAREHOUSES:
-            warehouses = self.api.query_warehouse(w["oid"])
+            warehouses = self.api.query_warehouse(w["ouid"])
             existing = [wh for wh in warehouses if wh["name"] == w["name"]]
             
             if existing:
@@ -476,7 +481,7 @@ class FireNewyeTest:
             else:
                 try:
                     response = self.api.create_warehouse(
-                        w["oid"], w["name"], w["code"], w["location"]
+                        w["ouid"], w["name"], w["code"], w["location"]
                     )
                     print(f"  ✓ 仓库创建: {w['name']} ({w['code']})")
                 except Exception as e:
@@ -491,6 +496,7 @@ class FireNewyeTest:
                     resource_id=self.resource_ids.get(rw["resource_name"]),
                     location_path=rw["location_path"],
                     quantity=rw["quantity"],
+                    ouid=self.shu_org_ouid if rw["resource_name"] in SHU_RESOURCES else self.wei_org_ouid,
                     unit="件" if rw["resource_name"] in [
                         "火油", "火把", "硫磺", "木柴", "酒坛", "皮囊", 
                         "青铜镜", "火矢", "烟雾弹", "弓箭", "戈矛", 
@@ -514,8 +520,8 @@ class FireNewyeTest:
                 )
                 
                 self.api.create_party(
-                    pid=self.default_person_id,
-                    oid=self.shu_org_id if "蜀汉" in t["from_org"] else self.wei_org_id,
+                    puid=self.default_person_puid,
+                    ouid=self.shu_org_ouid if "蜀汉" in t["from_org"] else self.wei_org_ouid,
                     transaction_id=transaction["id"],
                     role="payer" if "蜀汉" in t["from_org"] else "payee",
                     description=t["description"]
@@ -530,8 +536,8 @@ class FireNewyeTest:
         print("=" * 60)
         
         return {
-            "shu_org_id": self.shu_org_id,
-            "wei_org_id": self.wei_org_id,
+            "shu_org_ouid": self.shu_org_ouid,
+            "wei_org_ouid": self.wei_org_ouid,
             "personnel": self.personnel_ids,
             "resources": self.resource_ids
         }
@@ -556,8 +562,8 @@ class FireNewyeTest:
         
         # 验证人员
         print("\n👤 验证人员...")
-        shu_people = self.api.query_person(self.shu_org_id)
-        wei_people = self.api.query_person(self.wei_org_id)
+        shu_people = self.api.query_person(self.shu_org_ouid)
+        wei_people = self.api.query_person(self.wei_org_ouid)
         shu_count = len(shu_people)
         wei_count = len(wei_people)
         print(f"  蜀汉人员: {shu_count}/{len(SHU_PERSONNEL)}")
@@ -568,7 +574,7 @@ class FireNewyeTest:
         
         # 验证资源
         print("\n📦 验证资源...")
-        shu_resources = self.api.query_resource(self.shu_org_id)
+        shu_resources = self.api.query_resource(self.shu_org_ouid)
         shu_resource_count = len(shu_resources)
         print(f"  蜀汉资源: {shu_resource_count}/{len(SHU_RESOURCES)}")
         if shu_resource_count != len(SHU_RESOURCES):
@@ -576,15 +582,15 @@ class FireNewyeTest:
         
         # 验证仓库
         print("\n🏭 验证仓库...")
-        shu_warehouses = self.api.query_warehouse(self.shu_org_id)
-        wei_warehouses = self.api.query_warehouse(self.wei_org_id)
-        print(f"  蜀汉仓库: {len(shu_warehouses)}/{len([w for w in WAREHOUSES if w['oid'] == self.shu_org_id])}")
-        print(f"  曹魏仓库: {len(wei_warehouses)}/{len([w for w in WAREHOUSES if w['oid'] == self.wei_org_id])}")
+        shu_warehouses = self.api.query_warehouse(self.shu_org_ouid)
+        wei_warehouses = self.api.query_warehouse(self.wei_org_ouid)
+        print(f"  蜀汉仓库: {len(shu_warehouses)}/{len([w for w in WAREHOUSES if w['ouid'] == self.shu_org_ouid])}")
+        print(f"  曹魏仓库: {len(wei_warehouses)}/{len([w for w in WAREHOUSES if w['ouid'] == self.wei_org_ouid])}")
         
         # 验证交易
         print("\n💰 验证交易...")
-        shu_transactions = self.api.query_transaction(self.shu_org_id)
-        wei_transactions = self.api.query_transaction(self.wei_org_id)
+        shu_transactions = self.api.query_transaction(self.shu_org_ouid)
+        wei_transactions = self.api.query_transaction(self.wei_org_ouid)
         
         # 解析交易数据
         shu_trans_count = len(shu_transactions)
@@ -612,7 +618,7 @@ class FireNewyeTest:
         # 验证资金汇总
         print("\n📈 验证财务汇总...")
         try:
-            summary = self.api.get_summary(self.shu_org_id)
+            summary = self.api.get_summary(self.shu_org_ouid)
             print(f"  蜀汉财务汇总: {summary}")
         except Exception as e:
             print(f"  财务汇总获取失败: {e}")

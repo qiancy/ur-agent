@@ -91,7 +91,7 @@ class TestOrganizationAPI:
 
     def test_members(self):
         """测试查询组织成员"""
-        resp = client.get("/organizations/1/members")
+        resp = client.get("/organizations/shu/members")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -100,15 +100,15 @@ class TestOrganizationAPI:
         # 验证成员数据结构
         member = data[0]
         assert "id" in member
-        assert "pid" in member
+        assert "puid" in member
         assert "role" in member
-        # oid可能不在成员对象中，通过组织ID查询本身已隐含
+        # ouid可能不在成员对象中，通过组织ID查询本身已隐含
 
 
 class TestPersonAPI:
     def test_list(self):
         """测试查询人员列表"""
-        resp = client.get("/person", params={"oid": 1})
+        resp = client.get("/person", params={"ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -122,7 +122,7 @@ class TestPersonAPI:
 
     def test_list_with_name_filter(self):
         """测试按名称过滤人员"""
-        resp = client.get("/person", params={"oid": 1, "name": "刘"})
+        resp = client.get("/person", params={"ouid": "shu", "name": "刘"})
         assert resp.status_code == 200
         data = resp.json()
         for p in data:
@@ -151,16 +151,14 @@ class TestPersonAPI:
 
     def test_person_not_found(self):
         """测试查询不存在的组织人员"""
-        resp = client.get("/person", params={"oid": 99999})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data) == 0
+        resp = client.get("/person", params={"ouid": "missing_org"})
+        assert resp.status_code == 404
 
 
 class TestResourceAPI:
     def test_list(self):
         """测试查询资源列表"""
-        resp = client.get("/resource", params={"oid": 1})
+        resp = client.get("/resource", params={"ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -175,7 +173,7 @@ class TestResourceAPI:
 
     def test_list_by_type(self):
         """测试按类型查询资源"""
-        resp = client.get("/resource", params={"oid": 1, "resource_type": "physical"})
+        resp = client.get("/resource", params={"ouid": "shu", "resource_type": "physical"})
         assert resp.status_code == 200
         data = resp.json()
         for r in data:
@@ -183,12 +181,15 @@ class TestResourceAPI:
 
     def test_create_physical(self):
         """测试创建物理资源"""
-        resp = client.post("/resource", json={
-            "oid": 1,
-            "name": "测试物资",
-            "resource_type": "physical",
-            "unit": "个"
-        })
+        resp = client.post(
+            "/resource",
+            params={"ouid": "shu"},
+            json={
+                "name": "测试物资",
+                "resource_type": "physical",
+                "unit": "个",
+            },
+        )
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["type"] == "physical"
@@ -196,13 +197,16 @@ class TestResourceAPI:
 
     def test_create_financial(self):
         """测试创建财务资源"""
-        resp = client.post("/resource", json={
-            "oid": 1,
-            "name": "测试资金",
-            "resource_type": "financial",
-            "amount": 50000,
-            "currency": "CNY"
-        })
+        resp = client.post(
+            "/resource",
+            params={"ouid": "shu"},
+            json={
+                "name": "测试资金",
+                "resource_type": "financial",
+                "amount": 50000,
+                "currency": "CNY",
+            },
+        )
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["type"] == "financial"
@@ -210,31 +214,37 @@ class TestResourceAPI:
 
     def test_create_human(self):
         """测试创建人力资源"""
-        resp = client.post("/resource", json={
-            "oid": 1,
-            "name": "测试人力",
-            "resource_type": "human",
-            "pid": 1
-        })
+        resp = client.post(
+            "/resource",
+            params={"ouid": "shu"},
+            json={
+                "name": "测试人力",
+                "resource_type": "human",
+                "puid": "liubei",
+            },
+        )
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["type"] == "human"
 
     def test_create_knowledge(self):
         """测试创建知识资源"""
-        resp = client.post("/resource", json={
-            "oid": 1,
-            "name": "测试知识",
-            "resource_type": "knowledge",
-            "content": "这是一份测试文档"
-        })
+        resp = client.post(
+            "/resource",
+            params={"ouid": "shu"},
+            json={
+                "name": "测试知识",
+                "resource_type": "knowledge",
+                "content": "这是一份测试文档",
+            },
+        )
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["type"] == "knowledge"
 
     def test_filter_by_type(self):
         """测试按类型过滤资源"""
-        resp = client.get("/resource", params={"oid": 1, "resource_type": "financial"})
+        resp = client.get("/resource", params={"ouid": "shu", "resource_type": "financial"})
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) > 0
@@ -245,7 +255,7 @@ class TestResourceAPI:
 class TestWarehouseAPI:
     def test_list(self):
         """测试查询仓库列表"""
-        resp = client.get("/warehouse", params={"oid": 1})
+        resp = client.get("/warehouse", params={"ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -260,7 +270,7 @@ class TestWarehouseAPI:
 
     def test_list_with_name_filter(self):
         """测试按名称过滤仓库"""
-        resp = client.get("/warehouse", params={"oid": 1, "name": "武库"})
+        resp = client.get("/warehouse", params={"ouid": "shu", "name": "武库"})
         assert resp.status_code == 200
         data = resp.json()
         for w in data:
@@ -270,13 +280,16 @@ class TestWarehouseAPI:
         """测试创建仓库"""
         import time
         unique_code = f"Z{int(time.time() * 1000) % 10000}"
-        resp = client.post("/warehouse", json={
-            "oid": 1,
-            "name": "测试仓库",
-            "code": unique_code,
-            "location": "测试地点",
-            "description": "测试描述"
-        })
+        resp = client.post(
+            "/warehouse",
+            params={"ouid": "shu"},
+            json={
+                "name": "测试仓库",
+                "code": unique_code,
+                "location": "测试地点",
+                "description": "测试描述",
+            },
+        )
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["name"] == "测试仓库"
@@ -286,7 +299,7 @@ class TestWarehouseAPI:
 class TestResourceWarehouseAPI:
     def test_list(self):
         """测试查询资源-仓库明细"""
-        resp = client.get("/resource-warehouse", params={"resource_id": 1})
+        resp = client.get("/resource-warehouse", params={"resource_id": 1, "ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -302,7 +315,8 @@ class TestResourceWarehouseAPI:
         """测试按库位路径过滤"""
         resp = client.get("/resource-warehouse", params={
             "resource_id": 1,
-            "location_path": "A"
+            "location_path": "A",
+            "ouid": "shu",
         })
         assert resp.status_code == 200
         data = resp.json()
@@ -311,7 +325,7 @@ class TestResourceWarehouseAPI:
 
     def test_create(self):
         """测试创建资源-仓库明细"""
-        resp = client.post("/resource-warehouse", json={
+        resp = client.post("/resource-warehouse", params={"ouid": "shu"}, json={
             "resource_id": 1,
             "location_path": "A-1-001",
             "quantity": 100,
@@ -324,7 +338,7 @@ class TestResourceWarehouseAPI:
 
     def test_create_total(self):
         """测试创建total库位记录"""
-        resp = client.post("/resource-warehouse", json={
+        resp = client.post("/resource-warehouse", params={"ouid": "shu"}, json={
             "resource_id": 1,
             "location_path": "total",
             "quantity": 200,
@@ -334,7 +348,7 @@ class TestResourceWarehouseAPI:
 
     def test_get_total(self):
         """测试获取资源总数"""
-        resp = client.get("/resource-warehouse/total", params={"resource_id": 1})
+        resp = client.get("/resource-warehouse/total", params={"resource_id": 1, "ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
         assert "total_qty" in data
@@ -344,7 +358,7 @@ class TestResourceWarehouseAPI:
 class TestTransactionAPI:
     def test_list(self):
         """测试查询交易记录"""
-        resp = client.get("/transaction", params={"oid": 1})
+        resp = client.get("/transaction", params={"ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -358,18 +372,22 @@ class TestTransactionAPI:
 
     def test_list_with_limit(self):
         """测试限制返回数量"""
-        resp = client.get("/transaction", params={"oid": 1, "limit": 5})
+        resp = client.get("/transaction", params={"ouid": "shu", "limit": 5})
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) <= 5
 
     def test_create(self):
         """测试创建交易"""
-        resp = client.post("/transaction", json={
-            "amount": 100.0,
-            "category": "test",
-            "description": "测试交易"
-        })
+        resp = client.post(
+            "/transaction",
+            params={"ouid": "shu"},
+            json={
+                "amount": 100.0,
+                "category": "test",
+                "description": "测试交易",
+            },
+        )
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["amount"] == 100.0
@@ -378,43 +396,52 @@ class TestTransactionAPI:
     def test_create_with_party(self):
         """测试创建带参与方的交易"""
         # 先创建交易
-        txn_resp = client.post("/transaction", json={
-            "amount": 200.0,
-            "category": "test",
-            "description": "测试交易"
-        })
+        txn_resp = client.post(
+            "/transaction",
+            params={"ouid": "shu"},
+            json={
+                "amount": 200.0,
+                "category": "test",
+                "description": "测试交易",
+            },
+        )
         assert txn_resp.status_code in (200, 201)
         
         # 再创建参与方
-        party_resp = client.post("/party", json={
-            "pid": 1,
-            "oid": 1,
-            "transaction_id": txn_resp.json()["id"],
-            "role": "payer",
-            "description": "测试付款方"
-        })
+        party_resp = client.post(
+            "/party",
+            params={"ouid": "shu"},
+            json={
+                "puid": "liubei",
+                "transaction_id": txn_resp.json()["id"],
+                "role": "payer",
+                "description": "测试付款方",
+            },
+        )
         assert party_resp.status_code in (200, 201)
         
         # 创建交易
-        resp = client.post("/transaction", json={
-            "amount": 500.0,
-            "category": "test",
-            "description": "带参与方的交易"
-        })
+        resp = client.post(
+            "/transaction",
+            params={"ouid": "shu"},
+            json={
+                "amount": 500.0,
+                "category": "test",
+                "description": "带参与方的交易",
+            },
+        )
         assert resp.status_code in (200, 201)
 
     def test_transaction_not_found(self):
         """测试查询不存在的组织交易"""
-        resp = client.get("/transaction", params={"oid": 99999})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data) == 0
+        resp = client.get("/transaction", params={"ouid": "missing_org"})
+        assert resp.status_code == 404
 
 
 class TestPartyAPI:
     def test_list(self):
         """测试查询参与方列表"""
-        resp = client.get("/party", params={"oid": 1})
+        resp = client.get("/party", params={"ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -422,17 +449,17 @@ class TestPartyAPI:
         
         party = data[0]
         assert "id" in party
-        assert "pid" in party
-        assert "oid" in party
+        assert "puid" in party
+        assert "ouid" in party
         assert "role" in party
 
-    def test_list_with_pid_filter(self):
-        """测试按人员ID过滤参与方"""
-        resp = client.get("/party", params={"oid": 1, "pid": 1})
+    def test_list_with_puid_filter(self):
+        """测试按人员业务标识过滤参与方"""
+        resp = client.get("/party", params={"ouid": "shu", "puid": "liubei"})
         assert resp.status_code == 200
         data = resp.json()
         for p in data:
-            assert p["pid"] == 1
+            assert p["puid"] == "liubei"
 
     def test_create(self):
         """测试创建参与方"""
@@ -441,18 +468,21 @@ class TestPartyAPI:
             "amount": 100.0,
             "category": "test",
             "description": "测试交易"
-        })
+        }, params={"ouid": "shu"})
         assert txn_resp.status_code in (200, 201)
         txn_id = txn_resp.json()["id"]
         
         # 创建参与方
-        resp = client.post("/party", json={
-            "pid": 1,
-            "oid": 1,
-            "transaction_id": txn_id,
-            "role": "payer",
-            "description": "付款方"
-        })
+        resp = client.post(
+            "/party",
+            params={"ouid": "shu"},
+            json={
+                "puid": "liubei",
+                "transaction_id": txn_id,
+                "role": "payer",
+                "description": "付款方",
+            },
+        )
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["role"] == "payer"
@@ -468,11 +498,11 @@ class TestPartyAPI:
 class TestSummaryAPI:
     def test_summary(self):
         """测试获取财务汇总"""
-        resp = client.get("/summary", params={"oid": 1})
+        resp = client.get("/summary", params={"ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
-        assert "oid" in data
-        assert data["oid"] == 1
+        assert "ouid" in data
+        assert data["ouid"] == "shu"
         
         # 验证汇总字段
         assert "total_outflow" in data
@@ -482,30 +512,27 @@ class TestSummaryAPI:
 
     def test_summary_empty(self):
         """测试获取空组织的汇总"""
-        resp = client.get("/summary", params={"oid": 99999})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["total_outflow"] == 0.0
-        assert data["transaction_count"] == 0
+        resp = client.get("/summary", params={"ouid": "missing_org"})
+        assert resp.status_code == 404
 
 
 class TestChatAPI:
     def test_endpoint(self):
         """测试AI对话接口"""
-        resp = client.post("/chat", json={"message": "hi", "oid": 1})
+        resp = client.post("/chat", params={"ouid": "shu"}, json={"message": "hi"})
         assert resp.status_code in (200, 500, 503)
         if resp.status_code == 200:
             data = resp.json()
             assert "response" in data
-            assert "oid" in data
+            assert "ouid" in data
 
     def test_chat_with_context(self):
         """测试带上下文的AI对话"""
-        resp = client.post("/chat", json={
-            "message": "蜀国有多少资源？",
-            "oid": 1,
-            "context": "resource_query"
-        })
+        resp = client.post(
+            "/chat",
+            params={"ouid": "shu"},
+            json={"message": "蜀国有多少资源？"},
+        )
         assert resp.status_code in (200, 500, 503)
         if resp.status_code == 200:
             data = resp.json()
@@ -513,11 +540,8 @@ class TestChatAPI:
 
     def test_chat_invalid_context(self):
         """测试无效上下文ID"""
-        resp = client.post("/chat", json={
-            "message": "测试",
-            "oid": 99999
-        })
-        assert resp.status_code in (200, 400, 500)
+        resp = client.post("/chat", params={"ouid": "missing_org"}, json={"message": "测试"})
+        assert resp.status_code == 404
 
 
 # ============================================================================
@@ -538,6 +562,7 @@ class TestIntegration:
         assert org_resp.status_code in (200, 201)
         org = org_resp.json()
         org_id = org["id"]
+        org_ouid = org["ouid"]
         
         # 2. 添加人员
         person_resp = client.post("/person", json={
@@ -546,37 +571,44 @@ class TestIntegration:
         })
         assert person_resp.status_code in (200, 201)
         person = person_resp.json()
-        person_id = person["id"]
+        person_puid = person["puid"]
         
         # 3. 添加组织成员
         member_resp = client.post("/organizations/members", json={
-            "pid": person_id,
-            "oid": org_id,
+            "puid": person_puid,
+            "ouid": org_ouid,
             "role": "测试角色"
         })
         assert member_resp.status_code in (200, 201)
         
         # 4. 创建资源
-        resource_resp = client.post("/resource", json={
-            "oid": org_id,
-            "name": "集成测试资源",
-            "resource_type": "physical",
-            "unit": "个"
-        })
+        resource_resp = client.post(
+            "/resource",
+            params={"ouid": org_ouid},
+            json={
+                "name": "集成测试资源",
+                "resource_type": "physical",
+                "unit": "个",
+            },
+        )
         assert resource_resp.status_code in (200, 201)
+        resource = resource_resp.json()
         
         # 5. 创建仓库
-        warehouse_resp = client.post("/warehouse", json={
-            "oid": org_id,
-            "name": "集成测试仓库",
-            "code": "IT",
-            "location": "测试地点"
-        })
+        warehouse_resp = client.post(
+            "/warehouse",
+            params={"ouid": org_ouid},
+            json={
+                "name": "集成测试仓库",
+                "code": "IT",
+                "location": "测试地点",
+            },
+        )
         assert warehouse_resp.status_code in (200, 201)
         
         # 6. 创建资源-仓库明细
-        rw_resp = client.post("/resource-warehouse", json={
-            "resource_id": 1,  # 使用第一个资源
+        rw_resp = client.post("/resource-warehouse", params={"ouid": org_ouid}, json={
+            "resource_id": resource["id"],
             "location_path": "total",
             "quantity": 50,
             "unit": "个"
@@ -584,28 +616,35 @@ class TestIntegration:
         assert rw_resp.status_code in (200, 201)
         
         # 7. 创建交易
-        txn_resp = client.post("/transaction", json={
-            "amount": 1000.0,
-            "category": "测试",
-            "description": "集成测试交易"
-        })
+        txn_resp = client.post(
+            "/transaction",
+            params={"ouid": org_ouid},
+            json={
+                "amount": 1000.0,
+                "category": "测试",
+                "description": "集成测试交易",
+            },
+        )
         assert txn_resp.status_code in (200, 201)
         
         # 8. 创建参与方
-        party_resp = client.post("/party", json={
-            "pid": person_id,
-            "oid": org_id,
-            "transaction_id": txn_resp.json()["id"],
-            "role": "payer",
-            "description": "付款方"
-        })
+        party_resp = client.post(
+            "/party",
+            params={"ouid": org_ouid},
+            json={
+                "puid": person_puid,
+                "transaction_id": txn_resp.json()["id"],
+                "role": "payer",
+                "description": "付款方",
+            },
+        )
         assert party_resp.status_code in (200, 201)
         
         # 9. 验证数据
         assert client.get("/organizations").json()[org_id - 1]["id"] == org_id
-        assert len(client.get("/person", params={"oid": org_id}).json()) > 0
-        assert len(client.get("/resource", params={"oid": org_id}).json()) > 0
-        assert len(client.get("/transaction", params={"oid": org_id}).json()) > 0
+        assert len(client.get("/person", params={"ouid": org_ouid}).json()) > 0
+        assert len(client.get("/resource", params={"ouid": org_ouid}).json()) > 0
+        assert len(client.get("/transaction", params={"ouid": org_ouid}).json()) > 0
         
         # 10. 清理
         delete_test_data(org_id)

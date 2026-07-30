@@ -26,8 +26,8 @@
 
 | 缩写 | 含义 |
 |------|------|
-| `pid` | person_id, 人员ID |
-| `oid` | org_id, 组织ID |
+| `puid` | person业务标识, 例如 `liubei` |
+| `ouid` | organization业务标识, 例如 `shu` |
 
 ---
 
@@ -84,7 +84,7 @@
 
 **Response**: `Organization` (201)
 
-### `GET /organizations/{oid}/members`
+### `GET /organizations/{ouid}/members`
 
 查询组织成员。
 
@@ -95,7 +95,7 @@
     "id": 1,
     "role": "主公",
     "name": "刘备",
-    "pid": 1
+    "puid": "liubei"
   }
 ]
 ```
@@ -111,7 +111,7 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| oid | int | 是 | 组织ID |
+| ouid | int | 是 | 组织ID |
 | name | string | 否 | 名称模糊搜索 |
 
 **Response**: `Person[]`
@@ -152,15 +152,15 @@
 **Request Body**:
 ```json
 {
-  "pid": 1,
-  "oid": 1,
+  "puid": "liubei",
+  "ouid": "shu",
   "role": "主公"
 }
 ```
 
 **Response**: `Membership` (201)
 
-### `GET /persons/{pid}/organizations`
+### `GET /persons/{puid}/organizations`
 
 查询人员所属的所有组织。
 
@@ -171,7 +171,7 @@
     "id": 1,
     "role": "主公",
     "name": "蜀国",
-    "oid": 1,
+    "ouid": "shu",
     "org_type": "company"
   }
 ]
@@ -188,7 +188,7 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| oid | int | 是 | 组织ID |
+| ouid | int | 是 | 组织ID |
 | name | string | 否 | 名称模糊搜索 |
 | resource_type | string | 否 | 类型: `physical`, `financial`, `human`, `knowledge` |
 
@@ -197,14 +197,14 @@
 [
   {
     "id": 1,
-    "oid": 1,
+    "ouid": "shu",
     "name": "青龙偃月刀",
     "type": "physical",
     "status": "active",
     "unit": "把",
     "amount": null,
     "currency": null,
-    "pid": null,
+    "puid": null,
     "person_name": null,
     "content": null,
     "created_at": "2025-01-01T00:00:00"
@@ -219,7 +219,7 @@
 **Request Body**:
 ```json
 {
-  "oid": 1,
+  "ouid": "shu",
   "name": "青龙偃月刀",
   "resource_type": "physical",
   "unit": "把"
@@ -232,13 +232,13 @@
 |------|------|----------|
 | physical | 物资 | unit |
 | financial | 资金 | amount, currency |
-| human | 人力 | pid |
+| human | 人力 | puid |
 | knowledge | 知识 | content |
 
 **示例 — 创建资金资源**:
 ```json
 {
-  "oid": 1,
+  "ouid": "shu",
   "name": "蜀国金库",
   "resource_type": "financial",
   "amount": 50000,
@@ -249,17 +249,17 @@
 **示例 — 创建人力资源**:
 ```json
 {
-  "oid": 1,
+  "ouid": "shu",
   "name": "蜀国兵力",
   "resource_type": "human",
-  "pid": 1
+  "puid": "liubei"
 }
 ```
 
 **示例 — 创建知识资源**:
 ```json
 {
-  "oid": 1,
+  "ouid": "shu",
   "name": "隆中对",
   "resource_type": "knowledge",
   "content": "三分天下之策"
@@ -279,7 +279,7 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| oid | int | 是 | 组织ID |
+| ouid | int | 是 | 组织ID |
 | name | string | 否 | 名称模糊搜索 |
 
 **Response**: `Warehouse[]`
@@ -287,7 +287,7 @@
 [
   {
     "id": 1,
-    "oid": 1,
+    "ouid": "shu",
     "name": "蜀国武库",
     "code": "A",
     "location": "成都",
@@ -304,7 +304,7 @@
 **Request Body**:
 ```json
 {
-  "oid": 1,
+  "ouid": "shu",
   "name": "蜀国武库",
   "code": "A",
   "location": "成都",
@@ -408,7 +408,7 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| oid | int | 是 | 组织ID |
+| ouid | int | 是 | 组织ID |
 | limit | int | 否 | 返回条数, 默认50, 范围1-200 |
 
 **Response**: `Transaction[]`
@@ -422,12 +422,12 @@
     "created_at": "2025-01-01T00:00:00",
     "parties": [
       {
-        "pid": 5,
+        "puid": "liubei",
         "person_name": "刘备",
         "role": "payer"
       },
       {
-        "pid": 2,
+        "puid": "zhugeliang",
         "person_name": "诸葛亮",
         "role": "payee"
       }
@@ -462,16 +462,16 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| oid | int | 是 | 组织ID |
-| pid | int | 否 | 人员ID过滤 |
+| ouid | int | 是 | 组织ID |
+| puid | int | 否 | 人员ID过滤 |
 
 **Response**: `Party[]`
 ```json
 [
   {
     "id": 1,
-    "pid": 5,
-    "oid": 1,
+    "puid": "liubei",
+    "ouid": "shu",
     "transaction_id": 1,
     "role": "payer",
     "description": "蜀汉集团支付",
@@ -493,8 +493,8 @@
 **Request Body**:
 ```json
 {
-  "pid": 5,
-  "oid": 1,
+  "puid": "liubei",
+  "ouid": "shu",
   "transaction_id": 1,
   "role": "payer",
   "description": "蜀汉集团支付"
@@ -514,12 +514,12 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| oid | int | 是 | 组织ID |
+| ouid | int | 是 | 组织ID |
 
 **Response**:
 ```json
 {
-  "oid": 1,
+  "ouid": "shu",
   "total_outflow": 1500.00,
   "transaction_count": 3
 }
@@ -537,7 +537,7 @@
 ```json
 {
   "message": "蜀国有多少战船?",
-  "oid": 1
+  "ouid": "shu"
 }
 ```
 
@@ -545,7 +545,7 @@
 ```json
 {
   "response": "蜀国共有10艘战船,全部存放在水军基地(A仓库-2库区-001库位)。",
-  "oid": 1
+  "ouid": "shu"
 }
 ```
 
@@ -599,8 +599,8 @@
 ```json
 {
   "id": "int",
-  "pid": "int",
-  "oid": "int",
+  "puid": "string",
+  "ouid": "string",
   "role": "string|null",
   "joined_at": "datetime"
 }
@@ -610,14 +610,14 @@
 ```json
 {
   "id": "int",
-  "oid": "int",
+  "ouid": "string",
   "name": "string",
   "type": "string (physical|financial|human|knowledge)",
   "status": "string (active|inactive)",
   "unit": "string|null",
   "amount": "decimal|null",
   "currency": "string|null",
-  "pid": "int|null",
+  "puid": "string|null",
   "person_name": "string|null",
   "content": "text|null",
   "created_at": "datetime",
@@ -629,7 +629,7 @@
 ```json
 {
   "id": "int",
-  "oid": "int",
+  "ouid": "string",
   "name": "string",
   "code": "string",
   "location": "string|null",
@@ -666,8 +666,8 @@
 ```json
 {
   "id": "int",
-  "pid": "int",
-  "oid": "int",
+  "puid": "string",
+  "ouid": "string",
   "transaction_id": "int",
   "role": "string (payer|payee|...)",
   "description": "string|null",

@@ -30,13 +30,13 @@ class TestDatabaseSchema(unittest.TestCase):
         names = {c["column_name"] for c in cols}
         self.assertIn("amount", names)
         self.assertIn("currency", names)
-        self.assertIn("pid", names)
+        self.assertIn("person_id", names)
         self.assertIn("unit", names)
 
     def test_warehouse_table(self):
         cols = _fetch("SELECT column_name FROM information_schema.columns WHERE table_name = 'warehouse'")
         names = {c["column_name"] for c in cols}
-        self.assertIn("oid", names)
+        self.assertIn("organization_id", names)
         self.assertIn("name", names)
         self.assertIn("code", names)
 
@@ -75,8 +75,8 @@ class TestResourceCRUD(unittest.TestCase):
 
         org = create_organization("测试", "company", None)
         p = create_person("张三")
-        r = create_resource(org["id"], "兵力", "human", pid=p["id"])
-        self.assertEqual(r["pid"], p["id"])
+        r = create_resource(org["id"], "兵力", "human", person_id=p["id"])
+        self.assertEqual(r["person_id"], p["id"])
 
     def test_create_knowledge_resource(self):
         from src.db.database import create_resource, create_organization
@@ -133,8 +133,8 @@ class TestThreeKingdomsDemo(unittest.TestCase):
         main()
 
     def test_shu_resource_types(self):
-        from src.db.database import query_resource
-        res = query_resource(oid=1)
+        from src.db.database import query_resource, resolve_organization_id
+        res = query_resource(resolve_organization_id("shu"))
         types = {r["type"] for r in res}
         self.assertIn("physical", types)
         self.assertIn("financial", types)
@@ -142,13 +142,16 @@ class TestThreeKingdomsDemo(unittest.TestCase):
         self.assertIn("knowledge", types)
 
     def test_shu_has_warehouse(self):
-        from src.db.database import query_warehouse
-        wh = query_warehouse(oid=1)
+        from src.db.database import query_warehouse, resolve_organization_id
+        wh = query_warehouse(resolve_organization_id("shu"))
         self.assertTrue(len(wh) > 0)
 
     def test_resource_warehouse_data(self):
-        from src.db.database import query_resource, query_resource_warehouse, get_resource_total
-        res = query_resource(oid=1, name="连弩")
+        from src.db.database import (
+            query_resource, query_resource_warehouse, get_resource_total,
+            resolve_organization_id,
+        )
+        res = query_resource(resolve_organization_id("shu"), name="连弩")
         self.assertTrue(len(res) > 0)
         rw = query_resource_warehouse(res[0]["id"])
         self.assertTrue(len(rw) > 0)

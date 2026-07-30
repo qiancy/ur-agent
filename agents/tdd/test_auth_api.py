@@ -32,16 +32,16 @@ def test_register_success():
         if not orgs:
             print("  ✗ No organizations found")
             return False
-        org_oid = orgs[0].get("oid")
-        if not org_oid:
-            print("  ✗ Organization has no oid field")
+        org_ouid = orgs[0].get("ouid")
+        if not org_ouid:
+            print("  ✗ Organization has no ouid field")
             return False
     except Exception as e:
         print(f"  ✗ Failed to get organizations: {e}")
         return False
     
     # Register new user
-    login = f"testuser@{org_oid}.cn"
+    login = f"testuser@{org_ouid}.cn"
     try:
         resp = requests.post(
             f"{BASE_URL}/auth/register",
@@ -55,7 +55,7 @@ def test_register_success():
         )
         if resp.status_code == 201:
             data = resp.json()
-            if data.get("person", {}).get("pid") == "testuser":
+            if data.get("person", {}).get("puid") == "testuser":
                 print(f"  ✓ Registration successful: {data}")
                 return True
             else:
@@ -79,7 +79,7 @@ def test_register_invalid_login_format():
         "invalid",           # No @
         "user@org",          # No .cn
         "user@org.com",      # Wrong TLD
-        "user.name@org.cn",  # Invalid pid (contains dot)
+        "user.name@org.cn",  # Invalid puid (contains dot)
     ]
     
     for login in invalid_logins:
@@ -148,15 +148,15 @@ def test_login_success():
         if not orgs:
             print("  ✗ No organizations found")
             return False
-        org_oid = orgs[0].get("oid")
-        if not org_oid:
-            print("  ✗ Organization has no oid field")
+        org_ouid = orgs[0].get("ouid")
+        if not org_ouid:
+            print("  ✗ Organization has no ouid field")
             return False
     except Exception as e:
         print(f"  ✗ Failed to get organizations: {e}")
         return False
     
-    login = f"testuser@{org_oid}.cn"
+    login = f"testuser@{org_ouid}.cn"
     
     # Register
     requests.post(
@@ -182,7 +182,7 @@ def test_login_success():
         )
         if resp.status_code == 200:
             data = resp.json()
-            if data.get("access_token") and data.get("organization", {}).get("oid") == org_oid:
+            if data.get("access_token") and data.get("organization", {}).get("ouid") == org_ouid:
                 print(f"  ✓ Login successful")
                 return True
             else:
@@ -208,7 +208,7 @@ def test_login_wrong_password():
         if not orgs:
             print("  ✗ No organizations found")
             return False
-        org_oid = orgs[0].get("oid")
+        org_ouid = orgs[0].get("ouid")
     except:
         print("  ✗ Cannot get orgs")
         return False
@@ -217,7 +217,7 @@ def test_login_wrong_password():
         resp = requests.post(
             f"{BASE_URL}/auth/login",
             json={
-                "login": f"testuser@{org_oid}.cn",
+                "login": f"testuser@{org_ouid}.cn",
                 "password": "wrongpassword"
             },
             timeout=10
@@ -240,9 +240,9 @@ def test_login_wrong_org_membership():
     print("TEST: Login wrong org membership")
     print("=" * 60)
     
-    # Create a new organization with unique oid
+    # Create a new organization with unique ouid
     unique_suffix = str(int(time.time()))[-6:]
-    test_oid = f"torg{unique_suffix}"
+    test_ouid = f"torg{unique_suffix}"
     
     try:
         resp = requests.post(
@@ -250,7 +250,7 @@ def test_login_wrong_org_membership():
             json={
                 "name": "测试组织",
                 "org_type": "company",
-                "oid": test_oid
+                "ouid": test_ouid
             },
             timeout=10
         )
@@ -266,7 +266,7 @@ def test_login_wrong_org_membership():
         resp = requests.post(
             f"{BASE_URL}/auth/register",
             json={
-                "login": f"member@{test_oid}.cn",
+                "login": f"member@{test_ouid}.cn",
                 "password": "test123",
                 "name": "组织成员",
                 "role": "member"
@@ -284,11 +284,11 @@ def test_login_wrong_org_membership():
     try:
         resp = requests.get(f"{BASE_URL}/organizations", timeout=5)
         orgs = resp.json()
-        other_org = [o for o in orgs if o.get("oid") != test_oid]
+        other_org = [o for o in orgs if o.get("ouid") != test_ouid]
         if not other_org:
             print("  ✗ No other orgs to test")
             return False
-        other_oid = other_org[0].get("oid")
+        other_ouid = other_org[0].get("ouid")
     except:
         print("  ✗ Cannot get orgs")
         return False
@@ -297,7 +297,7 @@ def test_login_wrong_org_membership():
         resp = requests.post(
             f"{BASE_URL}/auth/login",
             json={
-                "login": f"member@{other_oid}.cn",
+                "login": f"member@{other_ouid}.cn",
                 "password": "test123"
             },
             timeout=10

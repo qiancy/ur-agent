@@ -21,7 +21,8 @@ def test_chat(message, description):
     try:
         response = requests.post(
             f"{BASE_URL}/chat",
-            json={"message": message, "oid": 1},
+            json={"message": message},
+            params={"ouid": "shu"},
             timeout=35
         )
         
@@ -30,7 +31,7 @@ def test_chat(message, description):
             return {
                 "status": "success",
                 "response": data.get("response", ""),
-                "oid": data.get("oid", 0)
+                "ouid": data.get("ouid", "")
             }
         elif response.status_code == 500:
             return {

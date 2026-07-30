@@ -12,21 +12,21 @@ from src.db.database import (
 
 
 @tool
-def query_resource_tool(name: str, oid: str = "shu", resource_type: Optional[str] = None) -> str:
+def query_resource_tool(name: str, ouid: str = "shu", resource_type: Optional[str] = None) -> str:
     """
     Query resource information by name.
 
     Args:
         name: Name of the resource to query (partial match supported).
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
         resource_type: Type filter: physical, financial, human, knowledge.
     """
     try:
-        organization_id = resolve_organization_id(oid)
+        organization_id = resolve_organization_id(ouid)
         results = query_resource(organization_id, name=name, resource_type=resource_type)
         if results:
             return json.dumps(results, default=str, ensure_ascii=False)
-        return f"No resource found matching '{name}' in org {oid}"
+        return f"No resource found matching '{name}' in org {ouid}"
     except Exception as e:
         return f"Error querying resources: {e}"
 
@@ -36,7 +36,7 @@ def query_resource_stock(
     resource_id: Optional[str] = None,
     location_path: Optional[str] = None,
     resource_name: Optional[str] = None,
-    oid: str = "shu",
+    ouid: str = "shu",
 ) -> str:
     """
     Query resource stock/quantity at different location levels.
@@ -45,10 +45,10 @@ def query_resource_stock(
         resource_id: ID of the resource (optional if resource_name provided).
         location_path: Location path filter.
         resource_name: Name of the resource to find (optional if resource_id provided).
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
     """
     try:
-        organization_id = resolve_organization_id(oid)
+        organization_id = resolve_organization_id(ouid)
         if resource_id is not None and not isinstance(resource_id, int):
             try:
                 resource_id = int(resource_id)
@@ -60,7 +60,7 @@ def query_resource_stock(
             if resources:
                 resource_id = resources[0]["id"]
             else:
-                return f"No resource found matching '{resource_name}' in org {oid}"
+                return f"No resource found matching '{resource_name}' in org {ouid}"
 
         if resource_id is None:
             return "Error: resource_id is required or use resource_name to look up"

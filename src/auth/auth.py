@@ -32,8 +32,8 @@ LOGIN_PATTERN = re.compile(r'^([a-zA-Z0-9_-]+)@([a-zA-Z0-9_-]+)(?:\.[a-zA-Z0-9_-
 
 def parse_login_name(login: str) -> Optional[Tuple[str, str]]:
     """
-    Parse login name format: {pid}@{oid} or {pid}@{oid}.{suffix}.
-    Returns (pid, oid) or None if invalid.
+    Parse login name format: {puid}@{ouid} or {puid}@{ouid}.{suffix}.
+    Returns (puid, ouid) or None if invalid.
     """
     match = LOGIN_PATTERN.match(login)
     if match:
@@ -41,14 +41,14 @@ def parse_login_name(login: str) -> Optional[Tuple[str, str]]:
     return None
 
 
-def validate_pid(pid: str) -> bool:
-    """Validate person pid: only letters, numbers, underscores, hyphens."""
-    return bool(re.match(r'^[a-zA-Z0-9_-]+$', pid))
+def validate_puid(puid: str) -> bool:
+    """Validate person puid: only letters, numbers, underscores, hyphens."""
+    return bool(re.match(r'^[a-zA-Z0-9_-]+$', puid))
 
 
-def validate_oid(oid: str) -> bool:
-    """Validate organization oid: only letters, numbers, underscores, hyphens."""
-    return bool(re.match(r'^[a-zA-Z0-9_-]+$', oid))
+def validate_ouid(ouid: str) -> bool:
+    """Validate organization ouid: only letters, numbers, underscores, hyphens."""
+    return bool(re.match(r'^[a-zA-Z0-9_-]+$', ouid))
 
 
 # ── Password hashing ─────────────────────────────────────────────────────────
@@ -76,11 +76,18 @@ def verify_password(password: str, stored_password: str, salt: str) -> bool:
 
 # ── JWT token management ─────────────────────────────────────────────────────
 
+JWT_FORBIDDEN_ID_KEYS = {"id", "person_id", "organization_id", "person_db_id", "organization_db_id"}
+
+
+def _canonicalize_token_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in data.items() if k not in JWT_FORBIDDEN_ID_KEYS}
+
+
 def create_access_token(data: Dict[str, Any]) -> str:
     """
     Create JWT access token.
     """
-    to_encode = data.copy()
+    to_encode = _canonicalize_token_data(data)
     expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -92,8 +99,7 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     Returns payload dict or None if invalid.
     """
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except JWTError:
         return None
 
@@ -103,30 +109,30 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
 class ContextManager:
     """上下文管理器
     
-    context 是运行时概念，由 oid 和 pid 组成
-    context = {oid, pid} 表示 "person@organization" 上下文
+    context 是运行时概念，由 ouid 和 puid 组成
+    context = {ouid, puid} 表示 "person@organization" 上下文
     """
     
     def __init__(self):
-        self.current_oid = None
-        self.current_pid = None
+        self.current_ouid = None
+        self.current_puid = None
     
-    def set_context(self, oid: str, pid: str):
-        """设置当前上下文 (oid, pid)"""
-        self.current_oid = oid
-        self.current_pid = pid
+    def set_context(self, ouid: str, puid: str):
+        """设置当前上下文 (ouid, puid)"""
+        self.current_ouid = ouid
+        self.current_puid = puid
     
     def get_context(self) -> Optional[Tuple[str, str]]:
-        """获取当前上下文 (oid, pid)"""
-        return (self.current_oid, self.current_pid)
+        """获取当前上下文 (ouid, puid)"""
+        return (self.current_ouid, self.current_puid)
     
-    def get_oid(self) -> Optional[str]:
-        """获取当前组织 oid"""
-        return self.current_oid
+    def get_ouid(self) -> Optional[str]:
+        """获取当前组织 ouid"""
+        return self.current_ouid
     
-    def get_pid(self) -> Optional[str]:
-        """获取当前人员 pid"""
-        return self.current_pid
+    def get_puid(self) -> Optional[str]:
+        """获取当前人员 puid"""
+        return self.current_puid
     
     def validate_context(self, org_id: int, person_id: int) -> bool:
         """Validate that the given person has an active membership in the organization."""

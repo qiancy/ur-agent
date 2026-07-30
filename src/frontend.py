@@ -22,10 +22,10 @@ BROWSER_STATE_SECRET = os.getenv("BROWSER_STATE_SECRET") or os.getenv("JWT_SECRE
 def _empty_login_state():
     return {
         "access_token": None,
-        "org_oid": None,
+        "org_ouid": None,
         "org_name": None,
         "org_type": None,
-        "pid": None,
+        "puid": None,
         "person_name": None,
         "role": None,
         "system_role": None,
@@ -36,16 +36,15 @@ def _login_state_from_response(resp):
     person = resp.get("person", {})
     org = resp.get("organization", {})
     membership = resp.get("membership", {})
-    account = resp.get("account", {})
     return {
         "access_token": resp.get("access_token"),
-        "org_oid": org.get("oid"),
+        "org_ouid": org.get("ouid"),
         "org_name": org.get("name"),
         "org_type": org.get("type"),
-        "pid": person.get("pid"),
+        "puid": person.get("puid"),
         "person_name": person.get("name"),
         "role": membership.get("role"),
-        "system_role": account.get("system_role", "user"),
+        "system_role": resp.get("system_role", "user"),
     }
 
 
@@ -134,12 +133,12 @@ def _org_labels() -> List[str]:
     return labels or ["蜀国 (company)"]
 
 
-def _label_to_oid(label: str, state=None) -> str:
+def _label_to_ouid(label: str, state=None) -> str:
     for org in _load_orgs():
         if label == f"{org['name']} ({org['type']})":
-            return org["oid"]
-    if (state or {}).get("org_oid"):
-        return state["org_oid"]
+            return org["ouid"]
+    if (state or {}).get("org_ouid"):
+        return state["org_ouid"]
     return "shu"
 
 
@@ -222,7 +221,7 @@ def login_fn(login, password, state):
         )
 
     try:
-        resp = _post("/auth/login", {"login": login.strip(), "password": password.strip()}, state=state)
+        resp = _post("/auth/seller-login", {"login": login.strip(), "password": password.strip()}, state=state)
         new_state = _login_state_from_response(resp)
         org_label = _current_org_label(new_state)
         per, ast, tx, summary, campaigns, chatbot, chat_input = _workspace_payload(org_label, new_state)
@@ -342,33 +341,33 @@ def restore_login_view_fn(state):
 # ── Tab 1: Personnel ────────────────────────────────────────────────────────
 
 def load_personnel(org_label, state=None):
-    oid = _label_to_oid(org_label, state)
-    rows = _get("/person", {"oid": oid}, state=state)
+    ouid = _label_to_ouid(org_label, state)
+    rows = _get("/person", {"ouid": ouid}, state=state)
     if not rows:
         return "暂无人员数据"
     lines = []
     for person in rows:
         role = person.get("membership_role") or "-"
-        pid = person.get("pid") or "-"
-        lines.append(f"**{person['name']}** — {role} (`{pid}`)")
+        puid = person.get("puid") or "-"
+        lines.append(f"**{person['name']}** — {role} (`{puid}`)")
     return "\n\n".join(lines)
 
 
 def add_personnel_fn(org_label, name, role, state):
     if not name.strip():
         return "请输入姓名"
-    oid = _label_to_oid(org_label, state)
+    ouid = _label_to_ouid(org_label, state)
     person = _post("/person", {"name": name.strip()}, state=state)
     if role.strip():
-        _post("/organizations/members", {"pid": person["pid"], "oid": oid, "role": role.strip()}, state=state)
+        _post("/organizations/members", {"puid": person["puid"], "ouid": ouid, "role": role.strip()}, state=state)
     return load_personnel(org_label, state)
 
 
 # ── Tab 2: Assets ───────────────────────────────────────────────────────────
 
 def load_assets(org_label, state=None):
-    oid = _label_to_oid(org_label, state)
-    rows = _get("/resource", {"oid": oid}, state=state)
+    ouid = _label_to_ouid(org_label, state)
+    rows = _get("/resource", {"ouid": ouid}, state=state)
     if not rows:
         return "暂无资源数据"
     lines = []
@@ -391,7 +390,7 @@ def add_asset_fn(org_label, name, atype, amount, unit, state):
     if not name.strip():
         return "请输入资源名称"
     body = {
-        "oid": _label_to_oid(org_label, state),
+        "ouid": _label_to_ouid(org_label, state),
         "name": name.strip(),
         "resource_type": atype.strip() or "physical",
     }
@@ -399,7 +398,7 @@ def add_asset_fn(org_label, name, atype, amount, unit, state):
         body["unit"] = unit.strip()
     if amount:
         body["amount"] = float(amount)
-    _post("/resource", body, params={"oid": body["oid"]}, state=state)
+    _post("/resource", body, params={"ouid": body["ouid"]}, state=state)
     return load_assets(org_label, state)
 
 
@@ -444,8 +443,8 @@ def _parse_party_lines(lines_text):
 
 
 def load_transactions(org_label, state=None):
-    oid = _label_to_oid(org_label, state)
-    rows = _get("/transaction", {"oid": oid, "limit": 50}, state=state)
+    ouid = _label_to_ouid(org_label, state)
+    rows = _get("/transaction", {"ouid": ouid, "limit": 50}, state=state)
     if not rows:
         return "暂无交易记录"
     lines = []
@@ -471,24 +470,24 @@ def load_transactions(org_label, state=None):
 def add_transaction_fn(org_label, amount, category, desc, party_lines, state):
     if not amount or float(amount) <= 0:
         return "请输入有效交易金额"
-    oid = _label_to_oid(org_label, state)
+    ouid = _label_to_ouid(org_label, state)
     parties = _parse_party_lines(party_lines)
     if not parties:
         return "请至少填写一个参与方"
 
     resolved_parties = []
     for party in parties:
-        people = _get("/person", {"oid": oid, "name": party["name"]}, state=state)
+        people = _get("/person", {"ouid": ouid, "name": party["name"]}, state=state)
         if not people:
             raise ValueError(f"找不到参与方人员: {party['name']}")
-        resolved_parties.append({**party, "pid": people[0]["pid"]})
+        resolved_parties.append({**party, "puid": people[0]["puid"]})
 
     body = {
         "amount": float(amount),
         "category": category.strip() or "其他",
         "description": desc.strip() or None,
     }
-    txn = _post("/transaction", body, params={"oid": oid}, state=state)
+    txn = _post("/transaction", body, params={"ouid": ouid}, state=state)
     txn_id = txn["id"]
 
     for party in resolved_parties:
@@ -496,15 +495,15 @@ def add_transaction_fn(org_label, amount, category, desc, party_lines, state):
         _post(
             "/party",
             {
-                "pid": party["pid"],
-                "oid": oid,
+                "puid": party["puid"],
+                "ouid": ouid,
                 "transaction_id": txn_id,
                 "role": party["role"],
                 "description": party["description"],
                 "funds_change": signed_amount,
                 "reputation_change": 0,
             },
-            params={"oid": oid},
+            params={"ouid": ouid},
             state=state,
         )
     return load_transactions(org_label, state)
@@ -513,7 +512,7 @@ def add_transaction_fn(org_label, amount, category, desc, party_lines, state):
 # ── Tab 5: Summary ──────────────────────────────────────────────────────────
 
 def load_summary(org_label, state=None):
-    s = _get("/summary", {"oid": _label_to_oid(org_label, state)}, state=state)
+    s = _get("/summary", {"ouid": _label_to_ouid(org_label, state)}, state=state)
     return (
         f"**{org_label} 财务摘要**\n\n"
         f"资金: ¥{s['funds']:,.2f}\n"
@@ -538,11 +537,11 @@ def load_campaigns(state=None):
     lines = []
     for row in rows:
         orgs = row.get("organizations") or []
-        org_text = ", ".join([f"{o.get('name')}(`{o.get('oid')}`)" for o in orgs]) or "-"
+        org_text = ", ".join([f"{o.get('name')}(`{o.get('ouid')}`)" for o in orgs]) or "-"
         lines.append(
             f"**#{row['id']} {row['campaign_name']}** (`{row['campaign_code']}`)\n"
             f"组织: {org_text}\n"
-            f"导入人: `{row.get('imported_by_pid')}`  状态: `{row.get('status')}`"
+            f"导入人: `{row.get('imported_by_puid')}`  状态: `{row.get('status')}`"
         )
     return "\n\n".join(lines)
 
@@ -580,7 +579,7 @@ def replay_campaign_fn(campaign_import_id, state):
             lines.append(
                 f"**{event.get('seq')}. {event.get('title')}**\n"
                 f"{event.get('description') or ''}\n"
-                f"组织: {org.get('name')} (`{org.get('oid')}`)"
+                f"组织: {org.get('name')} (`{org.get('ouid')}`)"
             )
         return "\n\n".join(lines)
     except Exception as e:
@@ -609,14 +608,14 @@ def delete_campaign_fn(campaign_import_id, state):
 def chat_fn(message, history, org_label, state):
     if not message.strip():
         return history, ""
-    oid = _label_to_oid(org_label, state)
-    logger.info("CHAT input oid=%s org=%s message=%s", oid, org_label, message)
+    ouid = _label_to_ouid(org_label, state)
+    logger.info("CHAT input ouid=%s org=%s message=%s", ouid, org_label, message)
     try:
-        resp = _post("/chat", {"message": message}, params={"oid": oid}, timeout=40, state=state)
+        resp = _post("/chat", {"message": message}, params={"ouid": ouid}, timeout=40, state=state)
         reply = resp.get("response", "No response")
-        logger.info("CHAT output oid=%s response=%s", oid, reply[:2000])
+        logger.info("CHAT output ouid=%s response=%s", ouid, reply[:2000])
     except Exception as e:
-        logger.exception("CHAT failed oid=%s message=%s", oid, message)
+        logger.exception("CHAT failed ouid=%s message=%s", ouid, message)
         reply = f"Error: {e}"
     history.append({"role": "user", "content": message})
     history.append({"role": "assistant", "content": reply})

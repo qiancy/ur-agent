@@ -10,18 +10,18 @@ def get_chroma_client():
 
 
 @tool
-def rag_search(query: str, oid: str = "shu") -> str:
+def rag_search(query: str, ouid: str = "shu") -> str:
     """
     Perform RAG search within an organization.
 
     Args:
         query: Natural language query.
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
     """
     try:
-        resolve_organization_id(oid)
+        resolve_organization_id(ouid)
         client = get_chroma_client()
-        collection_name = f"org_{oid}"
+        collection_name = f"org_{ouid}"
         collection = client.get_or_create_collection(name=collection_name)
 
         results = collection.query(query_texts=[query], n_results=5)
@@ -40,27 +40,27 @@ def rag_search(query: str, oid: str = "shu") -> str:
 
 
 @tool
-def store_knowledge(content: str, oid: str = "shu", title: str = "") -> str:
+def store_knowledge(content: str, ouid: str = "shu", title: str = "") -> str:
     """
     Store knowledge content in the vector database for a specific organization.
 
     Args:
         content: Knowledge content to store.
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
         title: Title for the knowledge item.
     """
     try:
-        resolve_organization_id(oid)
+        resolve_organization_id(ouid)
         client = get_chroma_client()
-        collection_name = f"org_{oid}"
+        collection_name = f"org_{ouid}"
         collection = client.get_or_create_collection(name=collection_name)
 
         collection.add(
             documents=[content],
             metadatas=[{"title": title}],
-            ids=[f"doc_{oid}_{len(collection.get()['ids'])}"]
+            ids=[f"doc_{ouid}_{len(collection.get()['ids'])}"]
         )
 
-        return f"Successfully stored knowledge item '{title}' in org {oid}"
+        return f"Successfully stored knowledge item '{title}' in org {ouid}"
     except Exception as e:
         return f"Error storing knowledge: {str(e)}"

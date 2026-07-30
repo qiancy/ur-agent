@@ -124,7 +124,7 @@
 | 检查项 | 说明 | 必须 |
 |--------|------|------|
 | **完整性** | 覆盖所有需求场景 | ✅ |
-| **隔离性** | 使用独立oid，不依赖已有数据 | ✅ |
+| **隔离性** | 使用独立ouid，不依赖已有数据 | ✅ |
 | **可重复性** | 每次执行结果一致 | ✅ |
 | **可验证性** | 每个步骤都有明确的断言 | ✅ |
 | **安全性** | 不修改src/目录，仅通过API操作 | ✅ |
@@ -149,7 +149,7 @@
 | 检查项 | 说明 | 必须 |
 |--------|------|------|
 | **完整性** | 覆盖所有需求场景 | ✅ |
-| **隔离性** | 使用独立oid+pid组合，不依赖已有数据 | ✅ |
+| **隔离性** | 使用独立ouid+puid组合，不依赖已有数据 | ✅ |
 | **可重复性** | 每次执行结果一致 | ✅ |
 | **可验证性** | 每个步骤都有明确的断言 | ✅ |
 | **安全性** | 不修改src/目录，仅通过API操作 | ✅ |
@@ -179,11 +179,11 @@
 
 ### 上下文隔离原则
 ```
-每个测试必须使用独立的oid（组织ID）和pid（人员ID）组合
+每个测试必须使用独立的ouid（组织ID）和puid（人员ID）组合
 确保测试数据之间完全隔离，不会相互影响
 
-context = {oid, pid} 表示 "person@organization" 上下文
-例如：test_oid=999, test_pid=1001 用于测试专用上下文
+context = {ouid, puid} 表示 "person@organization" 上下文
+例如：test_ouid="test_org", test_puid="test_user" 用于测试专用上下文
 ```
 
 ### 测试数据管理
@@ -206,10 +206,11 @@ context = {oid, pid} 表示 "person@organization" 上下文
 
 ### 2. 隔离性原则
 ```python
-# 正确：每个测试使用独立的oid+pid组合
-test_oid = 999  # 测试专用组织ID
-test_pid = 1001  # 测试专用人员ID
-client.post("/organizations", json={"id": test_oid, "pid": test_pid, ...})
+# 正确：每个测试使用独立的ouid+puid组合
+test_ouid = "test_org_999"  # 测试专用组织业务标识
+test_puid = "test_user_1001"  # 测试专用人员业务标识
+client.post("/organizations", json={"ouid": test_ouid, ...})
+client.post("/organizations/members", json={"ouid": test_ouid, "puid": test_puid, ...})
 
 # 错误：使用生产环境的组织ID
 client.post("/organizations", json={"id": 1, ...})  # ❌
@@ -305,7 +306,7 @@ class TestFireNewyeBattle:
         """步骤1：蜀汉准备火攻物资"""
         # 创建物资
         resp = client.post("/resource", json={
-            "oid": SHU_HAN_ORG_ID,
+            "ouid": SHU_HAN_ORG_ID,
             "name": "火箭",
         "resource_type": "physical",
         "unit": "支",
@@ -347,7 +348,7 @@ class TestFireNewyeBattle:
         """步骤3：曹魏援军抵达"""
         # 曹魏调集援军
         resp = client.post("/transaction", json={
-            "oid": CAO_WEI_ORG_ID,
+            "ouid": CAO_WEI_ORG_ID,
             "amount": 5000,
             "category": "军事调度",
             "description": "徐晃援军粮草"
@@ -385,7 +386,7 @@ if __name__ == "__main__":
 ├─────────────────────────────────────────────────┤
 │  1. 准备阶段                                     │
 │     ├─ 清理历史测试数据                         │
-│     ├─ 创建测试组织（oid=1001）          │
+│     ├─ 创建测试组织（ouid="test_org"）          │
 │     └─ 初始化测试物资                           │
 │                                                  │
 │  2. 执行阶段                                     │
@@ -411,14 +412,14 @@ if __name__ == "__main__":
 | FR002 | 组织能创建和管理人员 | 高 | test_add_personnel |
 | FR003 | 能够查询和管理资源 | 高 | test_query_resource |
 | FR004 | 能够记录和查询交易 | 中 | test_record_transaction |
-| FR005 | 支持多oid隔离 | 高 | test_context_isolation |
+| FR005 | 支持多ouid隔离 | 高 | test_context_isolation |
 
 ### 非功能需求
 
 | 类型 | 要求 | 验证方式 |
 |------|------|---------|
 | 性能 | API响应 < 500ms | 压力测试 |
-| 安全 | oid隔离 | 测试数据泄露 |
+| 安全 | ouid隔离 | 测试数据泄露 |
 | 可靠性 | 99.9% API成功率 | 连续调用测试 |
 
 ---

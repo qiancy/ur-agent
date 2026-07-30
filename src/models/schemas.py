@@ -1,7 +1,7 @@
 """
 Pydantic request/response models for Uni-Resource Agent API.
 
-API-facing identifiers: pid (person.pid), oid (organization.oid) — string business keys.
+API-facing identifiers: puid (person) and ouid (organization) — string business keys.
 """
 from typing import Optional
 from pydantic import BaseModel
@@ -12,15 +12,15 @@ from pydantic import BaseModel
 class OrgCreate(BaseModel):
     name: str
     org_type: str
-    oid: Optional[str] = None
+    ouid: Optional[str] = None
     description: Optional[str] = None
     funds: Optional[float] = 0
     reputation: Optional[int] = 0
 
 
 class MembershipAdd(BaseModel):
-    pid: str
-    oid: str
+    puid: str
+    ouid: str
     role: Optional[str] = "member"
 
 
@@ -36,11 +36,11 @@ class PersonCreate(BaseModel):
 class ResourceCreate(BaseModel):
     name: str
     resource_type: str
-    oid: Optional[str] = None  # ignored, org comes from JWT/query param
+    ouid: Optional[str] = None  # ignored, org comes from JWT/query param
     unit: Optional[str] = None
     amount: Optional[float] = None
     currency: Optional[str] = None
-    pid: Optional[str] = None
+    puid: Optional[str] = None
     content: Optional[str] = None
 
 
@@ -51,12 +51,48 @@ class ResourceWarehouseCreate(BaseModel):
     unit: Optional[str] = None
 
 
+# ── Seller MVP ───────────────────────────────────────────────────────────────
+
+class ProductCreate(BaseModel):
+    name: str
+    unit: Optional[str] = None
+    spec: Optional[str] = None
+
+
+class WarehouseCreateSeller(BaseModel):
+    name: str
+    code: str
+    location: Optional[str] = None
+
+
+class PurchaseInRequest(BaseModel):
+    product_uid: str
+    quantity: float
+    location_path: str
+    unit: Optional[str] = None
+    total_amount: float
+    supplier: Optional[str] = None
+
+
+class SalesOutRequest(BaseModel):
+    product_uid: str
+    quantity: float
+    location_path: str
+    unit: Optional[str] = None
+    total_amount: float
+    customer: Optional[str] = None
+
+
+class StockQuery(BaseModel):
+    product_uid: Optional[str] = None
+
+
 # ── Warehouse ────────────────────────────────────────────────────────────────
 
 class WarehouseCreate(BaseModel):
     name: str
     code: str
-    oid: Optional[str] = None  # ignored, org comes from JWT/query param
+    ouid: Optional[str] = None  # ignored, org comes from JWT/query param
     location: Optional[str] = None
     description: Optional[str] = None
 
@@ -73,8 +109,8 @@ class TransactionCreate(BaseModel):
 
 class PartyCreate(BaseModel):
     transaction_id: int
-    pid: Optional[str] = None  # ignored, person comes from JWT
-    oid: Optional[str] = None  # ignored, org comes from JWT/query param
+    puid: Optional[str] = None  # ignored, person comes from JWT
+    ouid: Optional[str] = None  # ignored, org comes from JWT/query param
     role: str
     description: Optional[str] = None
     funds_change: Optional[float] = 0
@@ -90,14 +126,14 @@ class ChatRequest(BaseModel):
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
-    login: str  # {pid}@{oid}.cn
+    login: str  # {puid}@{ouid}.cn
     password: str
     name: str
     role: Optional[str] = "member"
 
 
 class LoginRequest(BaseModel):
-    login: str  # {pid}@{oid}.cn
+    login: str  # {puid}@{ouid}.cn
     password: str
 
 

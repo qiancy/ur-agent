@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.logging_config import setup_logging
 from src.db.database import (
     init_database, create_organization, create_person, create_account, add_membership,
-    query_organization_by_oid, query_person_by_pid, query_account_by_login, query_membership,
+    query_organization_by_ouid, query_person_by_puid, query_account_by_login, query_membership,
 )
 from src.auth.auth import hash_password
 
@@ -31,17 +31,17 @@ app.include_router(campaign.router)
 
 
 def ensure_default_super():
-    orgs = query_organization_by_oid("system")
+    orgs = query_organization_by_ouid("system")
     if orgs:
         org = orgs[0]
     else:
-        org = create_organization("系统空间", "system", "系统全局管理空间", 0, 0, oid="system")
+        org = create_organization("系统空间", "system", "系统全局管理空间", 0, 0, ouid="system")
 
-    persons = query_person_by_pid("super")
+    persons = query_person_by_puid("super")
     if persons:
         person = persons[0]
     else:
-        person = create_person("超级用户", pid="super")
+        person = create_person("超级用户", puid="super")
 
     accounts = query_account_by_login("super@system.cn")
     if not accounts:

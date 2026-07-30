@@ -16,7 +16,7 @@ def record_transaction(
     amount: Optional[float] = None,
     category: Optional[str] = None,
     description: Optional[str] = None,
-    oid: str = "shu",
+    ouid: str = "shu",
 ) -> str:
     """
     Record a financial transaction.
@@ -25,7 +25,7 @@ def record_transaction(
         amount: Transaction amount (positive).
         category: Transaction category.
         description: Transaction description.
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
     """
     try:
         if amount is None:
@@ -37,7 +37,7 @@ def record_transaction(
         if amount <= 0:
             return "Error: Transaction amount must be positive"
 
-        organization_id = resolve_organization_id(oid)
+        organization_id = resolve_organization_id(ouid)
         result = create_transaction(
             amount=amount,
             category=category,
@@ -50,34 +50,34 @@ def record_transaction(
 
 
 @tool
-def get_transaction_history(oid: str = "shu", person_name: Optional[str] = None) -> str:
+def get_transaction_history(ouid: str = "shu", person_name: Optional[str] = None) -> str:
     """
     Get transaction history for a specific organization.
 
     Args:
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
         person_name: Filter by person name (optional; not implemented yet).
     """
     try:
-        organization_id = resolve_organization_id(oid)
+        organization_id = resolve_organization_id(ouid)
         txns = get_transactions(organization_id)
         if txns:
             return json.dumps(txns, default=str, ensure_ascii=False)
-        return f"No transactions found for org {oid}"
+        return f"No transactions found for org {ouid}"
     except Exception as e:
         return f"Error retrieving transaction history: {e}"
 
 
 @tool
-def get_summary(oid: str = "shu") -> str:
+def get_summary(ouid: str = "shu") -> str:
     """
     Get financial summary for an organization.
 
     Args:
-        oid: Organization business identifier, e.g. "shu".
+        ouid: Organization business identifier, e.g. "shu".
     """
     try:
-        organization_id = resolve_organization_id(oid)
+        organization_id = resolve_organization_id(ouid)
         outflow_rows = _fetch(
             "SELECT COALESCE(SUM(t.amount), 0) AS total "
             "FROM transaction t "
@@ -96,7 +96,7 @@ def get_summary(oid: str = "shu") -> str:
         )
 
         summary = {
-            "oid": oid,
+            "ouid": ouid,
             "total_outflow": total_outflow,
             "transaction_count": count_rows[0]["cnt"],
         }

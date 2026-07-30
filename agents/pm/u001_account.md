@@ -21,23 +21,27 @@
 ### person
 
 ```sql
-ALTER TABLE person
-ADD COLUMN IF NOT EXISTS pid VARCHAR(100);
+CREATE TABLE person (
+  id SERIAL PRIMARY KEY,
+  puid VARCHAR(100) UNIQUE NOT NULL
+);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_person_pid
-ON person(pid)
-WHERE pid IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_person_puid
+ON person(puid)
+;
 ```
 
 ### organization
 
 ```sql
-ALTER TABLE organization
-ADD COLUMN IF NOT EXISTS oid VARCHAR(100);
+CREATE TABLE organization (
+  id SERIAL PRIMARY KEY,
+  ouid VARCHAR(100) UNIQUE NOT NULL
+);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_oid
-ON organization(oid)
-WHERE oid IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_ouid
+ON organization(ouid)
+;
 ```
 
 ### account
@@ -60,20 +64,20 @@ CREATE TABLE IF NOT EXISTS account (
 ## 3. 字段命名约定
 
 - `person.id`：人员数字主键。
-- `person.pid`：人员业务标识，英文非特殊字符，例如 `caocao`。
+- `person.puid`：人员业务标识，英文非特殊字符，例如 `caocao`。
 - `organization.id`：组织数字主键。
-- `organization.oid`：组织业务标识，规则同 `pid`，例如 `wei`。
-- 除 `person` / `organization` 两张主表外，其他表的外键统一使用 `person_id` / `organization_id`，不得再使用 `pid` / `oid` 表示数字外键。
+- `organization.ouid`：组织业务标识，规则同 `puid`，例如 `wei`。
+- 除 `person` / `organization` 两张主表外，其他表的外键统一使用 `person_id` / `organization_id`，不得再使用 `puid` / `ouid` 表示数字外键。
 
 需要调整的表包括但不限于：
 
 | 表 | 旧字段 | 新字段 |
 |----|--------|--------|
-| `membership` | `pid`, `oid` | `person_id`, `organization_id` |
-| `resource` | `oid`, `pid` | `organization_id`, `person_id` |
-| `warehouse` | `oid` | `organization_id` |
-| `transaction` | `oid` | `organization_id` |
-| `party` | `pid`, `oid` | `person_id`, `organization_id` |
+| `membership` | `puid`, `ouid` | `person_id`, `organization_id` |
+| `resource` | `ouid`, `puid` | `organization_id`, `person_id` |
+| `warehouse` | `ouid` | `organization_id` |
+| `transaction` | `ouid` | `organization_id` |
+| `party` | `puid`, `ouid` | `person_id`, `organization_id` |
 
 ---
 
@@ -82,7 +86,7 @@ CREATE TABLE IF NOT EXISTS account (
 只支持 `.cn` 登录名：
 
 ```text
-{person.pid}@{organization.oid}.cn
+{person.puid}@{organization.ouid}.cn
 ```
 
 示例：
@@ -95,15 +99,15 @@ caocao@wei.cn
 
 ```json
 {
-  "pid": "caocao",
-  "oid": "wei"
+  "puid": "caocao",
+  "ouid": "wei"
 }
 ```
 
 约束：
 
-- `person.pid` 只允许英文、数字、下划线、短横线。
-- `organization.oid` 只允许英文、数字、下划线、短横线。
+- `person.puid` 只允许英文、数字、下划线、短横线。
+- `organization.ouid` 只允许英文、数字、下划线、短横线。
 - 不支持 `.com`、`.org` 或中文登录名。
 
 ---
@@ -130,11 +134,11 @@ POST /auth/register
 ### 实现流程
 
 1. 校验 `login` 格式。
-2. 解析 `pid=caocao`、`oid=wei`。
-3. 查询 `organization.oid = oid`，不存在返回 404。
-4. 查询 `person.pid = pid`。
+2. 解析 `puid=caocao`、`ouid=wei`。
+3. 查询 `organization.ouid = ouid`，不存在返回 404。
+4. 查询 `person.puid = puid`。
 5. 如果 person 不存在，创建：
-   - `pid = pid`
+   - `puid = puid`
    - `name = request.name`
 6. 查询 `account.login = request.login`。
 7. 如果 account 不存在，创建：
@@ -156,12 +160,12 @@ POST /auth/register
 {
   "person": {
     "id": 8,
-    "pid": "caocao",
+    "puid": "caocao",
     "name": "曹操"
   },
   "organization": {
     "id": 2,
-    "oid": "wei",
+    "ouid": "wei",
     "name": "魏国",
     "type": "company"
   },
@@ -198,12 +202,12 @@ POST /auth/login
 ### 实现流程
 
 1. 校验 `login` 格式。
-2. 解析 `pid` 和 `oid`。
+2. 解析 `puid` 和 `ouid`。
 3. 查询 `account.login = request.login`，不存在返回 401。
 4. 校验 `account.status = active`，否则返回 403。
 5. 通过 `account.person_id` 查询 person。
-6. 校验 `person.pid` 与登录名中的 `pid` 一致。
-7. 查询 `organization.oid = oid`。
+6. 校验 `person.puid` 与登录名中的 `puid` 一致。
+7. 查询 `organization.ouid = ouid`。
 8. 查询 membership：
 
 ```sql
@@ -224,9 +228,9 @@ JWT 只放业务字段，不夹杂数据库数字主键。
 
 ```json
 {
-  "pid": "caocao",
+  "puid": "caocao",
   "person_name": "曹操",
-  "oid": "wei",
+  "ouid": "wei",
   "organization_name": "魏国",
   "organization_type": "company",
   "role": "主公"
@@ -241,12 +245,12 @@ JWT 只放业务字段，不夹杂数据库数字主键。
   "token_type": "bearer",
   "person": {
     "id": 8,
-    "pid": "caocao",
+    "puid": "caocao",
     "name": "曹操"
   },
   "organization": {
     "id": 2,
-    "oid": "wei",
+    "ouid": "wei",
     "name": "魏国",
     "type": "company"
   },
@@ -267,14 +271,14 @@ JWT 只放业务字段，不夹杂数据库数字主键。
 
 ### `src/db/database.py`
 
-- schema 增加 `person.pid`
-- schema 增加 `organization.oid`
+- schema 增加 `person.puid`
+- schema 增加 `organization.ouid`
 - schema 新增 `account`
-- 增加按 `person.pid` 查询 person 的函数
-- 增加按 `organization.oid` 查询 organization 的函数
+- 增加按 `person.puid` 查询 person 的函数
+- 增加按 `organization.ouid` 查询 organization 的函数
 - 增加 account 查询和创建函数
 - 增加 membership 校验函数
-- 将除 `person` / `organization` 外所有表的 `pid` / `oid` 数字外键重命名为 `person_id` / `organization_id`
+- 将除 `person` / `organization` 外所有表的 `puid` / `ouid` 数字外键重命名为 `person_id` / `organization_id`
 
 ### `src/auth/auth.py`
 
@@ -331,10 +335,10 @@ zhugeliang@shu.cn / demo123
 
 ## 9. 验收标准
 
-- `caocao@wei.cn / demo123` 登录成功，返回 `oid=2`、`oid=wei`。
+- `caocao@wei.cn / demo123` 登录成功，返回 `ouid=home`、`ouid=wei`。
 - `caocao@shu.cn / demo123` 登录失败，因为 membership 不存在。
 - `caocao@wei.cn / wrong` 登录失败，返回 401。
 - `caocao@unknown.cn / demo123` 登录失败。
 - `曹操@魏国.cn / demo123` 登录失败。
 - `account.status != active` 登录失败，返回 403。
-- 登录成功后，前端和 `/chat` 使用 token 或登录态中的 `oid`。
+- 登录成功后，前端和 `/chat` 使用 token 或登录态中的 `ouid`。

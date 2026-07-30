@@ -3,7 +3,7 @@
   "campaign_name": "火烧新野",
   "organizations": [
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "蜀汉-火烧新野战役",
       "type": "military",
       "description": "诸葛亮火烧新野战役指挥部",
@@ -11,7 +11,7 @@
       "reputation": 85
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "name": "曹魏-新野守军",
       "type": "military",
       "description": "曹魏新野防线",
@@ -21,119 +21,119 @@
   ],
   "persons": [
     {
-      "pid": "liubei",
+      "puid": "liubei",
       "name": "刘备"
     },
     {
-      "pid": "zhugeliang",
+      "puid": "zhugeliang",
       "name": "诸葛亮"
     },
     {
-      "pid": "guanyu",
+      "puid": "guanyu",
       "name": "关羽"
     },
     {
-      "pid": "zhangfei",
+      "puid": "zhangfei",
       "name": "张飞"
     },
     {
-      "pid": "zhaoyun",
+      "puid": "zhaoyun",
       "name": "赵云"
     },
     {
-      "pid": "huangzhong",
+      "puid": "huangzhong",
       "name": "黄忠"
     },
     {
-      "pid": "caohong",
+      "puid": "caohong",
       "name": "曹洪"
     },
     {
-      "pid": "xiahoudun",
+      "puid": "xiahoudun",
       "name": "夏侯惇"
     },
     {
-      "pid": "yujin",
+      "puid": "yujin",
       "name": "于禁"
     },
     {
-      "pid": "caocao",
+      "puid": "caocao",
       "name": "曹操"
     }
   ],
   "memberships": [
     {
-      "pid": "liubei",
-      "oid": "fire_xinye_shu",
+      "puid": "liubei",
+      "ouid": "fire_xinye_shu",
       "role": "主公"
     },
     {
-      "pid": "zhugeliang",
-      "oid": "fire_xinye_shu",
+      "puid": "zhugeliang",
+      "ouid": "fire_xinye_shu",
       "role": "军师"
     },
     {
-      "pid": "guanyu",
-      "oid": "fire_xinye_shu",
+      "puid": "guanyu",
+      "ouid": "fire_xinye_shu",
       "role": "副将"
     },
     {
-      "pid": "zhangfei",
-      "oid": "fire_xinye_shu",
+      "puid": "zhangfei",
+      "ouid": "fire_xinye_shu",
       "role": "先锋"
     },
     {
-      "pid": "zhaoyun",
-      "oid": "fire_xinye_shu",
+      "puid": "zhaoyun",
+      "ouid": "fire_xinye_shu",
       "role": "哨探"
     },
     {
-      "pid": "huangzhong",
-      "oid": "fire_xinye_shu",
+      "puid": "huangzhong",
+      "ouid": "fire_xinye_shu",
       "role": "后勤官"
     },
     {
-      "pid": "caohong",
-      "oid": "fire_xinye_wei",
+      "puid": "caohong",
+      "ouid": "fire_xinye_wei",
       "role": "主将"
     },
     {
-      "pid": "xiahoudun",
-      "oid": "fire_xinye_wei",
+      "puid": "xiahoudun",
+      "ouid": "fire_xinye_wei",
       "role": "副将"
     },
     {
-      "pid": "yujin",
-      "oid": "fire_xinye_wei",
+      "puid": "yujin",
+      "ouid": "fire_xinye_wei",
       "role": "先锋"
     },
     {
-      "pid": "caocao",
-      "oid": "fire_xinye_wei",
+      "puid": "caocao",
+      "ouid": "fire_xinye_wei",
       "role": "统帅"
     }
   ],
   "warehouses": [
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "蜀国武库",
       "code": "A",
       "location": "成都"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "蜀国军械库",
       "code": "B",
       "location": "成都"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "新野前线补给",
       "code": "C",
       "location": "新野"
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "name": "曹魏新野粮仓",
       "code": "D",
       "location": "新野"
@@ -141,7 +141,7 @@
   ],
   "resources": [
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "火油",
       "type": "physical",
       "unit": "桶",
@@ -149,7 +149,7 @@
       "warehouse_code": "A"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "火把",
       "type": "physical",
       "unit": "支",
@@ -157,7 +157,7 @@
       "warehouse_code": "B"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "硫磺",
       "type": "physical",
       "unit": "斤",
@@ -165,7 +165,7 @@
       "warehouse_code": "B"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "青铜镜",
       "type": "physical",
       "unit": "面",
@@ -174,7 +174,7 @@
       "warehouse_code": "A"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "连弩",
       "type": "physical",
       "unit": "架",
@@ -182,7 +182,7 @@
       "warehouse_code": "B"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "蜀国军费",
       "type": "financial",
       "unit": "两",
@@ -191,13 +191,13 @@
       "warehouse_code": "C"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "name": "火攻计策",
       "type": "knowledge",
       "content": "火油倾泻，伏兵截击，诱敌入城。"
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "name": "弓箭",
       "type": "physical",
       "unit": "支",
@@ -205,7 +205,7 @@
       "warehouse_code": "D"
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "name": "戈矛",
       "type": "physical",
       "unit": "支",
@@ -213,7 +213,7 @@
       "warehouse_code": "D"
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "name": "盾牌",
       "type": "physical",
       "unit": "个",
@@ -221,7 +221,7 @@
       "warehouse_code": "D"
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "name": "战马",
       "type": "physical",
       "unit": "匹",
@@ -229,7 +229,7 @@
       "warehouse_code": "D"
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "name": "粮草",
       "type": "physical",
       "unit": "石",
@@ -239,20 +239,20 @@
   ],
   "transactions": [
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "amount": 500,
       "category": "火油采购",
       "description": "购买桐油火攻材料",
       "parties": [
         {
-          "pid": "liubei",
+          "puid": "liubei",
           "role": "付款方",
           "direction": "out",
           "amount": 500,
           "description": "蜀汉军费支出"
         },
         {
-          "pid": "zhugeliang",
+          "puid": "zhugeliang",
           "role": "经办方",
           "direction": "in",
           "amount": 500,
@@ -261,31 +261,31 @@
       ]
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "amount": 800,
       "category": "稿赏银",
       "description": "战后犒赏三军",
       "parties": [
         {
-          "pid": "liubei",
+          "puid": "liubei",
           "role": "付款方",
           "direction": "out",
           "amount": 800
         },
         {
-          "pid": "zhangfei",
+          "puid": "zhangfei",
           "role": "收款方",
           "direction": "in",
           "amount": 300
         },
         {
-          "pid": "guanyu",
+          "puid": "guanyu",
           "role": "收款方",
           "direction": "in",
           "amount": 300
         },
         {
-          "pid": "zhaoyun",
+          "puid": "zhaoyun",
           "role": "收款方",
           "direction": "in",
           "amount": 200
@@ -293,19 +293,19 @@
       ]
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "amount": 3000,
       "category": "军械损失",
       "description": "火攻后军械损失",
       "parties": [
         {
-          "pid": "caohong",
+          "puid": "caohong",
           "role": "损失方",
           "direction": "out",
           "amount": 3000
         },
         {
-          "pid": "zhugeliang",
+          "puid": "zhugeliang",
           "role": "缴获方",
           "direction": "in",
           "amount": 3000
@@ -313,19 +313,19 @@
       ]
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "amount": 1000,
       "category": "粮草损失",
       "description": "曹魏粮草遗弃",
       "parties": [
         {
-          "pid": "xiahoudun",
+          "puid": "xiahoudun",
           "role": "损失方",
           "direction": "out",
           "amount": 1000
         },
         {
-          "pid": "liubei",
+          "puid": "liubei",
           "role": "缴获方",
           "direction": "in",
           "amount": 1000
@@ -335,31 +335,31 @@
   ],
   "events": [
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "seq": 1,
       "title": "曹军南下",
       "description": "曹洪率军逼近新野，军需辎重进入前线。"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "seq": 2,
       "title": "诸葛亮布置火攻",
       "description": "蜀汉在城中准备火油、火把与伏兵路线。"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "seq": 3,
       "title": "诱敌入城",
       "description": "刘备军主动撤出新野，诱使曹军进入空城。"
     },
     {
-      "oid": "fire_xinye_shu",
+      "ouid": "fire_xinye_shu",
       "seq": 4,
       "title": "火烧新野",
       "description": "夜间火起，曹军军械和粮草大量损失。"
     },
     {
-      "oid": "fire_xinye_wei",
+      "ouid": "fire_xinye_wei",
       "seq": 5,
       "title": "曹军撤退",
       "description": "曹军混乱撤退，蜀汉完成战役目标。"

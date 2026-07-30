@@ -81,7 +81,7 @@ SHU_RESOURCES = [
     {"name": "稿赏银", "type": "financial", "unit": "两白银", "amount": 800},
     
     # 人力
-    {"name": "蜀国兵力", "type": "human", "pid": 1, "content": "火攻部队"},
+    {"name": "蜀国兵力", "type": "human", "puid": "liubei", "content": "火攻部队"},
     
     # 知识
     {"name": "火攻计策", "type": "knowledge", "content": "火油倾泻+青铜镜点火"},
@@ -175,8 +175,8 @@ class APIClient:
     
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip('/')
-        self.shu_org_id = None
-        self.wei_org_id = None
+        self.shu_org_ouid = None
+        self.wei_org_ouid = None
         self.personnel_ids = {}
         self.resource_ids = {}
         self.warehouse_ids = {}
@@ -213,10 +213,11 @@ class APIClient:
         response.raise_for_status()
         return response.json()
     
-    def post(self, endpoint: str, data: Dict = None, timeout: int = 30) -> Dict[str, Any]:
+    def post(self, endpoint: str, data: Dict = None, timeout: int = 30,
+             params: Dict = None) -> Dict[str, Any]:
         """POST请求"""
         url = f"{self.base_url}/{endpoint}"
-        response = self.session.post(url, json=data, timeout=timeout)
+        response = self.session.post(url, json=data, timeout=timeout, params=params)
         response.raise_for_status()
         return response.json()
     
@@ -230,7 +231,7 @@ class APIClient:
     
     def create_person(self, name: str, birth_date: str = None) -> Dict[str, Any]:
         """创建人员"""
-        # 优先使用数据库直接插入以避免API的oid依赖
+        # 优先使用数据库直接插入以避免API的ouid依赖
         conn = self._get_db_connection()
         try:
             cur = conn.cursor()
@@ -251,19 +252,19 @@ class APIClient:
                 data["birth_date"] = birth_date
             return self.post("person", data, timeout=30)
     
-    def add_membership(self, pid: int, oid: int, role: str = None, timeout: int = 30) -> Dict[str, Any]:
+    def add_membership(self, puid: str, ouid: str, role: str = None, timeout: int = 30) -> Dict[str, Any]:
         """添加组织成员"""
-        data = {"pid": pid, "oid": oid}
+        data = {"puid": puid, "ouid": ouid}
         if role:
             data["role"] = role
         return self.post("organizations/members", data, timeout=timeout)
     
-    def create_resource(self, oid: int, name: str, resource_type: str,
+    def create_resource(self, ouid: str, name: str, resource_type: str,
                         unit: str = None, amount: float = None,
                         content: str = None, timeout: int = 30) -> Dict[str, Any]:
         """创建资源"""
         data = {
-            "oid": oid,
+            "ouid": ouid,
             "name": name,
             "resource_type": resource_type
         }
@@ -275,12 +276,12 @@ class APIClient:
             data["content"] = content
         return self.post("resource", data, timeout=timeout)
     
-    def create_warehouse(self, oid: int, name: str, code: str,
+    def create_warehouse(self, ouid: str, name: str, code: str,
                          location: str = None, timeout: int = 30) -> Dict[str, Any]:
         """创建仓库"""
         # 先尝试通过API查询
         try:
-            warehouses = self.query_warehouse(oid, timeout=30)
+            warehouses = self.query_warehouse(ouid, timeout=30)
             for w in warehouses:
                 if w.get("name") == name:
                     return w
@@ -289,7 +290,7 @@ class APIClient:
         
         # 如果不存在，通过API创建
         data = {
-            "oid": oid,
+            "ouid": ouid,
             "name": name,
             "code": code
         }
@@ -298,7 +299,8 @@ class APIClient:
         return self.post("warehouse", data, timeout=timeout)
     
     def create_resource_warehouse(self, resource_id: int, location_path: str,
-                                   quantity: float, unit: str = None, timeout: int = 30) -> Dict[str, Any]:
+                                    quantity: float, unit: str = None,
+                                    timeout: int = 30, ouid: str = None) -> Dict[str, Any]:
         """创建资源-仓库明细"""
         data = {
             "resource_id": resource_id,
@@ -307,7 +309,8 @@ class APIClient:
         }
         if unit:
             data["unit"] = unit
-        return self.post("resource-warehouse", data, timeout=timeout)
+        params = {"ouid": ouid} if ouid else None
+        return self.post("resource-warehouse", data, timeout=timeout, params=params)
     
     def create_transaction(self, amount: float, category: str,
                           description: str = None, timeout: int = 30) -> Dict[str, Any]:
@@ -320,12 +323,12 @@ class APIClient:
             data["description"] = description
         return self.post("transaction", data, timeout=timeout)
     
-    def create_party(self, pid: int, oid: int, transaction_id: int,
+    def create_party(self, puid: str, ouid: str, transaction_id: int,
                      role: str, description: str = None, timeout: int = 30) -> Dict[str, Any]:
         """创建参与方"""
         data = {
-            "pid": pid,
-            "oid": oid,
+            "puid": puid,
+            "ouid": ouid,
             "transaction_id": transaction_id,
             "role": role
         }
@@ -342,39 +345,42 @@ class APIClient:
             params["org_type"] = org_type
         return self.get("organizations", params, timeout=30)
     
-    def query_person(self, oid: int, name: str = None) -> List[Dict]:
+    def query_person(self, ouid: str, name: str = None) -> List[Dict]:
         """查询人员"""
-        params = {"oid": oid}
+        params = {"ouid": ouid}
         if name:
             params["name"] = name
         return self.get("person", params)
     
-    def query_resource(self, oid: int, resource_type: str = None) -> List[Dict]:
+    def query_resource(self, ouid: str, resource_type: str = None) -> List[Dict]:
         """查询资源"""
-        params = {"oid": oid}
+        params = {"ouid": ouid}
         if resource_type:
             params["resource_type"] = resource_type
         return self.get("resource", params)
     
-    def query_warehouse(self, oid: int) -> List[Dict]:
+    def query_warehouse(self, ouid: str) -> List[Dict]:
         """查询仓库"""
-        return self.get("warehouse", {"oid": oid}, timeout=30)
+        return self.get("warehouse", {"ouid": ouid}, timeout=30)
     
-    def query_resource_warehouse(self, resource_id: int) -> List[Dict]:
+    def query_resource_warehouse(self, resource_id: int, ouid: str = None) -> List[Dict]:
         """查询资源-仓库明细"""
-        return self.get("resource-warehouse", {"resource_id": resource_id}, timeout=30)
+        params = {"resource_id": resource_id}
+        if ouid:
+            params["ouid"] = ouid
+        return self.get("resource-warehouse", params, timeout=30)
     
-    def query_transaction(self, oid: int) -> List[Dict]:
+    def query_transaction(self, ouid: str) -> List[Dict]:
         """查询交易"""
-        return self.get("transaction", {"oid": oid}, timeout=30)
+        return self.get("transaction", {"ouid": ouid}, timeout=30)
     
-    def query_party(self, oid: int) -> List[Dict]:
+    def query_party(self, ouid: str) -> List[Dict]:
         """查询参与方"""
-        return self.get("party", {"oid": oid}, timeout=30)
+        return self.get("party", {"ouid": ouid}, timeout=30)
     
-    def get_summary(self, oid: int) -> Dict[str, Any]:
+    def get_summary(self, ouid: str) -> Dict[str, Any]:
         """获取财务汇总"""
-        return self.get("summary", {"oid": oid}, timeout=30)
+        return self.get("summary", {"ouid": ouid}, timeout=30)
     
     def find_or_create_organization(self, name: str, org_type: str, description: str = None) -> Dict[str, Any]:
         """查找或创建组织"""
@@ -385,39 +391,44 @@ class APIClient:
     
     def find_or_create_person(self, name: str, birth_date: str = None) -> Dict[str, Any]:
         """查找或创建人员"""
-        # 通过数据库直接插入人员（避免API的oid依赖问题）
+        import secrets as _secrets
+        import re as _re
         conn = self._get_db_connection()
         try:
             cur = conn.cursor()
             # 检查是否已存在
-            cur.execute("SELECT id, name FROM person WHERE name = %s", (name,))
+            cur.execute("SELECT id, name, puid FROM person WHERE name = %s", (name,))
             existing = cur.fetchone()
             if existing:
                 cur.close()
                 conn.close()
-                return {"id": existing[0], "name": existing[1]}
+                return {"id": existing[0], "name": existing[1], "puid": existing[2]}
             
-            # 插入新人员
-            cur.execute("INSERT INTO person (name, birth_date) VALUES (%s, %s) RETURNING id", 
-                       (name, birth_date))
-            person_id = cur.fetchone()[0]
+            # 插入新人员（含puid）
+            safe_name = _re.sub(r'[^a-zA-Z0-9]', '_', name).strip('_').lower()
+            puid = f"person_{safe_name}_{_secrets.token_hex(4)}"
+            cur.execute(
+                "INSERT INTO person (puid, name, birth_date) VALUES (%s, %s, %s) RETURNING id, puid",
+                (puid, name, birth_date)
+            )
+            row = cur.fetchone()
             conn.commit()
             cur.close()
             conn.close()
-            return {"id": person_id, "name": name, "birth_date": birth_date}
+            return {"id": row[0], "name": name, "birth_date": birth_date, "puid": row[1]}
         except Exception as e:
             conn.rollback()
             cur.close()
             conn.close()
             raise e
     
-    def find_or_create_resource(self, oid: int, name: str, resource_type: str,
+    def find_or_create_resource(self, ouid: str, name: str, resource_type: str,
                                 unit: str = None, amount: float = None,
                                 content: str = None, timeout: int = 30) -> Dict[str, Any]:
         """查找或创建资源"""
         # 先尝试通过API查询
         try:
-            resources = self.query_resource(oid, resource_type=resource_type, timeout=30)
+            resources = self.query_resource(ouid, resource_type=resource_type, timeout=30)
             for r in resources:
                 if r.get("name") == name:
                     return r
@@ -425,7 +436,7 @@ class APIClient:
             pass
         
         # 如果不存在，通过API创建
-        return self.create_resource(oid, name, resource_type, unit, amount, content, timeout=timeout)
+        return self.create_resource(ouid, name, resource_type, unit, amount, content, timeout=timeout)
 
 
 # ============================================================================
@@ -451,21 +462,21 @@ def prepare_campaign_data(api: APIClient):
     # 先查询是否已存在
     shu_orgs = api.query_organization(name=SHU_ORG_NAME)
     if shu_orgs:
-        api.shu_org_id = shu_orgs[0]["id"]
-        print(f"  ✓ 蜀汉指挥部已存在: {api.shu_org_id}")
+        api.shu_org_ouid = shu_orgs[0]["ouid"]
+        print(f"  ✓ 蜀汉指挥部已存在: {api.shu_org_ouid}")
     else:
         shu_org = api.create_organization(SHU_ORG_NAME, SHU_ORG_TYPE, SHU_ORG_DESCRIPTION)
-        api.shu_org_id = shu_org["id"]
-        print(f"  ✓ 蜀汉指挥部创建: {api.shu_org_id}")
+        api.shu_org_ouid = shu_org["ouid"]
+        print(f"  ✓ 蜀汉指挥部创建: {api.shu_org_ouid}")
     
     wei_orgs = api.query_organization(name=WEI_ORG_NAME)
     if wei_orgs:
-        api.wei_org_id = wei_orgs[0]["id"]
-        print(f"  ✓ 曹魏防线已存在: {api.wei_org_id}")
+        api.wei_org_ouid = wei_orgs[0]["ouid"]
+        print(f"  ✓ 曹魏防线已存在: {api.wei_org_ouid}")
     else:
         wei_org = api.create_organization(WEI_ORG_NAME, WEI_ORG_TYPE, WEI_ORG_DESCRIPTION)
-        api.wei_org_id = wei_org["id"]
-        print(f"  ✓ 曹魏防线创建: {api.wei_org_id}")
+        api.wei_org_ouid = wei_org["ouid"]
+        print(f"  ✓ 曹魏防线创建: {api.wei_org_ouid}")
     
     # 2. 创建人员
     print("\n👤 创建人员...")
@@ -475,7 +486,7 @@ def prepare_campaign_data(api: APIClient):
         api.personnel_ids[p["name"]] = person["id"]
         
         # 添加到蜀汉组织
-        api.add_membership(person["id"], api.shu_org_id, p["role"])
+        api.add_membership(person["puid"], api.shu_org_ouid, p["role"])
         print(f"  ✓ 蜀汉: {p['name']} ({p['role']})")
     
     for p in WEI_PERSONNEL:
@@ -483,16 +494,16 @@ def prepare_campaign_data(api: APIClient):
         api.personnel_ids[p["name"]] = person["id"]
         
         # 添加到曹魏组织
-        api.add_membership(person["id"], api.wei_org_id, p["role"])
+        api.add_membership(person["puid"], api.wei_org_ouid, p["role"])
         print(f"  ✓ 曹魏: {p['name']} ({p['role']})")
     
     # 3. 创建资源
     print("\n📦 创建资源...")
     
     for r in SHU_RESOURCES + WEI_LOSS_RESOURCES:
-        oid = api.shu_org_id if r in SHU_RESOURCES else api.wei_org_id
+        ouid = api.shu_org_ouid if r in SHU_RESOURCES else api.wei_org_ouid
         resource = api.find_or_create_resource(
-            oid=oid,
+            ouid=ouid,
             name=r["name"],
             resource_type=r["type"],
             unit=r.get("unit"),
@@ -507,7 +518,7 @@ def prepare_campaign_data(api: APIClient):
     
     for w in WAREHOUSES:
         warehouse = api.find_or_create_warehouse(
-            oid=api.shu_org_id if w["code"] in ["A", "B", "C"] else api.wei_org_id,
+            ouid=api.shu_org_ouid if w["code"] in ["A", "B", "C"] else api.wei_org_ouid,
             name=w["name"],
             code=w["code"],
             location=w["location"]
@@ -525,6 +536,9 @@ def prepare_campaign_data(api: APIClient):
                 resource_id=resource_id,
                 location_path=rw["location_path"],
                 quantity=rw["quantity"],
+                ouid=api.shu_org_ouid if rw["resource_name"] in [
+                    r["name"] for r in SHU_RESOURCES
+                ] else api.wei_org_ouid,
                 unit="件" if rw["resource_name"] in [
                     "火油", "火把", "硫磺", "木柴", "酒坛", "皮囊",
                     "青铜镜", "火矢", "烟雾弹", "弓箭", "戈矛",
@@ -546,8 +560,8 @@ def prepare_campaign_data(api: APIClient):
         
         # 创建参与方
         api.create_party(
-            pid=1,  # 默认使用第一个蜀汉人员
-            oid=api.shu_org_id if "蜀汉" in t["from_org"] else api.wei_org_id,
+            puid="liubei",  # 默认使用第一个蜀汉人员
+            ouid=api.shu_org_ouid if "蜀汉" in t["from_org"] else api.wei_org_ouid,
             transaction_id=transaction["id"],
             role="payer" if "蜀汉" in t["from_org"] else "payee",
             description=t["description"]
@@ -561,15 +575,15 @@ def prepare_campaign_data(api: APIClient):
     
     # 打印汇总
     print("\n📊 数据汇总:")
-    print(f"  组织: {api.shu_org_id} (蜀汉), {api.wei_org_id} (曹魏)")
+    print(f"  组织: {api.shu_org_ouid} (蜀汉), {api.wei_org_ouid} (曹魏)")
     print(f"  人员: {len(SHU_PERSONNEL)} + {len(WEI_PERSONNEL)} = {len(SHU_PERSONNEL) + len(WEI_PERSONNEL)}")
     print(f"  资源: {len(SHU_RESOURCES)} + {len(WEI_LOSS_RESOURCES)} = {len(SHU_RESOURCES) + len(WEI_LOSS_RESOURCES)}")
     print(f"  仓库: {len(WAREHOUSES)}")
     print(f"  交易: {len(TRANSACTIONS)}")
     
     return {
-        "shu_org_id": api.shu_org_id,
-        "wei_org_id": api.wei_org_id,
+        "shu_org_ouid": api.shu_org_ouid,
+        "wei_org_ouid": api.wei_org_ouid,
         "personnel": api.personnel_ids,
         "resources": api.resource_ids
     }
@@ -595,8 +609,8 @@ def verify_campaign_data(api: APIClient):
     
     # 验证人员
     print("\n👤 验证人员...")
-    shu_people = api.query_person(api.shu_org_id)
-    wei_people = api.query_person(api.wei_org_id)
+    shu_people = api.query_person(api.shu_org_ouid)
+    wei_people = api.query_person(api.wei_org_ouid)
     print(f"  蜀汉人员: {len(shu_people)}/{len(SHU_PERSONNEL)}")
     print(f"  曹魏人员: {len(wei_people)}/{len(WEI_PERSONNEL)}")
     if len(shu_people) != len(SHU_PERSONNEL) or len(wei_people) != len(WEI_PERSONNEL):
@@ -604,8 +618,8 @@ def verify_campaign_data(api: APIClient):
     
     # 验证资源
     print("\n📦 验证资源...")
-    shu_resources = api.query_resource(api.shu_org_id)
-    wei_resources = api.query_resource(api.wei_org_id)
+    shu_resources = api.query_resource(api.shu_org_ouid)
+    wei_resources = api.query_resource(api.wei_org_ouid)
     print(f"  蜀汉资源: {len(shu_resources)}/{len(SHU_RESOURCES)}")
     print(f"  曹魏资源: {len(wei_resources)}/{len(WEI_LOSS_RESOURCES)}")
     if len(shu_resources) != len(SHU_RESOURCES) or len(wei_resources) != len(WEI_LOSS_RESOURCES):
@@ -613,15 +627,15 @@ def verify_campaign_data(api: APIClient):
     
     # 验证仓库
     print("\n🏭 验证仓库...")
-    shu_warehouses = api.query_warehouse(api.shu_org_id)
-    wei_warehouses = api.query_warehouse(api.wei_org_id)
+    shu_warehouses = api.query_warehouse(api.shu_org_ouid)
+    wei_warehouses = api.query_warehouse(api.wei_org_ouid)
     print(f"  蜀汉仓库: {len(shu_warehouses)}/{len([w for w in WAREHOUSES if w['code'] in ['A', 'B', 'C']])}")
     print(f"  曹魏仓库: {len(wei_warehouses)}/{len([w for w in WAREHOUSES if w['code'] == 'D'])}")
     
     # 验证交易
     print("\n💰 验证交易...")
-    shu_transactions = api.query_transaction(api.shu_org_id)
-    wei_transactions = api.query_transaction(api.wei_org_id)
+    shu_transactions = api.query_transaction(api.shu_org_ouid)
+    wei_transactions = api.query_transaction(api.wei_org_ouid)
     print(f"  蜀汉交易: {len(shu_transactions)}/{len([t for t in TRANSACTIONS if '蜀汉' in t['from_org']])}")
     print(f"  曹魏交易: {len(wei_transactions)}/{len([t for t in TRANSACTIONS if '曹魏' in t['from_org']])}")
     
@@ -635,7 +649,7 @@ def verify_campaign_data(api: APIClient):
     
     # 验证资金汇总
     print("\n📈 验证财务汇总...")
-    summary = api.get_summary(api.shu_org_id)
+    summary = api.get_summary(api.shu_org_ouid)
     print(f"  蜀汉财务汇总: {summary}")
     
     print("\n" + "=" * 60)

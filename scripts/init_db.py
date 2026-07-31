@@ -166,9 +166,12 @@ def main():
         ("吴国", "战船", "A-2-001", 100, "艘"),
     ]
     for org_name, res_name, loc_path, qty, unit in rw:
+        wh_code = "B" if loc_path.startswith("B") else "A"
+        wh = next(w for (o, _n), w in warehouses.items()
+                  if o == org_name and w["code"] == wh_code)
         create_resource_warehouse(
             resources[(org_name, res_name)]["id"],
-            loc_path, qty, unit
+            wh["id"], loc_path, qty, unit
         )
 
     # ── Transactions (先创建 transaction, 再创建 party) ─────

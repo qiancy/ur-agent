@@ -4,7 +4,7 @@ Pydantic request/response models for Uni-Resource Agent API.
 API-facing identifiers: puid (person) and ouid (organization) — string business keys.
 """
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Organization ─────────────────────────────────────────────────────────────
@@ -46,41 +46,35 @@ class ResourceCreate(BaseModel):
 
 class ResourceWarehouseCreate(BaseModel):
     resource_id: int
+    warehouse_code: Optional[str] = None  # resolved to org's first warehouse if omitted
     location_path: str
     quantity: float
     unit: Optional[str] = None
+    model_config = {"extra": "forbid"}
 
 
 # ── Seller MVP ───────────────────────────────────────────────────────────────
 
-class ProductCreate(BaseModel):
-    name: str
-    unit: Optional[str] = None
-    spec: Optional[str] = None
-
-
-class WarehouseCreateSeller(BaseModel):
-    name: str
-    code: str
-    location: Optional[str] = None
-
-
-class PurchaseInRequest(BaseModel):
+class SellerPurchaseIn(BaseModel):
     product_uid: str
-    quantity: float
+    warehouse_code: str
     location_path: str
-    unit: Optional[str] = None
-    total_amount: float
-    supplier: Optional[str] = None
+    quantity: float = Field(gt=0)
+    unit: str = "件"
+    total_amount: float = Field(ge=0)
+    counterparty_name: str
+    model_config = {"extra": "forbid"}
 
 
-class SalesOutRequest(BaseModel):
+class SellerSalesOut(BaseModel):
     product_uid: str
-    quantity: float
+    warehouse_code: str
     location_path: str
-    unit: Optional[str] = None
-    total_amount: float
-    customer: Optional[str] = None
+    quantity: float = Field(gt=0)
+    unit: str = "件"
+    total_amount: float = Field(ge=0)
+    counterparty_name: str
+    model_config = {"extra": "forbid"}
 
 
 class StockQuery(BaseModel):

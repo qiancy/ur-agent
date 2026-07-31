@@ -61,10 +61,20 @@ def shops():
     assert resp.status_code == 201, resp.text
     data["resource_a"] = resp.json()
 
+    wh_code_a = f"wh_a_{s}"
+    resp = client.post(
+        "/warehouse",
+        headers=_auth_header(data["token_a"]),
+        json={"name": f"仓库A_{s}", "code": wh_code_a},
+    )
+    assert resp.status_code == 201, resp.text
+    data["wh_a"] = resp.json()
+
     resp = client.post(
         f"/resource-warehouse?ouid={shop_a_ouid}",
         headers=_auth_header(data["token_a"]),
-        json={"resource_id": data["resource_a"]["id"], "location_path": "A-1",
+        json={"resource_id": data["resource_a"]["id"], "warehouse_code": wh_code_a,
+              "location_path": "A-1",
               "quantity": 100, "unit": "件"},
     )
     assert resp.status_code == 201, resp.text
@@ -99,10 +109,20 @@ def shops():
     assert resp.status_code == 201, resp.text
     data["resource_b"] = resp.json()
 
+    wh_code_b = f"wh_b_{s}"
+    resp = client.post(
+        "/warehouse",
+        headers=_auth_header(data["token_b"]),
+        json={"name": f"仓库B_{s}", "code": wh_code_b},
+    )
+    assert resp.status_code == 201, resp.text
+    data["wh_b"] = resp.json()
+
     resp = client.post(
         f"/resource-warehouse?ouid={shop_b_ouid}",
         headers=_auth_header(data["token_b"]),
-        json={"resource_id": data["resource_b"]["id"], "location_path": "B-1",
+        json={"resource_id": data["resource_b"]["id"], "warehouse_code": wh_code_b,
+              "location_path": "B-1",
               "quantity": 50, "unit": "件"},
     )
     assert resp.status_code == 201, resp.text
@@ -241,9 +261,17 @@ class TestThreeKingdomsPublicOuidContext:
         my_rid = resp.json()["id"]
 
         resp = client.post(
+            "/warehouse",
+            headers=_auth_header(token),
+            json={"name": f"测试仓库_{s}", "code": f"wh_test_{s}"},
+        )
+        assert resp.status_code == 201, resp.text
+
+        resp = client.post(
             f"/resource-warehouse?ouid={org_ouid}",
             headers=_auth_header(token),
-            json={"resource_id": my_rid, "location_path": "R1",
+            json={"resource_id": my_rid, "warehouse_code": f"wh_test_{s}",
+                  "location_path": "R1",
                   "quantity": 10, "unit": "个"},
         )
         assert resp.status_code == 201, resp.text

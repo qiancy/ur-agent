@@ -108,17 +108,19 @@ class TestResourceWarehouseCRUD(unittest.TestCase):
     def test_create_and_query(self):
         from src.db.database import (create_resource, create_resource_warehouse,
                                      query_resource_warehouse, get_resource_total,
-                                     create_organization)
+                                     create_organization, create_warehouse)
 
         org = create_organization("测试", "company", None)
+        wh = create_warehouse(org["id"], "测试仓库", "T1", "北京")
         r = create_resource(org["id"], "宝剑", "physical", unit="把")
-        create_resource_warehouse(r["id"], "total", 100, "把")
-        create_resource_warehouse(r["id"], "A", 60, "把")
-        create_resource_warehouse(r["id"], "A-1-001", 30, "把")
-        create_resource_warehouse(r["id"], "A-1-002", 30, "把")
+        create_resource_warehouse(r["id"], wh["id"], "total", 100, "把")
+        create_resource_warehouse(r["id"], wh["id"], "A", 60, "把")
+        create_resource_warehouse(r["id"], wh["id"], "A-1-001", 30, "把")
+        create_resource_warehouse(r["id"], wh["id"], "A-1-002", 30, "把")
 
         results = query_resource_warehouse(r["id"])
         self.assertEqual(len(results), 4)
+        self.assertEqual({row["warehouse_id"] for row in results}, {wh["id"]})
 
         total = get_resource_total(r["id"])
         self.assertEqual(total["total_qty"], 100)

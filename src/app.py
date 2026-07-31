@@ -12,7 +12,7 @@ from src.auth.auth import hash_password
 
 logger = setup_logging("api")
 
-from src.routers import auth, organization, person, resource, warehouse, transaction, party, summary, chat, campaign
+from src.routers import auth, organization, person, resource, warehouse, transaction, party, summary, chat, campaign, seller
 
 app = FastAPI(title="Uni-Resource Agent API", version="5.3.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
@@ -28,6 +28,7 @@ app.include_router(party.router)
 app.include_router(summary.router)
 app.include_router(chat.router)
 app.include_router(campaign.router)
+app.include_router(seller.router)
 
 
 def ensure_default_super():

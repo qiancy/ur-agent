@@ -609,6 +609,7 @@ class TestIntegration:
         # 6. 创建资源-仓库明细
         rw_resp = client.post("/resource-warehouse", params={"ouid": org_ouid}, json={
             "resource_id": resource["id"],
+            "warehouse_code": "IT",
             "location_path": "total",
             "quantity": 50,
             "unit": "个"
@@ -640,8 +641,11 @@ class TestIntegration:
         )
         assert party_resp.status_code in (200, 201)
         
-        # 9. 验证数据
-        assert client.get("/organizations").json()[org_id - 1]["id"] == org_id
+        # 9. 验证数据（按 ouid 查找，不依赖自增 ID 连续）
+        orgs = client.get("/organizations").json()
+        assert any(o["ouid"] == org_ouid and o["id"] == org_id for o in orgs), (
+            f"Created org {org_ouid} (id={org_id}) not found in org list"
+        )
         assert len(client.get("/person", params={"ouid": org_ouid}).json()) > 0
         assert len(client.get("/resource", params={"ouid": org_ouid}).json()) > 0
         assert len(client.get("/transaction", params={"ouid": org_ouid}).json()) > 0

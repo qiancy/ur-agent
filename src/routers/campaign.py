@@ -180,10 +180,10 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
                 wh = warehouses.get((org["ouid"], res_cfg["warehouse_code"]))
                 if wh:
                     create_resource_warehouse(
-                        res["id"], wh["code"], res_cfg["amount"], res_cfg.get("unit")
+                        res["id"], wh["id"], wh["code"], res_cfg["amount"], res_cfg.get("unit")
                     )
                     create_resource_warehouse(
-                        res["id"], "total", res_cfg["amount"], res_cfg.get("unit")
+                        res["id"], wh["id"], "total", res_cfg["amount"], res_cfg.get("unit")
                     )
 
         for tx_cfg in template.get("transactions", []):

@@ -8,7 +8,7 @@ from src.models.schemas import ResourceCreate, ResourceWarehouseCreate
 from src.db.database import (
     query_resource, create_resource,
     create_resource_warehouse, query_resource_warehouse, get_resource_total,
-    query_person_by_puid, verify_org_owns_resource,
+    query_person_by_puid, verify_org_owns_resource, query_warehouse,
 )
 from src.routers.deps import require_org_context
 
@@ -53,8 +53,17 @@ async def list_resource_warehouse(
 async def add_resource_warehouse(body: ResourceWarehouseCreate, request: Request):
     ctx = require_org_context(request)
     verify_org_owns_resource(body.resource_id, ctx["organization_id"])
-    return create_resource_warehouse(body.resource_id, body.location_path,
-                                     body.quantity, body.unit)
+    if body.warehouse_code:
+        warehouses = query_warehouse(ctx["organization_id"], code=body.warehouse_code)
+        if not warehouses:
+            raise HTTPException(404, f"Warehouse not found in this organization: {body.warehouse_code}")
+    else:
+        warehouses = query_warehouse(ctx["organization_id"])
+        if not warehouses:
+            raise HTTPException(400, "No warehouse exists for this organization")
+    warehouse_id = warehouses[0]["id"]
+    return create_resource_warehouse(body.resource_id, warehouse_id,
+                                     body.location_path, body.quantity, body.unit)
 
 
 @router.get("/resource-warehouse/total")

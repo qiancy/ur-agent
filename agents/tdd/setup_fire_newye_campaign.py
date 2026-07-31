@@ -201,9 +201,9 @@ class APIClient:
         return psycopg2.connect(
             dbname=os.getenv('DATABASE_NAME', 'unires'),
             user=os.getenv('DATABASE_USER', 'unires'),
-            password=os.getenv('DATABASE_PASSWORD', 'demo123'),
-            host=os.getenv('DATABASE_HOST', 'localhost'),
-            port=os.getenv('DATABASE_PORT', '5432')
+            password=os.getenv('DATABASE_PASSWORD', 'unires_secure_pass_2024'),
+            host=os.getenv('DATABASE_HOST', '1.117.223.223'),
+            port=os.getenv('DATABASE_PORT', '5435')
         )
         
     def get(self, endpoint: str, params: Dict = None, timeout: int = 30) -> Dict[str, Any]:

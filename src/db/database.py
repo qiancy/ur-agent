@@ -25,6 +25,8 @@ from psycopg2.extras import RealDictCursor
 import os
 from src.logging_config import get_logger
 
+from fastapi import HTTPException
+
 logger = get_logger("db")
 
 DB_CONFIG = {
@@ -124,16 +126,17 @@ CREATE TABLE IF NOT EXISTS warehouse (
     UNIQUE(organization_id, code)
 );
 
--- ResourceWarehouse: 资源-仓库明细
+-- ResourceWarehouse: 资源-仓库明细 (库存行, 按仓库区分)
 CREATE TABLE IF NOT EXISTS resource_warehouse (
     id              SERIAL PRIMARY KEY,
     resource_id     INTEGER NOT NULL REFERENCES resource(id) ON DELETE CASCADE,
+    warehouse_id    INTEGER NOT NULL REFERENCES warehouse(id) ON DELETE CASCADE,
     location_path   VARCHAR(255) NOT NULL,
     quantity        DECIMAL(15,2) NOT NULL DEFAULT 0,
     unit            VARCHAR(50),
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(resource_id, location_path)
+    UNIQUE(resource_id, warehouse_id, location_path)
 );
 
 -- Transaction: 交易事务
@@ -144,6 +147,26 @@ CREATE TABLE IF NOT EXISTS transaction (
     category        VARCHAR(100) NOT NULL,
     description     TEXT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- InventoryMovement: 库存流水 (transaction-agnostic, links stock change to tx)
+CREATE TABLE IF NOT EXISTS inventory_movement (
+    id                      SERIAL PRIMARY KEY,
+    movement_uid            VARCHAR(100) UNIQUE NOT NULL,
+    organization_id         INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    operator_person_id      INTEGER NOT NULL REFERENCES person(id),
+    resource_id             INTEGER NOT NULL REFERENCES resource(id),
+    warehouse_id            INTEGER NOT NULL REFERENCES warehouse(id),
+    resource_warehouse_id   INTEGER NOT NULL REFERENCES resource_warehouse(id),
+    transaction_id          INTEGER NOT NULL REFERENCES transaction(id) ON DELETE CASCADE,
+    operation_type          VARCHAR(50) NOT NULL,
+    location_path           VARCHAR(255) NOT NULL,
+    quantity_delta          DECIMAL(15,2) NOT NULL,
+    quantity_after          DECIMAL(15,2) NOT NULL,
+    unit                    VARCHAR(50),
+    total_amount            DECIMAL(15,2) NOT NULL,
+    counterparty_name       VARCHAR(255) NOT NULL,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Party: 交易参与方
@@ -208,6 +231,10 @@ CREATE INDEX IF NOT EXISTS idx_rw_location ON resource_warehouse(location_path);
 CREATE INDEX IF NOT EXISTS idx_party_person ON party(person_id);
 CREATE INDEX IF NOT EXISTS idx_party_org ON party(organization_id);
 CREATE INDEX IF NOT EXISTS idx_party_transaction ON party(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_im_org ON inventory_movement(organization_id);
+CREATE INDEX IF NOT EXISTS idx_im_resource ON inventory_movement(resource_id);
+CREATE INDEX IF NOT EXISTS idx_im_transaction ON inventory_movement(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_im_movement_uid ON inventory_movement(movement_uid);
 """
 
 
@@ -221,6 +248,7 @@ def init_database(drop_all: bool = False):
                 DROP TABLE IF EXISTS campaign_import_org CASCADE;
                 DROP TABLE IF EXISTS campaign_import CASCADE;
                 DROP TABLE IF EXISTS party CASCADE;
+                DROP TABLE IF EXISTS inventory_movement CASCADE;
                 DROP TABLE IF EXISTS transaction CASCADE;
                 DROP TABLE IF EXISTS resource_warehouse CASCADE;
                 DROP TABLE IF EXISTS warehouse CASCADE;
@@ -514,28 +542,32 @@ def create_warehouse(organization_id: int, name: str, code: str,
                          fetch_returning=True)[0])
 
 
-def query_warehouse(organization_id: int, name: str = None) -> List[Dict]:
+def query_warehouse(organization_id: int, name: str = None, code: str = None) -> List[Dict]:
     sql = "SELECT * FROM warehouse WHERE organization_id = %s"
     params: list = [organization_id]
     if name:
         sql += " AND name ILIKE %s"
         params.append(f"%{name}%")
+    if code:
+        sql += " AND code = %s"
+        params.append(code)
     return _fetch(sql, tuple(params))
 
 
 # --- ResourceWarehouse ---
 
-def create_resource_warehouse(resource_id: int, location_path: str,
+def create_resource_warehouse(resource_id: int, warehouse_id: int,
+                              location_path: str,
                               quantity: float, unit: str = None) -> Dict[str, Any]:
     sql = """
-        INSERT INTO resource_warehouse (resource_id, location_path, quantity, unit)
-        VALUES (%s, %s, %s, %s)
-        ON CONFLICT (resource_id, location_path)
+        INSERT INTO resource_warehouse (resource_id, warehouse_id, location_path, quantity, unit)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (resource_id, warehouse_id, location_path)
         DO UPDATE SET quantity = EXCLUDED.quantity, unit = EXCLUDED.unit,
                       updated_at = CURRENT_TIMESTAMP
         RETURNING *
     """
-    return dict(_execute(sql, (resource_id, location_path, quantity, unit),
+    return dict(_execute(sql, (resource_id, warehouse_id, location_path, quantity, unit),
                          fetch_returning=True)[0])
 
 
@@ -799,6 +831,7 @@ def delete_campaign_import(campaign_import_id: int) -> Dict[str, Any]:
         deleted = {
             "events": deleted_events,
             "parties": 0,
+            "movements": 0,
             "transactions": 0,
             "resource_warehouse": 0,
             "resources": 0,
@@ -810,6 +843,8 @@ def delete_campaign_import(campaign_import_id: int) -> Dict[str, Any]:
         if org_ids:
             cur.execute("DELETE FROM party WHERE organization_id = ANY(%s)", (org_ids,))
             deleted["parties"] = cur.rowcount
+            cur.execute("DELETE FROM inventory_movement WHERE organization_id = ANY(%s)", (org_ids,))
+            deleted["movements"] = cur.rowcount
             cur.execute("DELETE FROM transaction WHERE organization_id = ANY(%s)", (org_ids,))
             deleted["transactions"] = cur.rowcount
             cur.execute("""
@@ -839,3 +874,259 @@ def delete_campaign_import(campaign_import_id: int) -> Dict[str, Any]:
         raise
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Seller inventory atomic transaction helpers (BE-02)
+# ---------------------------------------------------------------------------
+
+def _exec_cur(cur, sql: str, params: tuple = ()):
+    """Execute on an existing cursor and return rows as list of dicts."""
+    cur.execute(sql, params)
+    try:
+        return [dict(row) for row in cur.fetchall()]
+    except psycopg2.ProgrammingError:
+        return []
+
+
+def execute_purchase_in(
+    organization_id: int, operator_person_id: int,
+    product_uid: str, warehouse_code: str, location_path: str,
+    quantity: float, unit: str, total_amount: float,
+    counterparty_name: str,
+) -> dict:
+    """Atomic purchase-in: update stock, create transaction + movement in one tx."""
+    if quantity <= 0:
+        raise ValueError("quantity must be positive")
+    if total_amount < 0:
+        raise ValueError("total_amount must be non-negative")
+    import uuid as _uuid
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("BEGIN")
+
+        r = _exec_cur(cur,
+            "SELECT id FROM resource WHERE organization_id = %s AND name = %s AND status = 'active'",
+            (organization_id, product_uid),
+        )
+        if not r:
+            raise ValueError(f"Product not found: {product_uid}")
+        resource_id = r[0]["id"]
+
+        w = _exec_cur(cur,
+            "SELECT id FROM warehouse WHERE organization_id = %s AND code = %s",
+            (organization_id, warehouse_code),
+        )
+        if not w:
+            raise ValueError(f"Warehouse not found: {warehouse_code}")
+        warehouse_id = w[0]["id"]
+
+        _exec_cur(cur,
+            "INSERT INTO resource_warehouse (resource_id, warehouse_id, location_path, quantity, unit) "
+            "VALUES (%s, %s, %s, 0, %s) "
+            "ON CONFLICT (resource_id, warehouse_id, location_path) "
+            "DO UPDATE SET unit = EXCLUDED.unit "
+            "RETURNING id, quantity",
+            (resource_id, warehouse_id, location_path, unit),
+        )
+        rw = _exec_cur(cur,
+            "SELECT id, quantity FROM resource_warehouse "
+            "WHERE resource_id = %s AND warehouse_id = %s AND location_path = %s "
+            "FOR UPDATE",
+            (resource_id, warehouse_id, location_path),
+        )[0]
+        rw_id = rw["id"]
+        old_qty = float(rw["quantity"])
+        new_qty = old_qty + quantity
+
+        cur.execute(
+            "UPDATE resource_warehouse SET quantity = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (new_qty, rw_id),
+        )
+
+        tx = _exec_cur(cur,
+            "INSERT INTO transaction (organization_id, amount, category, description) "
+            "VALUES (%s, %s, 'purchase_in', %s) RETURNING id",
+            (organization_id, total_amount, f"purchase_in {product_uid} x {quantity}{unit}"),
+        )[0]
+        tx_id = tx["id"]
+
+        movement_uid = f"mv_{_uuid.uuid4().hex[:12]}"
+        cur.execute(
+            "INSERT INTO inventory_movement "
+            "(movement_uid, organization_id, operator_person_id, resource_id, "
+            " warehouse_id, resource_warehouse_id, transaction_id, "
+            " operation_type, location_path, quantity_delta, quantity_after, unit, "
+            " total_amount, counterparty_name) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                movement_uid, organization_id, operator_person_id, resource_id,
+                warehouse_id, rw_id, tx_id,
+                "purchase_in", location_path, quantity, new_qty, unit,
+                total_amount, counterparty_name,
+            ),
+        )
+
+        conn.commit()
+        return {
+            "status": "ok",
+            "operation_type": "purchase_in",
+            "product_uid": product_uid,
+            "warehouse_code": warehouse_code,
+            "location_path": location_path,
+            "quantity_delta": quantity,
+            "new_quantity": new_qty,
+            "unit": unit,
+            "total_amount": total_amount,
+            "counterparty_name": counterparty_name,
+            "movement_uid": movement_uid,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def execute_sales_out(
+    organization_id: int, operator_person_id: int,
+    product_uid: str, warehouse_code: str, location_path: str,
+    quantity: float, unit: str, total_amount: float,
+    counterparty_name: str,
+) -> dict:
+    """Atomic sales-out: check stock under row lock, update stock, create tx + movement."""
+    if quantity <= 0:
+        raise ValueError("quantity must be positive")
+    if total_amount < 0:
+        raise ValueError("total_amount must be non-negative")
+    import uuid as _uuid
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("BEGIN")
+
+        r = _exec_cur(cur,
+            "SELECT id FROM resource WHERE organization_id = %s AND name = %s AND status = 'active'",
+            (organization_id, product_uid),
+        )
+        if not r:
+            raise ValueError(f"Product not found: {product_uid}")
+        resource_id = r[0]["id"]
+
+        w = _exec_cur(cur,
+            "SELECT id FROM warehouse WHERE organization_id = %s AND code = %s",
+            (organization_id, warehouse_code),
+        )
+        if not w:
+            raise ValueError(f"Warehouse not found: {warehouse_code}")
+        warehouse_id = w[0]["id"]
+
+        rw_rows = _exec_cur(cur,
+            "SELECT id, quantity FROM resource_warehouse "
+            "WHERE resource_id = %s AND warehouse_id = %s AND location_path = %s "
+            "FOR UPDATE",
+            (resource_id, warehouse_id, location_path),
+        )
+        if not rw_rows:
+            conn.rollback()
+            raise HTTPException(409, "No stock at this location")
+        rw = rw_rows[0]
+        rw_id = rw["id"]
+        old_qty = float(rw["quantity"])
+
+        if old_qty < quantity:
+            conn.rollback()
+            raise HTTPException(409,
+                f"Insufficient stock: have {old_qty}, need {quantity}")
+
+        new_qty = old_qty - quantity
+
+        cur.execute(
+            "UPDATE resource_warehouse SET quantity = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (new_qty, rw_id),
+        )
+
+        tx = _exec_cur(cur,
+            "INSERT INTO transaction (organization_id, amount, category, description) "
+            "VALUES (%s, %s, 'sales_out', %s) RETURNING id",
+            (organization_id, total_amount, f"sales_out {product_uid} x {quantity}{unit}"),
+        )[0]
+        tx_id = tx["id"]
+
+        movement_uid = f"mv_{_uuid.uuid4().hex[:12]}"
+        cur.execute(
+            "INSERT INTO inventory_movement "
+            "(movement_uid, organization_id, operator_person_id, resource_id, "
+            " warehouse_id, resource_warehouse_id, transaction_id, "
+            " operation_type, location_path, quantity_delta, quantity_after, unit, "
+            " total_amount, counterparty_name) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                movement_uid, organization_id, operator_person_id, resource_id,
+                warehouse_id, rw_id, tx_id,
+                "sales_out", location_path, -quantity, new_qty, unit,
+                total_amount, counterparty_name,
+            ),
+        )
+
+        conn.commit()
+        return {
+            "status": "ok",
+            "operation_type": "sales_out",
+            "product_uid": product_uid,
+            "warehouse_code": warehouse_code,
+            "location_path": location_path,
+            "quantity_delta": -quantity,
+            "new_quantity": new_qty,
+            "unit": unit,
+            "total_amount": total_amount,
+            "counterparty_name": counterparty_name,
+            "movement_uid": movement_uid,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def query_stock(organization_id: int, product_uid: str = None) -> list:
+    """Query stock for a product within an org. Returns business-facing rows."""
+    sql = """
+        SELECT r.name AS product_uid, w.code AS warehouse_code,
+               rw.location_path, rw.quantity, rw.unit
+        FROM resource_warehouse rw
+        JOIN resource r ON r.id = rw.resource_id
+        JOIN warehouse w ON w.id = rw.warehouse_id
+        WHERE r.organization_id = %s AND r.status = 'active'
+    """
+    params: list = [organization_id]
+    if product_uid:
+        sql += " AND r.name = %s"
+        params.append(product_uid)
+    sql += " ORDER BY w.code, rw.location_path"
+    return _fetch(sql, tuple(params))
+
+
+def query_inventory_movements(organization_id: int, product_uid: str = None) -> list:
+    """Query inventory movements. Returns business-facing rows, no DB PKs."""
+    sql = """
+        SELECT im.movement_uid, im.operation_type,
+               r.name AS product_uid, w.code AS warehouse_code,
+               im.location_path, im.quantity_delta, im.quantity_after AS new_quantity,
+               im.unit, im.total_amount, im.counterparty_name,
+               im.created_at
+        FROM inventory_movement im
+        JOIN resource r ON r.id = im.resource_id
+        JOIN warehouse w ON w.id = im.warehouse_id
+        WHERE im.organization_id = %s
+    """
+    params: list = [organization_id]
+    if product_uid:
+        sql += " AND r.name = %s"
+        params.append(product_uid)
+    sql += " ORDER BY im.created_at DESC, im.id DESC"
+    return _fetch(sql, tuple(params))

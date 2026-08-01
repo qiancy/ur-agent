@@ -20,6 +20,7 @@ Naming:
 """
 
 from typing import Optional, List, Dict, Any
+from decimal import Decimal, ROUND_HALF_UP
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
@@ -40,7 +41,9 @@ DB_CONFIG = {
 
 def get_db_connection():
     try:
-        return psycopg2.connect(**DB_CONFIG)
+        # All business date boundaries are Asia/Shanghai; enforce it at
+        # session startup instead of relying on the server default timezone.
+        return psycopg2.connect(**DB_CONFIG, options="-c timezone=Asia/Shanghai")
     except Exception as e:
         raise Exception(f"Database connection failed: {e}")
 
@@ -235,6 +238,8 @@ CREATE INDEX IF NOT EXISTS idx_im_org ON inventory_movement(organization_id);
 CREATE INDEX IF NOT EXISTS idx_im_resource ON inventory_movement(resource_id);
 CREATE INDEX IF NOT EXISTS idx_im_transaction ON inventory_movement(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_im_movement_uid ON inventory_movement(movement_uid);
+CREATE INDEX IF NOT EXISTS idx_im_org_created_at ON inventory_movement(organization_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_im_org_op_created_at ON inventory_movement(organization_id, operation_type, created_at DESC);
 """
 
 
@@ -907,7 +912,9 @@ def execute_purchase_in(
         cur.execute("BEGIN")
 
         r = _exec_cur(cur,
-            "SELECT id FROM resource WHERE organization_id = %s AND name = %s AND status = 'active'",
+            "SELECT id FROM resource "
+            "WHERE organization_id = %s AND name = %s "
+            "AND status = 'active' AND type = 'physical'",
             (organization_id, product_uid),
         )
         if not r:
@@ -1007,7 +1014,9 @@ def execute_sales_out(
         cur.execute("BEGIN")
 
         r = _exec_cur(cur,
-            "SELECT id FROM resource WHERE organization_id = %s AND name = %s AND status = 'active'",
+            "SELECT id FROM resource "
+            "WHERE organization_id = %s AND name = %s "
+            "AND status = 'active' AND type = 'physical'",
             (organization_id, product_uid),
         )
         if not r:
@@ -1102,6 +1111,7 @@ def query_stock(organization_id: int, product_uid: str = None) -> list:
         JOIN resource r ON r.id = rw.resource_id
         JOIN warehouse w ON w.id = rw.warehouse_id
         WHERE r.organization_id = %s AND r.status = 'active'
+          AND r.type = 'physical'
     """
     params: list = [organization_id]
     if product_uid:
@@ -1111,8 +1121,21 @@ def query_stock(organization_id: int, product_uid: str = None) -> list:
     return _fetch(sql, tuple(params))
 
 
-def query_inventory_movements(organization_id: int, product_uid: str = None) -> list:
-    """Query inventory movements. Returns business-facing rows, no DB PKs."""
+def query_inventory_movements(
+    organization_id: int,
+    product_uid: str = None,
+    operation_type: str = None,
+    date_from: str = None,
+    date_to: str = None,
+    limit: int = None,
+    offset: int = 0,
+) -> list:
+    """Query inventory movements. Returns business-facing rows, no DB PKs.
+
+    Default (no extra filters) keeps the BE-02 accepted list contract.
+    When ``product_uid`` is given, only active products are matched;
+    unknown/inactive product_uid yields an empty list (no cross-shop leak).
+    """
     sql = """
         SELECT im.movement_uid, im.operation_type,
                r.name AS product_uid, w.code AS warehouse_code,
@@ -1122,11 +1145,333 @@ def query_inventory_movements(organization_id: int, product_uid: str = None) -> 
         FROM inventory_movement im
         JOIN resource r ON r.id = im.resource_id
         JOIN warehouse w ON w.id = im.warehouse_id
-        WHERE im.organization_id = %s
+        WHERE im.organization_id = %s AND r.type = 'physical'
     """
     params: list = [organization_id]
     if product_uid:
-        sql += " AND r.name = %s"
+        sql += " AND r.name = %s AND r.status = 'active'"
         params.append(product_uid)
-    sql += " ORDER BY im.created_at DESC, im.id DESC"
+    if operation_type:
+        sql += " AND im.operation_type = %s"
+        params.append(operation_type)
+    date_sql, date_params = _build_date_filter("im", date_from, date_to)
+    if date_sql:
+        sql += date_sql
+        params.extend(date_params)
+    if limit is not None:
+        sql += " ORDER BY im.created_at DESC, im.id DESC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+    else:
+        sql += " ORDER BY im.created_at DESC, im.id DESC"
     return _fetch(sql, tuple(params))
+
+
+# ---------------------------------------------------------------------------
+# Seller summary helpers (BE-03)
+# ---------------------------------------------------------------------------
+
+def _build_date_filter(alias: str, date_from: str = None, date_to: str = None):
+    """Return (sql_fragment, params) for a half-open date range on created_at.
+
+    ``date_from`` inclusive from 00:00:00; ``date_to`` inclusive through the
+    whole day via ``< date_to + 1 day`` (half-open, keeps sub-second rows).
+    """
+    fragment = ""
+    params: list = []
+    if date_from:
+        fragment += f" AND {alias}.created_at >= %s::date"
+        params.append(date_from)
+    if date_to:
+        fragment += f" AND {alias}.created_at < (%s::date + INTERVAL '1 day')"
+        params.append(date_to)
+    return fragment, params
+
+
+def _round2(value) -> float:
+    """Round a numeric (Decimal/float) to 2 decimals for API output.
+
+    Uses ROUND_HALF_UP to match SQL ROUND(x, 2) semantics.
+    """
+    if value is None:
+        return 0.0
+    try:
+        return float(Decimal(str(value)).quantize(Decimal("0.01"),
+                                                  rounding=ROUND_HALF_UP))
+    except Exception:
+        return float(value)
+
+
+def _product_units(organization_id: int, product_uids: list) -> dict:
+    """Resolve unit per product: resource.unit else latest movement unit else None."""
+    if not product_uids:
+        return {}
+    rows = _fetch(
+        """
+        SELECT name AS product_uid, unit FROM resource
+        WHERE organization_id = %s AND name = ANY(%s)
+          AND status = 'active' AND type = 'physical'
+        """,
+        (organization_id, product_uids),
+    )
+    units = {row["product_uid"]: row["unit"] for row in rows}
+    missing = [uid for uid in product_uids if not units.get(uid)]
+    if missing:
+        mrows = _fetch(
+            """
+            SELECT DISTINCT ON (r.name) r.name AS product_uid, im.unit
+            FROM inventory_movement im
+            JOIN resource r ON r.id = im.resource_id
+            WHERE im.organization_id = %s AND r.name = ANY(%s)
+              AND r.status = 'active' AND r.type = 'physical'
+              AND im.unit IS NOT NULL
+            ORDER BY r.name, im.created_at DESC, im.id DESC
+            """,
+            (organization_id, missing),
+        )
+        for row in mrows:
+            units[row["product_uid"]] = row["unit"]
+    return units
+
+
+def _product_current_stock(organization_id: int) -> dict:
+    """Real-time stock per active product, excluding 'total' summary rows."""
+    rows = _fetch(
+        """
+        SELECT r.name AS product_uid,
+               COALESCE(SUM(
+                   CASE WHEN rw.location_path = 'total' THEN 0 ELSE rw.quantity END
+               ), 0) AS quantity
+        FROM resource r
+        LEFT JOIN resource_warehouse rw ON rw.resource_id = r.id
+        WHERE r.organization_id = %s AND r.status = 'active'
+          AND r.type = 'physical'
+        GROUP BY r.name
+        """,
+        (organization_id,),
+    )
+    return {row["product_uid"]: row["quantity"] for row in rows}
+
+
+def _product_avg_purchase_cost(organization_id: int) -> dict:
+    """All-history average purchase unit cost per product (purchase_in only)."""
+    rows = _fetch(
+        """
+        SELECT r.name AS product_uid,
+               SUM(im.total_amount) AS total_amount,
+               SUM(im.quantity_delta) AS total_quantity
+        FROM inventory_movement im
+        JOIN resource r ON r.id = im.resource_id
+        WHERE im.organization_id = %s AND im.operation_type = 'purchase_in'
+          AND r.type = 'physical'
+        GROUP BY r.name
+        """,
+        (organization_id,),
+    )
+    costs = {}
+    for row in rows:
+        qty = row["total_quantity"]
+        amt = row["total_amount"]
+        if qty and qty > 0:
+            costs[row["product_uid"]] = Decimal(str(amt)) / Decimal(str(qty))
+        else:
+            costs[row["product_uid"]] = Decimal("0")
+    return costs
+
+
+def get_seller_summary(
+    organization_id: int,
+    date_from: str = None,
+    date_to: str = None,
+    low_stock_threshold: float = 5,
+    top_n: int = 5,
+) -> dict:
+    """Seller business summary for one shop (JWT organization scope)."""
+    date_sql, date_params = _build_date_filter("im", date_from, date_to)
+
+    purchase = _fetch(
+        f"""
+        SELECT COALESCE(SUM(im.total_amount), 0) AS amount,
+               COUNT(*) AS cnt
+        FROM inventory_movement im
+        JOIN resource r ON r.id = im.resource_id
+        WHERE im.organization_id = %s AND im.operation_type = 'purchase_in'
+          AND r.type = 'physical'{date_sql}
+        """,
+        (organization_id, *date_params),
+    )[0]
+    sales = _fetch(
+        f"""
+        SELECT COALESCE(SUM(im.total_amount), 0) AS amount,
+               COUNT(*) AS cnt
+        FROM inventory_movement im
+        JOIN resource r ON r.id = im.resource_id
+        WHERE im.organization_id = %s AND im.operation_type = 'sales_out'
+          AND r.type = 'physical'{date_sql}
+        """,
+        (organization_id, *date_params),
+    )[0]
+
+    purchase_amount = _round2(purchase["amount"])
+    sales_amount = _round2(sales["amount"])
+    purchase_count = int(purchase["cnt"])
+    sales_count = int(sales["cnt"])
+
+    product_count = _fetch(
+        "SELECT COUNT(*) AS cnt FROM resource "
+        "WHERE organization_id = %s AND status = 'active' AND type = 'physical'",
+        (organization_id,),
+    )[0]["cnt"]
+
+    stock_rows = _fetch(
+        """
+        SELECT COALESCE(SUM(CASE WHEN rw.location_path = 'total' THEN 0 ELSE rw.quantity END), 0) AS qty,
+               COUNT(CASE WHEN rw.location_path <> 'total' THEN 1 END) AS loc_count
+        FROM resource r
+        LEFT JOIN resource_warehouse rw ON rw.resource_id = r.id
+        WHERE r.organization_id = %s AND r.status = 'active'
+          AND r.type = 'physical'
+        """,
+        (organization_id,),
+    )[0]
+    current_stock_quantity = float(stock_rows["qty"])
+    stock_location_count = int(stock_rows["loc_count"] or 0)
+
+    stocks = _product_current_stock(organization_id)
+    costs = _product_avg_purchase_cost(organization_id)
+    estimated_inventory_value = _round2(sum(
+        stocks.get(uid, Decimal(0)) * costs.get(uid, Decimal(0))
+        for uid in stocks
+    ))
+
+    low_stock_items = []
+    for uid, qty in stocks.items():
+        if float(qty) <= low_stock_threshold:
+            low_stock_items.append({
+                "product_uid": uid,
+                "quantity": float(qty),
+                "unit": None,
+            })
+    units = _product_units(organization_id, [x["product_uid"] for x in low_stock_items])
+    for item in low_stock_items:
+        item["unit"] = units.get(item["product_uid"])
+    low_stock_items.sort(key=lambda x: x["product_uid"])
+
+    top_products = _fetch(
+        f"""
+        SELECT r.name AS product_uid,
+               SUM(im.total_amount) AS sales_amount,
+               SUM(-im.quantity_delta) AS sales_quantity
+        FROM inventory_movement im
+        JOIN resource r ON r.id = im.resource_id
+        WHERE im.organization_id = %s AND im.operation_type = 'sales_out'
+          AND r.type = 'physical'{date_sql}
+        GROUP BY r.name
+        ORDER BY sales_amount DESC, r.name ASC
+        LIMIT %s
+        """,
+        (organization_id, *date_params, top_n),
+    )
+    top_products_by_sales = [
+        {
+            "product_uid": row["product_uid"],
+            "sales_amount": _round2(row["sales_amount"]),
+            "sales_quantity": float(row["sales_quantity"]),
+        }
+        for row in top_products
+    ]
+
+    return {
+        "status": "ok",
+        "date_from": date_from,
+        "date_to": date_to,
+        "sales_amount": sales_amount,
+        "purchase_amount": purchase_amount,
+        "net_cash_flow": _round2(sales["amount"] - purchase["amount"]),
+        "purchase_count": purchase_count,
+        "sales_count": sales_count,
+        "movement_count": purchase_count + sales_count,
+        "product_count": int(product_count),
+        "stock_location_count": stock_location_count,
+        "current_stock_quantity": current_stock_quantity,
+        "estimated_inventory_value": estimated_inventory_value,
+        "valuation_method": "weighted_average_purchase_cost",
+        "low_stock_items": low_stock_items,
+        "top_products_by_sales": top_products_by_sales,
+    }
+
+
+def query_product_summary(
+    organization_id: int,
+    product_uid: str = None,
+    date_from: str = None,
+    date_to: str = None,
+) -> dict:
+    """Per-product seller summary. Active products only; no DB PKs exposed."""
+    date_sql, date_params = _build_date_filter("im", date_from, date_to)
+
+    agg = _fetch(
+        f"""
+        SELECT r.name AS product_uid,
+               COALESCE(SUM(CASE WHEN im.operation_type = 'purchase_in'
+                                 THEN im.total_amount ELSE 0 END), 0) AS purchase_amount,
+               COALESCE(SUM(CASE WHEN im.operation_type = 'sales_out'
+                                 THEN im.total_amount ELSE 0 END), 0) AS sales_amount,
+               COALESCE(SUM(CASE WHEN im.operation_type = 'purchase_in'
+                                 THEN im.quantity_delta ELSE 0 END), 0) AS purchase_qty,
+               COALESCE(SUM(CASE WHEN im.operation_type = 'sales_out'
+                                 THEN -im.quantity_delta ELSE 0 END), 0) AS sales_qty,
+               COUNT(*) AS movement_count
+        FROM inventory_movement im
+        JOIN resource r ON r.id = im.resource_id
+        WHERE im.organization_id = %s AND r.status = 'active'
+          AND r.type = 'physical'{date_sql}
+        GROUP BY r.name
+        """,
+        (organization_id, *date_params),
+    )
+    agg_by_uid = {row["product_uid"]: row for row in agg}
+
+    stocks = _product_current_stock(organization_id)
+    costs = _product_avg_purchase_cost(organization_id)
+
+    if product_uid:
+        active_uids = set(stocks.keys())
+        if product_uid not in active_uids:
+            return {"status": "ok", "items": []}
+        uids = [product_uid]
+    else:
+        uids = list(stocks.keys())
+
+    items = []
+    for uid in uids:
+        row = agg_by_uid.get(uid)
+        if row is None:
+            purchase_amount = sales_amount = purchase_qty = sales_qty = 0
+            movement_count = 0
+        else:
+            purchase_amount = _round2(row["purchase_amount"])
+            sales_amount = _round2(row["sales_amount"])
+            purchase_qty = float(row["purchase_qty"])
+            sales_qty = float(row["sales_qty"])
+            movement_count = int(row["movement_count"])
+        stock_dec = stocks.get(uid, Decimal(0))
+        stock = float(stock_dec)
+        items.append({
+            "product_uid": uid,
+            "unit": None,
+            "current_quantity": stock,
+            "purchase_quantity": purchase_qty,
+            "sales_quantity": sales_qty,
+            "purchase_amount": purchase_amount,
+            "sales_amount": sales_amount,
+            "movement_count": movement_count,
+            "estimated_inventory_value": _round2(stock_dec * costs.get(uid, Decimal(0))),
+        })
+
+    units = _product_units(organization_id, [x["product_uid"] for x in items])
+    for item in items:
+        item["unit"] = units.get(item["product_uid"])
+    if product_uid:
+        return {"status": "ok", "items": items}
+    items.sort(key=lambda x: x["product_uid"])
+    return {"status": "ok", "items": items}

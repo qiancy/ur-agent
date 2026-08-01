@@ -15,10 +15,11 @@
 5. [资源 Resource](#资源-resource)
 6. [仓库 Warehouse](#仓库-warehouse)
 7. [资源-仓库明细 ResourceWarehouse](#资源-仓库明细-resourcewarehouse)
-8. [交易 Transaction](#交易-transaction)
-9. [参与方 Party](#参与方-party)
-10. [汇总 Summary](#汇总-summary)
-11. [AI 对话 Chat](#ai-对话-chat)
+8. [Seller 库存经营](#seller-库存经营)
+9. [交易 Transaction](#交易-transaction)
+10. [参与方 Party](#参与方-party)
+11. [汇总 Summary](#汇总-summary)
+12. [AI 对话 Chat](#ai-对话-chat)
 
 ---
 
@@ -394,6 +395,217 @@
 {
   "resource_id": 1,
   "total_qty": 50
+}
+```
+
+---
+
+## Seller 库存经营
+
+Seller API 面向 ecommerce 店铺，全部使用 Bearer JWT 决定当前店铺上下文。请求体和查询参数不得提交 `puid`、`ouid` 或数据库内部主键字段；商品、仓库和流水只暴露业务字段。Seller 商品只统计 `resource.type = "physical"` 且 active 的资源，知识、财务、人力等非库存资源不进入 Seller 商品视图。
+
+### `POST /seller/purchase-in`
+
+买入入库。库存、交易记录和库存流水在同一个事务中提交或回滚。
+
+**Headers**:
+| 名称 | 必填 | 说明 |
+|------|------|------|
+| Authorization | 是 | `Bearer <access_token>` |
+
+**Request Body**:
+```json
+{
+  "product_uid": "phone_case_white",
+  "warehouse_code": "main",
+  "location_path": "A-01",
+  "quantity": 10,
+  "unit": "件",
+  "total_amount": 80.00,
+  "counterparty_name": "供应商A"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "operation_type": "purchase_in",
+  "product_uid": "phone_case_white",
+  "warehouse_code": "main",
+  "location_path": "A-01",
+  "quantity_delta": 10.0,
+  "new_quantity": 10.0,
+  "unit": "件",
+  "total_amount": 80.0,
+  "counterparty_name": "供应商A",
+  "movement_uid": "mv_xxxxxx"
+}
+```
+
+### `POST /seller/sales-out`
+
+卖出出库。库存不足返回 `409`，且不创建交易记录或库存流水。
+
+**Request Body**:
+```json
+{
+  "product_uid": "phone_case_white",
+  "warehouse_code": "main",
+  "location_path": "A-01",
+  "quantity": 3,
+  "unit": "件",
+  "total_amount": 45.00,
+  "counterparty_name": "淘宝买家"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "operation_type": "sales_out",
+  "product_uid": "phone_case_white",
+  "warehouse_code": "main",
+  "location_path": "A-01",
+  "quantity_delta": -3.0,
+  "new_quantity": 7.0,
+  "unit": "件",
+  "total_amount": 45.0,
+  "counterparty_name": "淘宝买家",
+  "movement_uid": "mv_xxxxxx"
+}
+```
+
+### `GET /seller/stock`
+
+查询当前店铺库存。
+
+**Query Parameters**:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| product_uid | string | 否 | 商品业务标识 |
+
+**Response**:
+```json
+[
+  {
+    "product_uid": "phone_case_white",
+    "warehouse_code": "main",
+    "location_path": "A-01",
+    "quantity": 7.0,
+    "unit": "件"
+  }
+]
+```
+
+### `GET /seller/inventory-movements`
+
+查询库存流水。默认响应保持数组，不包裹分页对象；未传 `limit` 时忽略 `offset`。
+
+**Query Parameters**:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| product_uid | string | 否 | 商品业务标识 |
+| operation_type | string | 否 | `purchase_in` 或 `sales_out` |
+| date_from | string | 否 | 开始日期，`YYYY-MM-DD` |
+| date_to | string | 否 | 结束日期，`YYYY-MM-DD`，包含当天 |
+| limit | int | 否 | 1..200 |
+| offset | int | 否 | 大于等于 0 |
+
+**Response**:
+```json
+[
+  {
+    "movement_uid": "mv_xxxxxx",
+    "operation_type": "sales_out",
+    "product_uid": "phone_case_white",
+    "warehouse_code": "main",
+    "location_path": "A-01",
+    "quantity_delta": -3.0,
+    "new_quantity": 7.0,
+    "unit": "件",
+    "total_amount": 45.0,
+    "counterparty_name": "淘宝买家",
+    "created_at": "2026-07-31T10:20:30"
+  }
+]
+```
+
+### `GET /seller/summary`
+
+查询当前店铺经营摘要。金额类字段保留 2 位小数；库存数量、低库存列表和库存估值始终基于当前实时库存，日期范围只影响采购、销售、流水计数和热销商品统计。
+
+**Query Parameters**:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| date_from | string | 否 | 开始日期，`YYYY-MM-DD` |
+| date_to | string | 否 | 结束日期，`YYYY-MM-DD`，包含当天 |
+| low_stock_threshold | number | 否 | 低库存阈值，默认 5，必须大于等于 0 |
+| top_n | int | 否 | 热销商品数量，默认 5，范围 1..20 |
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "date_from": "2026-07-01",
+  "date_to": "2026-07-31",
+  "sales_amount": 450.0,
+  "purchase_amount": 300.0,
+  "net_cash_flow": 150.0,
+  "purchase_count": 3,
+  "sales_count": 8,
+  "movement_count": 11,
+  "product_count": 4,
+  "stock_location_count": 6,
+  "current_stock_quantity": 32.0,
+  "estimated_inventory_value": 256.0,
+  "valuation_method": "weighted_average_purchase_cost",
+  "low_stock_items": [
+    {
+      "product_uid": "phone_case_white",
+      "quantity": 3.0,
+      "unit": "件"
+    }
+  ],
+  "top_products_by_sales": [
+    {
+      "product_uid": "phone_case_white",
+      "sales_amount": 180.0,
+      "sales_quantity": 12.0
+    }
+  ]
+}
+```
+
+### `GET /seller/product-summary`
+
+按商品查询采购、销售、当前库存和库存估值。不传 `product_uid` 时返回当前店铺所有 active physical 商品；不存在、非 active 或非 physical 商品返回空数组。
+
+**Query Parameters**:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| product_uid | string | 否 | 商品业务标识 |
+| date_from | string | 否 | 统计开始日期 |
+| date_to | string | 否 | 统计结束日期 |
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "items": [
+    {
+      "product_uid": "phone_case_white",
+      "unit": "件",
+      "current_quantity": 17.0,
+      "purchase_quantity": 20.0,
+      "sales_quantity": 3.0,
+      "purchase_amount": 160.0,
+      "sales_amount": 45.0,
+      "movement_count": 2,
+      "estimated_inventory_value": 136.0
+    }
+  ]
 }
 ```
 

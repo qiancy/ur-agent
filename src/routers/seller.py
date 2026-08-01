@@ -4,17 +4,30 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from src.models.schemas import SellerPurchaseIn, SellerSalesOut
+from src.models.schemas import SellerPurchaseIn, SellerSalesOut, SellerChatRequest
 from src.db.database import (
     execute_purchase_in, execute_sales_out, query_stock, query_inventory_movements,
     get_seller_summary, query_product_summary,
 )
 from src.routers.deps import require_strict_org_context
+from src.agents.seller_agent import create_seller_agent
+from src.tools.seller_tools import make_seller_tools
 
 router = APIRouter(prefix="/seller", tags=["seller"])
 
 _IDENTITY_QUERY_PARAMS = {"puid", "ouid"}
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+_WRITE_INTENT_PHRASES = (
+    "帮我入库", "帮我采购入库", "帮我进货",
+    "帮我出库", "帮我卖出", "帮我卖", "帮我买",
+    "修改库存", "调整库存", "改库存",
+    "创建", "新增", "删除", "记录一笔",
+)
+_READ_INTENT_EXCLUSIONS = (
+    "支出", "流水", "统计", "查询", "列表", "金额", "汇总", "余额", "多少",
+)
+_IDENTITY_MARKERS = ("我是谁", "当前空间", "当前店铺")
 
 
 def _reject_identity_params(request: Request) -> None:
@@ -155,3 +168,54 @@ async def seller_product_summary(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+def _is_write_intent(message: str) -> bool:
+    """Write-intent detection: write verb phrase minus read-intent nouns."""
+    if not any(p in message for p in _WRITE_INTENT_PHRASES):
+        return False
+    if any(w in message for w in _READ_INTENT_EXCLUSIONS):
+        return False
+    return True
+
+
+_READ_ONLY_NOTICE = (
+    "当前版本的 Seller AI 只支持经营查询，不能代你执行入库、出库、"
+    "修改库存或创建记录。请使用人工操作入口完成写入。"
+)
+
+
+@router.post("/chat")
+async def seller_chat(body: SellerChatRequest, request: Request):
+    ctx = require_strict_org_context(request)
+    if ctx.get("org_type") != "ecommerce":
+        raise HTTPException(
+            403, "Seller chat is only available for ecommerce organizations")
+
+    _reject_identity_params(request)
+
+    message = body.message.strip()
+    if not message:
+        raise HTTPException(422, "message must not be empty")
+
+    ouid = ctx["ouid"]
+
+    if any(marker in message for marker in _IDENTITY_MARKERS):
+        return {
+            "response": f"当前店铺：{ctx.get('org_name', '')}，"
+                        f"组织标识：{ouid}，当前用户：{ctx.get('puid', '')}。",
+            "ouid": ouid,
+        }
+
+    if _is_write_intent(message):
+        return {"response": _READ_ONLY_NOTICE, "ouid": ouid}
+
+    try:
+        tools = make_seller_tools(ctx["organization_id"])
+        executor = create_seller_agent(tools)
+        result = executor.invoke({"input": message, "chat_history": []})
+        return {"response": result["output"], "ouid": ouid}
+    except TimeoutError:
+        raise HTTPException(504, "AI 处理超时，请稍后重试")
+    except Exception:
+        raise HTTPException(502, "AI 处理失败，请稍后重试")

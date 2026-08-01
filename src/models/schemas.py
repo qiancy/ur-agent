@@ -117,6 +117,11 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class SellerChatRequest(BaseModel):
+    message: str
+    model_config = {"extra": "forbid"}
+
+
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):

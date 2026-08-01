@@ -609,6 +609,38 @@ Seller API 面向 ecommerce 店铺，全部使用 Bearer JWT 决定当前店铺�
 }
 ```
 
+### `POST /seller/chat`
+
+Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登录 token，不接受任何身份/店铺参数（`puid`、`ouid`、`*_id`、`id`）。仅 `org_type == "ecommerce"` 组织可用，其他组织返回 403。写入意图（入库/出库/修改库存/创建/删除等）在进入 AI 前被路由级拦截并返回只读提示，不调用 LLM。
+
+**Request Body**:
+```json
+{
+  "message": "当前库存怎么样？"
+}
+```
+`message` 必填且不能为空；请求体存在额外字段时返回 422。
+
+**校验顺序**: strict 上下文 → `org_type != "ecommerce"` 返回 403 → 身份参数校验 400 → 空消息 422 → 身份快路径 → 写入意图拦截 → Agent。
+
+**Response**:
+```json
+{
+  "response": "当前库存：手机壳白色 17 件，充电线黑色 20 条。",
+  "ouid": "taobao_shop_a"
+}
+```
+
+身份快路径（如“我是谁”）返回：
+```json
+{
+  "response": "当前店铺：淘宝小店 A，组织标识：taobao_shop_a，当前用户：seller_a。",
+  "ouid": "taobao_shop_a"
+}
+```
+
+写入意图拦截返回只读提示，不调用 LLM。LLM 异常统一返回 502、超时返回 504。
+
 ---
 
 ## 交易 Transaction

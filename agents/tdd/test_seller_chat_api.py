@@ -72,8 +72,13 @@ class _FakeSellerChatModel(BaseChatModel):
     def _llm_type(self) -> str:
         return "fake-seller-chat-model"
 
-    def bind_tools(self, tools, **kwargs):
-        self.bound_tool_names = [t.name for t in tools]
+    def bind(self, **kwargs):
+        tools = kwargs.get("tools")
+        if tools is not None:
+            self.bound_tool_names = [
+                t["function"]["name"] for t in tools
+                if isinstance(t, dict) and t.get("function")
+            ]
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):

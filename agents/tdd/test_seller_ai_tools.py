@@ -150,7 +150,7 @@ def test_seller_stock_tool_returns_current_stock():
     assert isinstance(rows, list) and len(rows) == 1
     assert rows[0]["product_uid"] == shop["product_uid"]
     assert rows[0]["warehouse_code"] == shop["warehouse_code"]
-    assert rows[0]["quantity"] == 10
+    assert float(rows[0]["quantity"]) == 10.0
 
 
 # ============================================================================
@@ -189,10 +189,11 @@ def test_seller_product_summary_tool_returns_product_metrics():
     assert len(data["items"]) == 1
     item = data["items"][0]
     assert item["product_uid"] == shop["product_uid"]
-    assert item["purchase_qty"] == 10
-    assert item["sales_qty"] == 3
+    assert item["purchase_quantity"] == 10.0
+    assert item["sales_quantity"] == 3.0
     assert item["purchase_amount"] == 80.0
     assert item["sales_amount"] == 45.0
+    assert item["current_quantity"] == 7.0
 
 
 # ============================================================================
@@ -231,7 +232,7 @@ def test_seller_tools_are_isolated_by_shop():
 
     rows_a = json.loads(tools_a["seller_stock"].invoke(
         {"product_uid": a["product_uid"]}))
-    assert len(rows_a) == 1 and rows_a[0]["quantity"] == 10
+    assert len(rows_a) == 1 and float(rows_a[0]["quantity"]) == 10.0
 
     rows_b = json.loads(tools_b["seller_stock"].invoke(
         {"product_uid": a["product_uid"]}))

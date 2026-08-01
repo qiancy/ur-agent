@@ -163,6 +163,7 @@ def _show_home():
         gr.update(visible=True),
         gr.update(visible=False),
         gr.update(visible=False),
+        gr.update(visible=False),
     )
 
 
@@ -171,22 +172,25 @@ def _show_auth():
         gr.update(visible=False),
         gr.update(visible=True),
         gr.update(visible=False),
+        gr.update(visible=False),
     )
 
 
-def _show_workspace():
+def _show_workspace(state):
     return (
         gr.update(visible=False),
         gr.update(visible=False),
         gr.update(visible=True),
+        gr.update(visible=(state or {}).get("org_type") == "ecommerce"),
     )
 
 
 def _blank_workspace():
-    return "", "", "", "", "", [], ""
+    return "", "", "", "", "", [], "", "", "", "", [], ""
 
 
 def _workspace_payload(org_label: str, state):
+    ecommerce = (state or {}).get("org_type") == "ecommerce"
     return (
         load_personnel(org_label, state),
         load_assets(org_label, state),
@@ -195,6 +199,11 @@ def _workspace_payload(org_label: str, state):
         load_campaigns(state),
         [],
         "",
+        load_seller_stock(state) if ecommerce else "",
+        load_seller_movements(state) if ecommerce else "",
+        load_seller_summary(state) if ecommerce else "",
+        [] if ecommerce else [],
+        "" if ecommerce else "",
     )
 
 
@@ -224,13 +233,13 @@ def login_fn(login, password, state):
         resp = _post("/auth/seller-login", {"login": login.strip(), "password": password.strip()}, state=state)
         new_state = _login_state_from_response(resp)
         org_label = _current_org_label(new_state)
-        per, ast, tx, summary, campaigns, chatbot, chat_input = _workspace_payload(org_label, new_state)
+        per, ast, tx, summary, campaigns, chatbot, chat_input, seller_stock, seller_mov, seller_sum, seller_chatbot, seller_chat_input = _workspace_payload(org_label, new_state)
         return (
             new_state,
             f"登录成功：{new_state.get('person_name')} @ {new_state.get('org_name')}",
             _auth_header(new_state),
             gr.update(value=org_label, choices=[org_label], interactive=False),
-            *_show_workspace(),
+            *_show_workspace(new_state),
             per,
             ast,
             tx,
@@ -238,6 +247,11 @@ def login_fn(login, password, state):
             campaigns,
             chatbot,
             chat_input,
+            seller_stock,
+            seller_mov,
+            seller_sum,
+            seller_chatbot,
+            seller_chat_input,
         )
     except Exception as e:
         logger.exception("Login failed")
@@ -306,13 +320,13 @@ def restore_login_fn(state):
 
     try:
         org_label = _current_org_label(state)
-        per, ast, tx, summary, campaigns, chatbot, chat_input = _workspace_payload(org_label, state)
+        per, ast, tx, summary, campaigns, chatbot, chat_input, seller_stock, seller_mov, seller_sum, seller_chatbot, seller_chat_input = _workspace_payload(org_label, state)
         return (
             state,
             "已恢复登录",
             _auth_header(state),
             gr.update(value=org_label, choices=[org_label], interactive=False),
-            *_show_workspace(),
+            *_show_workspace(state),
             per,
             ast,
             tx,
@@ -320,6 +334,11 @@ def restore_login_fn(state):
             campaigns,
             chatbot,
             chat_input,
+            seller_stock,
+            seller_mov,
+            seller_sum,
+            seller_chatbot,
+            seller_chat_input,
         )
     except Exception:
         logger.exception("Restore login failed")
@@ -622,6 +641,116 @@ def chat_fn(message, history, org_label, state):
     return history, ""
 
 
+# ── Seller area ──────────────────────────────────────────────────────────────
+
+def load_seller_stock(state):
+    if not _is_logged_in(state):
+        return "请先登录"
+    try:
+        rows = _get("/seller/stock", state=state)
+        if not rows:
+            return "暂无库存数据"
+        lines = ["| 商品 | 仓库 | 库位 | 数量 | 单位 |", "|---|---|---|---|---|"]
+        for r in rows:
+            lines.append(
+                f"| {r.get('product_uid', '')} | {r.get('warehouse_code', '')} "
+                f"| {r.get('location_path', '')} | {r.get('quantity', '')} "
+                f"| {r.get('unit') or ''} |"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        logger.exception("Seller stock load failed")
+        return f"加载库存失败：{e}"
+
+
+def load_seller_movements(state, operation_type="", date_from="", date_to="", limit=50):
+    if not _is_logged_in(state):
+        return "请先登录"
+    params = {}
+    if operation_type:
+        params["operation_type"] = operation_type
+    if date_from:
+        params["date_from"] = date_from
+    if date_to:
+        params["date_to"] = date_to
+    if limit:
+        params["limit"] = min(int(limit), 200)
+    try:
+        rows = _get("/seller/inventory-movements", params=params, state=state)
+        if not rows:
+            return "暂无流水数据"
+        lines = [
+            "| 时间 | 类型 | 商品 | 仓库 | 库位 | 变动 | 变动后 | 金额 | 单位 |",
+            "|---|---|---|---|---|---|---|---|---|",
+        ]
+        type_label = {"purchase_in": "入库", "sales_out": "出库"}
+        for r in rows:
+            lines.append(
+                f"| {r.get('created_at', '')} | {type_label.get(r.get('operation_type'), r.get('operation_type', ''))} "
+                f"| {r.get('product_uid', '')} | {r.get('warehouse_code', '')} "
+                f"| {r.get('location_path', '')} | {r.get('quantity_delta', '')} "
+                f"| {r.get('new_quantity', '')} | {r.get('total_amount', '')} "
+                f"| {r.get('unit') or ''} |"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        logger.exception("Seller movements load failed")
+        return f"加载流水失败：{e}"
+
+
+def load_seller_summary(state):
+    if not _is_logged_in(state):
+        return "请先登录"
+    try:
+        data = _get("/seller/summary", state=state)
+        lines = [
+            f"### 经营摘要",
+            f"- 销售收入：{data.get('sales_amount')}　采购支出：{data.get('purchase_amount')}",
+            f"- 净现金流：{data.get('net_cash_flow')}　成交笔数：{data.get('movement_count')}",
+            f"- 当前库存数量：{data.get('current_stock_quantity')}　商品数：{data.get('product_count')}",
+            f"- 库存估值：{data.get('estimated_inventory_value')}（{data.get('valuation_method')}）",
+        ]
+        low = data.get("low_stock_items") or []
+        if low:
+            lines.append("\n**低库存商品**")
+            lines.append("| 商品 | 数量 | 单位 |")
+            lines.append("|---|---|---|")
+            for item in low:
+                lines.append(f"| {item.get('product_uid', '')} | {item.get('quantity', '')} | {item.get('unit') or ''} |")
+        else:
+            lines.append("\n无低库存商品。")
+        top = data.get("top_products_by_sales") or []
+        if top:
+            lines.append("\n**热销商品（按销售额）**")
+            lines.append("| 商品 | 销售额 | 销量 |")
+            lines.append("|---|---|---|")
+            for item in top:
+                lines.append(
+                    f"| {item.get('product_uid', '')} | {item.get('sales_amount', '')} "
+                    f"| {item.get('sales_quantity', '')} |"
+                )
+        return "\n".join(lines)
+    except Exception as e:
+        logger.exception("Seller summary load failed")
+        return f"加载摘要失败：{e}"
+
+
+def seller_chat_fn(message, history, state):
+    if not message.strip():
+        return history, ""
+    logger.info("SELLER CHAT message=%s", message)
+    try:
+        resp = _post("/seller/chat", {"message": message}, timeout=40, state=state)
+        reply = resp.get("response", "No response")
+        logger.info("SELLER CHAT response=%s", reply[:2000])
+    except Exception as e:
+        logger.exception("SELLER CHAT failed message=%s", message)
+        reply = f"Error: {e}"
+    history.append({"role": "user", "content": message})
+    history.append({"role": "assistant", "content": reply})
+    return history, ""
+
+
 # ── Build UI ─────────────────────────────────────────────────────────────────
 
 def build_app():
@@ -633,6 +762,7 @@ def build_app():
         landing_panel = gr.Group(visible=True)
         auth_panel = gr.Group(visible=False)
         workspace_panel = gr.Group(visible=False)
+        seller_panel = gr.Group(visible=False)
 
         with landing_panel:
             gr.Markdown("# Uni-Resource Agent\n万物皆资源")
@@ -729,20 +859,50 @@ def build_app():
                         )
                         chat_send = gr.Button("发送", variant="primary", scale=1)
 
+        with seller_panel:
+            with gr.Tabs():
+                with gr.TabItem("Seller 库存"):
+                    seller_stock_out = gr.Markdown()
+                    seller_stock_refresh = gr.Button("刷新")
+                with gr.TabItem("Seller 流水"):
+                    seller_mov_out = gr.Markdown()
+                    with gr.Row():
+                        seller_mov_op = gr.Dropdown(
+                            choices=["", "purchase_in", "sales_out"],
+                            value="",
+                            label="操作类型",
+                        )
+                        seller_mov_from = gr.Textbox(label="开始日期", placeholder="YYYY-MM-DD")
+                        seller_mov_to = gr.Textbox(label="结束日期", placeholder="YYYY-MM-DD")
+                        seller_mov_limit = gr.Number(label="条数", value=50, precision=0)
+                    seller_mov_refresh = gr.Button("刷新")
+                with gr.TabItem("Seller 摘要"):
+                    seller_sum_out = gr.Markdown()
+                    seller_sum_refresh = gr.Button("刷新")
+                with gr.TabItem("Seller AI"):
+                    seller_chatbot = gr.Chatbot(height=400)
+                    with gr.Row():
+                        seller_chat_input = gr.Textbox(
+                            label="消息",
+                            placeholder="查询当前库存、低库存、销售收入",
+                            scale=4,
+                        )
+                        seller_chat_send = gr.Button("发送", variant="primary", scale=1)
+
         session_state.change(
             restore_login_view_fn,
             [session_state],
-            [auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input],
+            [auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_stock_out, seller_mov_out, seller_sum_out, seller_chatbot, seller_chat_input],
             queue=False,
         )
 
         # ── Navigation ───────────────────────────────────────────────
-        enter_login_btn.click(open_auth_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel])
-        enter_reg_btn.click(open_auth_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel])
-        back_btn.click(back_home_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel])
+        enter_login_btn.click(open_auth_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel, seller_panel])
+        enter_reg_btn.click(open_auth_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel, seller_panel])
+        back_btn.click(back_home_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel, seller_panel])
 
         # top logout mirrors workspace logout
-        logout_outputs = [session_state, auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input]
+        logout_outputs = [session_state, auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_stock_out, seller_mov_out, seller_sum_out, seller_chatbot, seller_chat_input]
         logout_btn_top.click(logout_fn, [], logout_outputs)
         logout_btn.click(logout_fn, [], logout_outputs)
 
@@ -750,7 +910,7 @@ def build_app():
         login_btn.click(
             login_fn,
             [login_input, login_pwd, session_state],
-            [session_state, login_info, user_banner, current_org, landing_panel, auth_panel, workspace_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input],
+            [session_state, login_info, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_stock_out, seller_mov_out, seller_sum_out, seller_chatbot, seller_chat_input],
         )
         reg_btn.click(
             register_fn,
@@ -778,6 +938,26 @@ def build_app():
 
         chat_send.click(chat_fn, [chat_input, chatbot, current_org, session_state], [chatbot, chat_input])
         chat_input.submit(chat_fn, [chat_input, chatbot, current_org, session_state], [chatbot, chat_input])
+
+        # ── Seller events ────────────────────────────────────────────
+        seller_stock_refresh.click(load_seller_stock, [session_state], seller_stock_out, queue=False)
+        seller_mov_refresh.click(
+            load_seller_movements,
+            [session_state, seller_mov_op, seller_mov_from, seller_mov_to, seller_mov_limit],
+            seller_mov_out,
+            queue=False,
+        )
+        seller_sum_refresh.click(load_seller_summary, [session_state], seller_sum_out, queue=False)
+        seller_chat_send.click(
+            seller_chat_fn,
+            [seller_chat_input, seller_chatbot, session_state],
+            [seller_chatbot, seller_chat_input],
+        )
+        seller_chat_input.submit(
+            seller_chat_fn,
+            [seller_chat_input, seller_chatbot, session_state],
+            [seller_chatbot, seller_chat_input],
+        )
 
     return demo
 

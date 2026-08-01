@@ -142,6 +142,8 @@ def _build_context(person: Optional[dict], org: dict, payload: dict, membership:
         "organization_id": org["id"],
         "system_role": payload.get("system_role", "user"),
         "role": membership.get("role") if membership else payload.get("role"),
+        "org_type": org.get("type"),
+        "org_name": org.get("name"),
     }
 
 

@@ -106,7 +106,6 @@ start_backend() {
     cd "$PROJECT_ROOT"
     export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
     export PYTHONUNBUFFERED=1
-    export JWT_SECRET="${JWT_SECRET:-unires-dev-jwt-secret}"
     nohup setsid python3 -m uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 < /dev/null &
     BACKEND_PROCESS_ID=$!
     
@@ -227,12 +226,12 @@ start_frontend() {
     if [ "$VERBOSE" -eq 1 ]; then
         echo -e "${YELLOW}前端以 verbose 模式前台启动，日志将输出到当前终端${NC}"
         echo -e "${YELLOW}停止前端请按 Ctrl+C${NC}"
-        PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 JWT_SECRET="${JWT_SECRET:-unires-dev-jwt-secret}" BROWSER_STATE_SECRET="${BROWSER_STATE_SECRET:-${JWT_SECRET:-unires-dev-jwt-secret}}" python3 -u "$PROJECT_ROOT/src/frontend.py"
+        PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 python3 -u "$PROJECT_ROOT/src/frontend.py"
         return $?
     fi
 
     # 启动前端服务（调试模式在 src/frontend.py 的 demo.launch 中开启）
-    PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 JWT_SECRET="${JWT_SECRET:-unires-dev-jwt-secret}" BROWSER_STATE_SECRET="${BROWSER_STATE_SECRET:-${JWT_SECRET:-unires-dev-jwt-secret}}" nohup setsid python3 -u "$PROJECT_ROOT/src/frontend.py" > "$FRONTEND_LOG" 2>&1 < /dev/null &
+    PYTHONPATH="$PROJECT_ROOT" PYTHONUNBUFFERED=1 nohup setsid python3 -u "$PROJECT_ROOT/src/frontend.py" > "$FRONTEND_LOG" 2>&1 < /dev/null &
     FRONTEND_PROCESS_ID=$!
     
     # 保存进程编号

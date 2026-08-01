@@ -8,7 +8,6 @@ LangChain 0.1 API update:
 - Tool class moved to langchain_core.tools
 - Prompt must be ChatPromptTemplate with input_variables
 """
-import os
 from langchain.agents import create_openai_tools_agent, AgentExecutor
 from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
@@ -16,17 +15,19 @@ from langchain import hub
 
 from src.tools import ALL_TOOLS
 from src.logging_config import get_logger
+from src.config import get_llm_config
 
 logger = get_logger("agent")
 
 
 def get_llm():
-    """Initialize LLM (local llama.cpp or remote)."""
+    """Initialize LLM from unified config (profile.yaml + DB_* env overrides)."""
+    cfg = get_llm_config()
     return ChatOpenAI(
-        model=os.getenv("LLM_MODEL", "qwen3-coder-80b"),
-        base_url=os.getenv("LLM_BASE_URL", "http://127.0.0.1:8080/v1"),
-        api_key=os.getenv("LLM_API_KEY", "fake-key"),
-        temperature=0.1,
+        model=cfg["model"],
+        base_url=cfg["base_url"],
+        api_key=cfg["api_key"],
+        temperature=cfg["temperature"],
     )
 
 

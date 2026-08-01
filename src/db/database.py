@@ -23,19 +23,20 @@ from typing import Optional, List, Dict, Any
 from decimal import Decimal, ROUND_HALF_UP
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import os
 from src.logging_config import get_logger
+from src.config import get_database_config
 
 from fastapi import HTTPException
 
 logger = get_logger("db")
 
+_db_cfg = get_database_config()
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "database": os.getenv("DB_NAME", "unires"),
-    "user": os.getenv("DB_USER", "unires"),
-    "password": os.getenv("DB_PASSWORD", "demo123"),
-    "port": os.getenv("DB_PORT", "5432"),
+    "host": _db_cfg["host"],
+    "database": _db_cfg["name"],
+    "user": _db_cfg["user"],
+    "password": _db_cfg["password"],
+    "port": int(_db_cfg["port"]),
 }
 
 

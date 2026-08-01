@@ -44,6 +44,11 @@ Thumbs.db
 output/
 *.log
 
+# Environment / secrets (never commit real credentials)
+.env
+.env.*
+!.env.example
+
 .venv/
 
 .opencode/

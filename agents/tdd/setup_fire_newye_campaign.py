@@ -196,14 +196,18 @@ class APIClient:
     def _get_db_connection(self):
         """获取数据库连接（用于无法通过API完成的操作）"""
         import os
+        from pathlib import Path
         from dotenv import load_dotenv
-        load_dotenv('/workspace/research/unires-agent/.env')
+        load_dotenv(Path(__file__).resolve().parents[2] / '.env', override=False)
+        db_password = os.getenv('DATABASE_PASSWORD') or os.getenv('DB_PASSWORD')
+        if not db_password:
+            raise RuntimeError("DATABASE_PASSWORD or DB_PASSWORD must be set")
         return psycopg2.connect(
-            dbname=os.getenv('DATABASE_NAME', 'unires'),
-            user=os.getenv('DATABASE_USER', 'unires'),
-            password=os.getenv('DATABASE_PASSWORD', 'unires_secure_pass_2024'),
-            host=os.getenv('DATABASE_HOST', '1.117.223.223'),
-            port=os.getenv('DATABASE_PORT', '5435')
+            dbname=os.getenv('DATABASE_NAME') or os.getenv('DB_NAME', 'unires'),
+            user=os.getenv('DATABASE_USER') or os.getenv('DB_USER', 'unires'),
+            password=db_password,
+            host=os.getenv('DATABASE_HOST') or os.getenv('DB_HOST', '1.117.223.223'),
+            port=os.getenv('DATABASE_PORT') or os.getenv('DB_PORT', '5435')
         )
         
     def get(self, endpoint: str, params: Dict = None, timeout: int = 30) -> Dict[str, Any]:

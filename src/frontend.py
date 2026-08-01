@@ -5,12 +5,16 @@ Connects to FastAPI backend at http://localhost:8000.
 """
 import os
 import time
+from pathlib import Path
 from typing import List
 
 import requests
 import gradio as gr
+from dotenv import load_dotenv
 
 from src.logging_config import setup_logging
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
 logger = setup_logging("frontend")
 API = "http://localhost:8000"

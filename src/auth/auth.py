@@ -7,11 +7,15 @@ import os
 import re
 import secrets
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from dotenv import load_dotenv
 from jose import JWTError, jwt
+
+load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
 
 # Password hasher using argon2
 ph = PasswordHasher()

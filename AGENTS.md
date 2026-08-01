@@ -109,22 +109,28 @@ uni-resource-agent/
 ├── README.md                 # Human-readable
 ├── LICENSE
 ├── agents/                   # ← Agent specifications (root level)
-│   ├── DBA_AGENT.md          # PostgreSQL数据库管理规范
-│   ├── TDD_AGENT.md          # 测试驱动开发规范
+│   ├── pm/                      # Project management (NOT YET CREATED - see note below)
+│   │   ├── PM_AGENT.md
+│   │   ├── 1-团队分工.md
+│   │   ├── 2-任务拆分.md
+│   │   ├── 3-质量检查.md
+│   │   ├── 4-进度跟踪.md
 │   ├── sa/                 # ← 软件方法建模相关文件
-│   │   └── modeling/   # ← 建模相关文件
+│   │   ├── SA_AGENT.md     # ← 建模师 AGENT
+│   │   └── 1-modeling/   # ← 建模相关文件
+│   │   └── 2-modeling/   # ← 建模相关文件
+│   │   └── 3-modeling/   # ← 建模相关文件
+│   │   └── 4-modeling/   # ← 建模相关文件
 │   ├── dba/                  # 数据库管理相关文件
+│       ├── DBA_AGENT.md      # PostgreSQL数据库管理规范
 │   └── tdd/                  # 测试相关文件
+│       ├── TDD_AGENT.md      # 测试驱动开发规范
 │       ├── README.md
 │       ├── test_three_kingdoms.py
 │       ├── test_three_kingdoms_http.py
 │       ├── test_fire_newye_api.py
 │       ├── setup_fire_newye_campaign.py
 │       └── 火烧新野战役故事文档.md
-├── _pm/                      # Project management (NOT YET CREATED - see note below)
-│   ├── 团队分工.md
-│   ├── 进度跟踪.md
-│   └── 质量检查.md
 ├── src/
 │   ├── agents/agent.py       # LangChain Agent
 │   ├── tools/

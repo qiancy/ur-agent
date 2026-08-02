@@ -874,6 +874,63 @@ def _seller_status_text(summary: dict, state=None) -> str:
     return f"{org} · 今日更新 · {len(low)} 个低库存商品"
 
 
+def render_seller_workbench(state, warehouse="", only_low=False):
+    """拉取 /seller/summary + /seller/stock，返回 (指标卡, 库存表, 低库存, 状态) 4 段 HTML/文本。"""
+    if not _is_logged_in(state):
+        return "", "", "", ""
+    try:
+        summary = _get("/seller/summary", state=state)
+        rows = _get("/seller/stock", state=state)
+    except Exception as e:
+        logger.exception("Seller workbench load failed")
+        return "", "", "", f"加载失败：{e}"
+    low_set = {it.get("product_uid") for it in (summary.get("low_stock_items") or [])}
+    filtered = _filter_stock(rows, warehouse=warehouse,
+                             only_low=bool(only_low), low_set=low_set)
+    return (
+        _seller_metrics_html(summary),
+        _seller_stock_html(filtered, low_set),
+        _seller_low_html(summary),
+        _seller_status_text(summary, state),
+    )
+
+
+def _seller_operation(state, path, label, product_uid, warehouse_code,
+                      location_path, quantity, unit, total_amount,
+                      counterparty_name):
+    if not _is_logged_in(state):
+        return "请先登录"
+    body = {
+        "product_uid": product_uid,
+        "warehouse_code": warehouse_code,
+        "location_path": location_path,
+        "quantity": quantity,
+        "unit": unit,
+        "total_amount": total_amount,
+        "counterparty_name": counterparty_name,
+    }
+    try:
+        _post(path, body, state=state)
+        return f"✅ {label}成功"
+    except Exception as e:
+        logger.exception("Seller %s failed", label)
+        return f"❌ {label}失败:{e}"
+
+
+def seller_purchase_in_fn(state, product_uid, warehouse_code, location_path,
+                          quantity, unit, total_amount, counterparty_name):
+    return _seller_operation(state, "/seller/purchase-in", "入库", product_uid,
+                             warehouse_code, location_path, quantity, unit,
+                             total_amount, counterparty_name)
+
+
+def seller_sales_out_fn(state, product_uid, warehouse_code, location_path,
+                        quantity, unit, total_amount, counterparty_name):
+    return _seller_operation(state, "/seller/sales-out", "出库", product_uid,
+                             warehouse_code, location_path, quantity, unit,
+                             total_amount, counterparty_name)
+
+
 # ── Build UI ─────────────────────────────────────────────────────────────────
 
 def build_app():

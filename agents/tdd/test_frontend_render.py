@@ -104,3 +104,35 @@ def test_fmt_num_none_and_decimal():
 def test_money_prefix():
     assert _money(12840.0) == "¥12,840"
     assert _money(None) == "-"
+
+
+def test_render_workbench_returns_four_parts(monkeypatch):
+    from src import frontend
+    calls = []
+
+    def fake_get(path, params=None, timeout=10, state=None):
+        calls.append(path)
+        if path == "/seller/summary":
+            return _summary()
+        if path == "/seller/stock":
+            return _stock_rows()
+        raise AssertionError(f"unexpected path {path}")
+
+    monkeypatch.setattr(frontend, "_get", fake_get)
+    state = {"access_token": "t", "org_name": "淘宝小店 A"}
+    out = frontend.render_seller_workbench(state, warehouse="", only_low=False)
+    assert len(out) == 4
+    metrics, stock, low, status = out
+    assert "销售收入" in metrics
+    assert "phone_case_black" in stock
+    assert "usb_cable_1m" in low
+    assert "淘宝小店 A" in status
+    assert calls == ["/seller/summary", "/seller/stock"]
+    joined = "".join(out)
+    for key in FORBIDDEN:
+        assert key not in joined
+
+
+def test_render_workbench_returns_blanks_when_logged_out(monkeypatch):
+    from src import frontend
+    assert frontend.render_seller_workbench({}) == ("", "", "", "")

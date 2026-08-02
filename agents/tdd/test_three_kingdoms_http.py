@@ -365,7 +365,8 @@ class TestTransactionAPI:
         
         if len(data) > 0:
             txn = data[0]
-            assert "id" in txn
+            assert "transaction_uid" in txn
+            assert "id" not in txn
             assert "amount" in txn
             assert "category" in txn
             assert "parties" in txn
@@ -413,7 +414,7 @@ class TestTransactionAPI:
             params={"ouid": "shu"},
             json={
                 "puid": "liubei",
-                "transaction_id": txn_resp.json()["id"],
+                "transaction_uid": txn_resp.json()["transaction_uid"],
                 "role": "payer",
                 "description": "测试付款方",
             },
@@ -470,7 +471,7 @@ class TestPartyAPI:
             "description": "测试交易"
         }, params={"ouid": "shu"})
         assert txn_resp.status_code in (200, 201)
-        txn_id = txn_resp.json()["id"]
+        txn_uid = txn_resp.json()["transaction_uid"]
         
         # 创建参与方
         resp = client.post(
@@ -478,7 +479,7 @@ class TestPartyAPI:
             params={"ouid": "shu"},
             json={
                 "puid": "liubei",
-                "transaction_id": txn_id,
+                "transaction_uid": txn_uid,
                 "role": "payer",
                 "description": "付款方",
             },
@@ -489,7 +490,18 @@ class TestPartyAPI:
 
     def test_get_transaction_parties(self):
         """测试查询交易的所有参与方"""
-        resp = client.get("/party/transaction/1")
+        txn_resp = client.post(
+            "/transaction",
+            params={"ouid": "shu"},
+            json={
+                "amount": 300.0,
+                "category": "test",
+                "description": "参与方查询测试交易",
+            },
+        )
+        assert txn_resp.status_code in (200, 201)
+        txn_uid = txn_resp.json()["transaction_uid"]
+        resp = client.get("/party/transaction/" + txn_uid, params={"ouid": "shu"})
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
@@ -634,7 +646,7 @@ class TestIntegration:
             params={"ouid": org_ouid},
             json={
                 "puid": person_puid,
-                "transaction_id": txn_resp.json()["id"],
+                "transaction_uid": txn_resp.json()["transaction_uid"],
                 "role": "payer",
                 "description": "付款方",
             },

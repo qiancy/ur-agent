@@ -383,7 +383,7 @@ class TestResourceWarehouseOwnership:
 # ============================================================================
 # 4. Campaign import delete regression
 # ============================================================================class TestCampaignImportDelete:
-    """DELETE /campaigns/imports/{id} removes all imported org data."""
+    """DELETE /campaigns/imports/{campaign_code} removes all imported org data."""
 
     def _super_token(self) -> str:
         resp = client.post("/auth/login", json={
@@ -404,8 +404,8 @@ class TestResourceWarehouseOwnership:
         assert resp.status_code in (200, 201), resp.text
         body = resp.json()
         campaign_import = body.get("campaign_import")
-        campaign_id = campaign_import.get("id") or body.get("id")
-        assert campaign_id, f"Import response has no id: {body}"
+        campaign_code = campaign_import.get("campaign_code") or body.get("campaign_code")
+        assert campaign_code, f"Import response has no campaign_code: {body}"
 
         # Data exists before delete
         resp = client.get("/organizations", params={"ouid": "fire_xinye_shu"})
@@ -414,7 +414,7 @@ class TestResourceWarehouseOwnership:
             "fire_xinye_shu org missing after import"
         )
 
-        resp = client.delete(f"/campaigns/imports/{campaign_id}", headers=headers)
+        resp = client.delete(f"/campaigns/imports/{campaign_code}", headers=headers)
         assert resp.status_code == 200, (
             f"Expected 200, got {resp.status_code}: {resp.text}"
         )

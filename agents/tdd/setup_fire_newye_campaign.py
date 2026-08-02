@@ -327,13 +327,13 @@ class APIClient:
             data["description"] = description
         return self.post("transaction", data, timeout=timeout)
     
-    def create_party(self, puid: str, ouid: str, transaction_id: int,
+    def create_party(self, puid: str, ouid: str, transaction_uid: str,
                      role: str, description: str = None, timeout: int = 30) -> Dict[str, Any]:
         """创建参与方"""
         data = {
             "puid": puid,
             "ouid": ouid,
-            "transaction_id": transaction_id,
+            "transaction_uid": transaction_uid,
             "role": role
         }
         if description:
@@ -566,7 +566,7 @@ def prepare_campaign_data(api: APIClient):
         api.create_party(
             puid="liubei",  # 默认使用第一个蜀汉人员
             ouid=api.shu_org_ouid if "蜀汉" in t["from_org"] else api.wei_org_ouid,
-            transaction_id=transaction["id"],
+            transaction_uid=transaction["transaction_uid"],
             role="payer" if "蜀汉" in t["from_org"] else "payee",
             description=t["description"]
         )

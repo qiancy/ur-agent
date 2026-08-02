@@ -475,7 +475,7 @@ def load_transactions(org_label, state=None):
         parties = txn.get("parties") or []
         party_lines = []
         for party in parties:
-            pname = party.get("person_name") or f"person_id:{party.get('person_id')}"
+            pname = party.get("person_name") or "未知人员"
             role = party.get("role") or "participant"
             funds = _format_money_direction(party.get("funds_change") or 0)
             rep = int(party.get("reputation_change") or 0)
@@ -483,7 +483,7 @@ def load_transactions(org_label, state=None):
             party_lines.append(f"  - {pname} [{role}] {funds}{rep_text}")
         party_text = "\n".join(party_lines) if party_lines else "  - 无参与方"
         lines.append(
-            f"**交易 #{txn['id']} · ¥{float(txn['amount']):,.2f}** [{txn['category']}]\n"
+            f"**交易 · ¥{float(txn['amount']):,.2f}** [{txn['category']}]\n"
             f"{txn.get('description') or ''}\n"
             f"参与方:\n{party_text}"
         )
@@ -511,7 +511,7 @@ def add_transaction_fn(org_label, amount, category, desc, party_lines, state):
         "description": desc.strip() or None,
     }
     txn = _post("/transaction", body, params={"ouid": ouid}, state=state)
-    txn_id = txn["id"]
+    txn_uid = txn["transaction_uid"]
 
     for party in resolved_parties:
         signed_amount = party["amount"] if party["direction"] == "+" else -party["amount"]
@@ -520,7 +520,7 @@ def add_transaction_fn(org_label, amount, category, desc, party_lines, state):
             {
                 "puid": party["puid"],
                 "ouid": ouid,
-                "transaction_id": txn_id,
+                "transaction_uid": txn_uid,
                 "role": party["role"],
                 "description": party["description"],
                 "funds_change": signed_amount,
@@ -562,7 +562,7 @@ def load_campaigns(state=None):
         orgs = row.get("organizations") or []
         org_text = ", ".join([f"{o.get('name')}(`{o.get('ouid')}`)" for o in orgs]) or "-"
         lines.append(
-            f"**#{row['id']} {row['campaign_name']}** (`{row['campaign_code']}`)\n"
+            f"**{row['campaign_name']}** (`{row['campaign_code']}`)\n"
             f"组织: {org_text}\n"
             f"导入人: `{row.get('imported_by_puid')}`  状态: `{row.get('status')}`"
         )
@@ -579,20 +579,21 @@ def import_campaign_fn(campaign_code, state):
         resp = _post("/campaigns/import", {"campaign_code": code}, timeout=30, state=state)
         campaign = resp.get("campaign_import", {})
         if resp.get("already_imported"):
-            return load_campaigns(state), f"已存在 active 战役：#{campaign.get('id')} {campaign.get('campaign_name')}，无需重复导入"
-        return load_campaigns(state), f"导入成功：#{campaign.get('id')} {campaign.get('campaign_name')}"
+            return load_campaigns(state), f"已存在 active 战役：`{campaign.get('campaign_code')}` {campaign.get('campaign_name')}，无需重复导入"
+        return load_campaigns(state), f"导入成功：`{campaign.get('campaign_code')}` {campaign.get('campaign_name')}"
     except Exception as e:
         logger.exception("Campaign import failed")
         return load_campaigns(state), f"导入失败：{e}"
 
 
-def replay_campaign_fn(campaign_import_id, state):
+def replay_campaign_fn(campaign_code, state):
     if not _is_logged_in(state):
         return "请先登录"
-    if not campaign_import_id:
-        return "请输入战役批次 ID"
+    if not campaign_code:
+        return "请输入战役代号"
     try:
-        resp = _get(f"/campaigns/imports/{int(campaign_import_id)}/replay", timeout=20, state=state)
+        code = campaign_code.strip()
+        resp = _get(f"/campaigns/imports/{code}/replay", timeout=20, state=state)
         events = resp.get("events") or []
         if not events:
             return "暂无可回放事件"
@@ -610,15 +611,16 @@ def replay_campaign_fn(campaign_import_id, state):
         return f"回放失败：{e}"
 
 
-def delete_campaign_fn(campaign_import_id, state):
+def delete_campaign_fn(campaign_code, state):
     if not _is_logged_in(state):
         return "请先登录", ""
     if not _is_super(state):
         return load_campaigns(state), "删除失败：需要系统超级用户账号 super@system.cn 登录。普通用户和组织级 admin 不能删除战役。"
-    if not campaign_import_id:
-        return load_campaigns(state), "请输入战役批次 ID"
+    if not campaign_code:
+        return load_campaigns(state), "请输入战役代号"
     try:
-        resp = _delete(f"/campaigns/imports/{int(campaign_import_id)}", timeout=30, state=state)
+        code = campaign_code.strip()
+        resp = _delete(f"/campaigns/imports/{code}", timeout=30, state=state)
         counts = resp.get("counts", {})
         return load_campaigns(state), f"删除成功：{counts}"
     except Exception as e:
@@ -810,7 +812,7 @@ def build_app():
                     camp_replay = gr.Markdown()
                     with gr.Row():
                         camp_code = gr.Textbox(label="战役模板", value="fire_xinye")
-                        camp_import_id = gr.Number(label="战役批次 ID", value=0, precision=0)
+                        camp_code_op = gr.Textbox(label="战役代号", value="fire_xinye", placeholder="用于回放/删除")
                     with gr.Row():
                         camp_import = gr.Button("导入战役", variant="primary")
                         camp_replay_btn = gr.Button("回放")
@@ -925,8 +927,8 @@ def build_app():
         # ── Workspace events ────────────────────────────────────────
         camp_refresh.click(load_campaigns, [session_state], camp_out, queue=False)
         camp_import.click(import_campaign_fn, [camp_code, session_state], [camp_out, camp_replay])
-        camp_replay_btn.click(replay_campaign_fn, [camp_import_id, session_state], camp_replay)
-        camp_delete.click(delete_campaign_fn, [camp_import_id, session_state], [camp_out, camp_replay])
+        camp_replay_btn.click(replay_campaign_fn, [camp_code_op, session_state], camp_replay)
+        camp_delete.click(delete_campaign_fn, [camp_code_op, session_state], [camp_out, camp_replay])
 
         per_refresh.click(load_personnel, [current_org, session_state], per_out, queue=False)
         per_add.click(add_personnel_fn, [current_org, per_name, per_role, session_state], per_out).then(lambda: ("", ""), outputs=[per_name, per_role])

@@ -25,7 +25,6 @@ from src.db.database import (
     create_transaction,
     create_warehouse,
     delete_campaign_import,
-    get_campaign_import,
     get_active_campaign_import_by_code,
     get_campaign_import_org_ids,
     get_campaign_replay,
@@ -248,27 +247,27 @@ async def list_campaign_imports(request: Request):
     )
 
 
-@router.get("/imports/{campaign_import_id}/replay")
-async def replay_campaign(campaign_import_id: int, request: Request):
+@router.get("/imports/{campaign_code}/replay")
+async def replay_campaign(campaign_code: str, request: Request):
     payload = require_authenticated(request)
-    rows = get_campaign_import(campaign_import_id)
-    if not rows or rows[0]["status"] != "active":
+    rows = get_active_campaign_import_by_code(campaign_code)
+    if not rows:
         raise HTTPException(404, "Campaign import not found")
+    campaign = rows[0]
 
     allowed_ids = get_allowed_organization_ids(payload)
-    campaign_org_ids = get_campaign_import_org_ids(campaign_import_id)
+    campaign_org_ids = get_campaign_import_org_ids(campaign["id"])
     if not is_system_super(payload) and not set(allowed_ids).intersection(campaign_org_ids):
         raise HTTPException(403, "No access to this campaign")
 
     events = get_campaign_replay(
-        campaign_import_id,
+        campaign["id"],
         organization_ids=allowed_ids,
         include_all=is_system_super(payload),
     )
     return {
-        "campaign_import_id": rows[0]["id"],
-        "campaign_code": rows[0]["campaign_code"],
-        "campaign_name": rows[0]["campaign_name"],
+        "campaign_code": campaign["campaign_code"],
+        "campaign_name": campaign["campaign_name"],
         "events": [
             {
                 "seq": row["seq"],
@@ -286,10 +285,13 @@ async def replay_campaign(campaign_import_id: int, request: Request):
     }
 
 
-@router.delete("/imports/{campaign_import_id}")
-async def remove_campaign_import(campaign_import_id: int, request: Request):
+@router.delete("/imports/{campaign_code}")
+async def remove_campaign_import(campaign_code: str, request: Request):
     require_system_super(request)
-    result = delete_campaign_import(campaign_import_id)
+    rows = get_active_campaign_import_by_code(campaign_code)
+    if not rows:
+        raise HTTPException(404, "Campaign import not found")
+    result = delete_campaign_import(rows[0]["id"])
     if not result.get("deleted"):
         raise HTTPException(404, "Campaign import not found")
     return result

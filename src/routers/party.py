@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from src.models.schemas import PartyCreate
 from src.db.database import (
     query_party, create_party, query_party_by_transaction,
-    query_person_by_puid, query_membership,
+    get_transaction_by_uid, query_person_by_puid, query_membership,
 )
 from src.routers.deps import require_org_context
 
@@ -20,9 +20,10 @@ async def list_party(request: Request, name: Optional[str] = None, puid: Optiona
     return query_party(ctx["organization_id"], name=name, puid=puid)
 
 
-@router.get("/party/transaction/{transaction_id}")
-async def list_party_by_transaction(transaction_id: int):
-    return query_party_by_transaction(transaction_id)
+@router.get("/party/transaction/{transaction_uid}")
+async def list_party_by_transaction(transaction_uid: str, request: Request):
+    ctx = require_org_context(request)
+    return query_party_by_transaction(transaction_uid, ctx["organization_id"])
 
 
 @router.post("/party", status_code=201)
@@ -40,10 +41,14 @@ async def add_party(body: PartyCreate, request: Request):
     elif person_id is None:
         raise HTTPException(400, "puid is required when no Bearer token is provided")
 
+    transaction = get_transaction_by_uid(body.transaction_uid, ctx["organization_id"])
+    if not transaction:
+        raise HTTPException(404, "Transaction not found in this organization")
+
     return create_party(
         person_id=person_id,
         organization_id=ctx["organization_id"],
-        transaction_id=body.transaction_id,
+        transaction_id=transaction["id"],
         role=body.role,
         description=body.description,
         funds_change=body.funds_change,

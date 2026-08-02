@@ -9,7 +9,7 @@ from src.db.database import (
     execute_purchase_in, execute_sales_out, query_stock, query_inventory_movements,
     get_seller_summary, query_product_summary,
 )
-from src.routers.deps import require_strict_org_context
+from src.routers.deps import require_ecommerce_context
 from src.agents.seller_agent import create_seller_agent
 from src.tools.seller_tools import make_seller_tools
 
@@ -62,7 +62,7 @@ def _validate_date_range(date_from, date_to) -> None:
 
 @router.post("/purchase-in")
 async def purchase_in(body: SellerPurchaseIn, request: Request):
-    ctx = require_strict_org_context(request)
+    ctx = require_ecommerce_context(request)
     try:
         return execute_purchase_in(
             organization_id=ctx["organization_id"],
@@ -81,7 +81,7 @@ async def purchase_in(body: SellerPurchaseIn, request: Request):
 
 @router.post("/sales-out")
 async def sales_out(body: SellerSalesOut, request: Request):
-    ctx = require_strict_org_context(request)
+    ctx = require_ecommerce_context(request)
     try:
         return execute_sales_out(
             organization_id=ctx["organization_id"],
@@ -101,7 +101,7 @@ async def sales_out(body: SellerSalesOut, request: Request):
 @router.get("/stock")
 async def stock(request: Request, product_uid: Optional[str] = None):
     _reject_identity_params(request)
-    ctx = require_strict_org_context(request)
+    ctx = require_ecommerce_context(request)
     return query_stock(ctx["organization_id"], product_uid=product_uid)
 
 
@@ -118,7 +118,7 @@ async def inventory_movements(
     _reject_identity_params(request)
     _validate_date_range(_parse_date_param(date_from, "date_from"),
                          _parse_date_param(date_to, "date_to"))
-    ctx = require_strict_org_context(request)
+    ctx = require_ecommerce_context(request)
     return query_inventory_movements(
         ctx["organization_id"],
         product_uid=product_uid,
@@ -141,7 +141,7 @@ async def seller_summary(
     _reject_identity_params(request)
     _validate_date_range(_parse_date_param(date_from, "date_from"),
                          _parse_date_param(date_to, "date_to"))
-    ctx = require_strict_org_context(request)
+    ctx = require_ecommerce_context(request)
     return get_seller_summary(
         ctx["organization_id"],
         date_from=date_from,
@@ -161,7 +161,7 @@ async def seller_product_summary(
     _reject_identity_params(request)
     _validate_date_range(_parse_date_param(date_from, "date_from"),
                          _parse_date_param(date_to, "date_to"))
-    ctx = require_strict_org_context(request)
+    ctx = require_ecommerce_context(request)
     return query_product_summary(
         ctx["organization_id"],
         product_uid=product_uid,
@@ -187,10 +187,7 @@ _READ_ONLY_NOTICE = (
 
 @router.post("/chat")
 async def seller_chat(body: SellerChatRequest, request: Request):
-    ctx = require_strict_org_context(request)
-    if ctx.get("org_type") != "ecommerce":
-        raise HTTPException(
-            403, "Seller chat is only available for ecommerce organizations")
+    ctx = require_ecommerce_context(request)
 
     _reject_identity_params(request)
 

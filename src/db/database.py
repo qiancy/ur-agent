@@ -21,6 +21,7 @@ Naming:
 
 from typing import Optional, List, Dict, Any
 from decimal import Decimal, ROUND_HALF_UP
+import uuid as _uuid
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from src.logging_config import get_logger
@@ -146,6 +147,7 @@ CREATE TABLE IF NOT EXISTS resource_warehouse (
 -- Transaction: 交易事务
 CREATE TABLE IF NOT EXISTS transaction (
     id              SERIAL PRIMARY KEY,
+    transaction_uid VARCHAR(100),
     organization_id INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
     amount          DECIMAL(15,2) NOT NULL,
     category        VARCHAR(100) NOT NULL,
@@ -272,6 +274,23 @@ def init_database(drop_all: bool = False):
                 DROP TABLE IF EXISTS party_member CASCADE;
             """)
         cur.execute(SCHEMA_SQL)
+        cur.execute("""
+            ALTER TABLE transaction ADD COLUMN IF NOT EXISTS transaction_uid VARCHAR(100);
+            UPDATE transaction
+               SET transaction_uid = 'tx_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)
+             WHERE transaction_uid IS NULL;
+            ALTER TABLE transaction ALTER COLUMN transaction_uid SET NOT NULL;
+        """)
+        cur.execute("""
+            DO $m$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'uq_transaction_uid'
+                ) THEN
+                    ALTER TABLE transaction ADD CONSTRAINT uq_transaction_uid UNIQUE (transaction_uid);
+                END IF;
+            END $m$;
+        """)
         conn.commit()
         logger.info("Database initialized successfully")
     except Exception as e:
@@ -610,21 +629,22 @@ def get_resource_total(resource_id: int) -> Dict[str, Any]:
 def create_transaction(amount: float, category: str,
                         description: str = None,
                         organization_id: int = 1) -> Dict[str, Any]:
+    transaction_uid = f"tx_{_uuid.uuid4().hex[:12]}"
     sql = """
-        INSERT INTO transaction (amount, category, description, organization_id)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO transaction (transaction_uid, amount, category, description, organization_id)
+        VALUES (%s, %s, %s, %s, %s)
         RETURNING *
     """
-    return dict(_execute(sql, (amount, category, description, organization_id),
+    return dict(_execute(sql, (transaction_uid, amount, category, description, organization_id),
                          fetch_returning=True)[0])
 
 
 def get_transactions(organization_id: int, limit: int = 20) -> List[Dict]:
-    """Get transactions for an org."""
+    """Get transactions for an org. Returns business fields only (no DB ids)."""
     sql = """
-        SELECT t.*,
+        SELECT t.transaction_uid, t.amount, t.category, t.description, t.created_at,
                (SELECT json_agg(json_build_object(
-                   'person_id', p.person_id,
+                   'puid', per.puid,
                    'person_name', per.name,
                    'role', p.role,
                    'funds_change', p.funds_change,
@@ -638,6 +658,15 @@ def get_transactions(organization_id: int, limit: int = 20) -> List[Dict]:
         LIMIT %s
     """
     return _fetch(sql, (organization_id, limit))
+
+
+def get_transaction_by_uid(transaction_uid: str,
+                           organization_id: int) -> Optional[Dict[str, Any]]:
+    rows = _fetch(
+        "SELECT * FROM transaction WHERE transaction_uid = %s AND organization_id = %s",
+        (transaction_uid, organization_id)
+    )
+    return rows[0] if rows else None
 
 
 # --- Party ---
@@ -663,15 +692,18 @@ def create_party(person_id: int, organization_id: int, transaction_id: int,
     return result
 
 
-def query_party_by_transaction(transaction_id: int) -> List[Dict]:
+def query_party_by_transaction(transaction_uid: str, organization_id: int) -> List[Dict]:
     sql = """
-        SELECT p.*, per.puid AS puid, per.name AS person_name, org.ouid AS ouid
+        SELECT per.puid AS puid, per.name AS person_name,
+               org.ouid AS ouid, org.name AS organization_name,
+               p.role, p.description, p.funds_change, p.reputation_change
         FROM party p
         JOIN person per ON per.id = p.person_id
         JOIN organization org ON org.id = p.organization_id
-        WHERE p.transaction_id = %s
+        WHERE p.transaction_id = (SELECT id FROM transaction
+                                  WHERE transaction_uid = %s AND organization_id = %s)
     """
-    return _fetch(sql, (transaction_id,))
+    return _fetch(sql, (transaction_uid, organization_id))
 
 
 def query_party(organization_id: int, person_id: int = None,
@@ -739,12 +771,15 @@ def create_campaign_event(campaign_import_id: int, organization_id: int, seq: in
 
 def list_campaign_imports_for_orgs(organization_ids: List[int] = None,
                                    include_all: bool = False) -> List[Dict[str, Any]]:
+    business_cols = (
+        "ci.campaign_code, ci.campaign_name, ci.source_file, ci.imported_by_puid, "
+        "ci.status, ci.created_at, ci.deleted_at"
+    )
+    org_json = "jsonb_build_object('ouid', o.ouid, 'name', o.name, 'type', o.type)"
     if include_all:
-        sql = """
-            SELECT ci.*,
-               COALESCE(json_agg(DISTINCT jsonb_build_object(
-                   'id', o.id, 'ouid', o.ouid, 'name', o.name, 'type', o.type
-               )) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
+        sql = f"""
+            SELECT {business_cols},
+               COALESCE(json_agg(DISTINCT {org_json}) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
         FROM campaign_import ci
         LEFT JOIN campaign_import_org cio ON cio.campaign_import_id = ci.id
         LEFT JOIN organization o ON o.id = cio.organization_id
@@ -756,11 +791,9 @@ def list_campaign_imports_for_orgs(organization_ids: List[int] = None,
 
     if not organization_ids:
         return []
-    sql = """
-        SELECT ci.*,
-               COALESCE(json_agg(DISTINCT jsonb_build_object(
-                   'id', o.id, 'ouid', o.ouid, 'name', o.name, 'type', o.type
-               )) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
+    sql = f"""
+        SELECT {business_cols},
+               COALESCE(json_agg(DISTINCT {org_json}) FILTER (WHERE o.id IS NOT NULL), '[]') AS organizations
         FROM campaign_import ci
         JOIN campaign_import_org cio_filter ON cio_filter.campaign_import_id = ci.id
         LEFT JOIN campaign_import_org cio ON cio.campaign_import_id = ci.id
@@ -954,9 +987,10 @@ def execute_purchase_in(
         )
 
         tx = _exec_cur(cur,
-            "INSERT INTO transaction (organization_id, amount, category, description) "
-            "VALUES (%s, %s, 'purchase_in', %s) RETURNING id",
-            (organization_id, total_amount, f"purchase_in {product_uid} x {quantity}{unit}"),
+            "INSERT INTO transaction (transaction_uid, organization_id, amount, category, description) "
+            "VALUES (%s, %s, %s, 'purchase_in', %s) RETURNING id",
+            (f"tx_{_uuid.uuid4().hex[:12]}", organization_id, total_amount,
+             f"purchase_in {product_uid} x {quantity}{unit}"),
         )[0]
         tx_id = tx["id"]
 
@@ -1058,9 +1092,10 @@ def execute_sales_out(
         )
 
         tx = _exec_cur(cur,
-            "INSERT INTO transaction (organization_id, amount, category, description) "
-            "VALUES (%s, %s, 'sales_out', %s) RETURNING id",
-            (organization_id, total_amount, f"sales_out {product_uid} x {quantity}{unit}"),
+            "INSERT INTO transaction (transaction_uid, organization_id, amount, category, description) "
+            "VALUES (%s, %s, %s, 'sales_out', %s) RETURNING id",
+            (f"tx_{_uuid.uuid4().hex[:12]}", organization_id, total_amount,
+             f"sales_out {product_uid} x {quantity}{unit}"),
         )[0]
         tx_id = tx["id"]
 

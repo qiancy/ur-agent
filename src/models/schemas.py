@@ -102,9 +102,9 @@ class TransactionCreate(BaseModel):
 # ── Party ────────────────────────────────────────────────────────────────────
 
 class PartyCreate(BaseModel):
-    transaction_id: int
-    puid: Optional[str] = None  # ignored, person comes from JWT
-    ouid: Optional[str] = None  # ignored, org comes from JWT/query param
+    transaction_uid: str
+    puid: Optional[str] = None  # person identity; ignored when Bearer token present
+    ouid: Optional[str] = None  # org identity; ignored when Bearer token present
     role: str
     description: Optional[str] = None
     funds_change: Optional[float] = 0

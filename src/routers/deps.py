@@ -132,6 +132,15 @@ def require_strict_org_context(request: Request) -> dict:
     return _build_context(person, org, payload, memberships[0])
 
 
+def require_ecommerce_context(request: Request) -> dict:
+    """Require a strict JWT context for an ecommerce organization (Seller APIs)."""
+    ctx = require_strict_org_context(request)
+    if ctx.get("org_type") != "ecommerce":
+        raise HTTPException(403,
+            "Seller APIs are only available for ecommerce organizations")
+    return ctx
+
+
 def _build_context(person: Optional[dict], org: dict, payload: dict, membership: Optional[dict]) -> dict:
     puid = person.get("puid") if person else None
     ouid = org.get("ouid")

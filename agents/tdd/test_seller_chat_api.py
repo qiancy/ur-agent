@@ -241,6 +241,19 @@ def test_seller_chat_rejects_non_ecommerce_org(monkeypatch):
     assert resp.status_code == 403, resp.text
 
 
+def test_seller_read_endpoints_reject_non_ecommerce_org(monkeypatch):
+    _install_fake_llm(monkeypatch)
+    company = _create_company_token("gne")
+    for path in [
+        "/seller/stock",
+        "/seller/inventory-movements",
+        "/seller/summary",
+        "/seller/product-summary",
+    ]:
+        resp = client.get(path, headers=_auth_header(company["token"]))
+        assert resp.status_code == 403, f"{path}: {resp.text}"
+
+
 def test_seller_chat_rejects_identity_and_internal_pk_query_params(monkeypatch):
     _install_fake_llm(monkeypatch)
     shop = _create_shop("qid")

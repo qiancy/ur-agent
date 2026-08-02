@@ -247,13 +247,13 @@ class APIClient:
             data["description"] = description
         return self.post("transaction", data)
     
-    def create_party(self, puid: str, ouid: str, transaction_id: int,
+    def create_party(self, puid: str, ouid: str, transaction_uid: str,
                      role: str, description: str = None) -> Dict[str, Any]:
         """创建参与方"""
         data = {
             "puid": puid,
             "ouid": ouid,
-            "transaction_id": transaction_id,
+            "transaction_uid": transaction_uid,
             "role": role
         }
         if description:
@@ -522,7 +522,7 @@ class FireNewyeTest:
                 self.api.create_party(
                     puid=self.default_person_puid,
                     ouid=self.shu_org_ouid if "蜀汉" in t["from_org"] else self.wei_org_ouid,
-                    transaction_id=transaction["id"],
+                    transaction_uid=transaction["transaction_uid"],
                     role="payer" if "蜀汉" in t["from_org"] else "payee",
                     description=t["description"]
                 )

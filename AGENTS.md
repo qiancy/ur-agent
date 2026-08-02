@@ -81,8 +81,15 @@ This system is running in a Kubernetes pod environment with the following constr
 | Embedding | BAAI/bge-large-zh-v1.5 |
 | Vector DB | ChromaDB |
 | Backend | FastAPI + JWT |
-| Frontend | Gradio |
+| Frontend | Vue 3 + Vite + TS (`web/`) — 产品主界面; Gradio (`src/app.py`) 仅作内部调试/备份入口 |
 | Database | PostgreSQL (context isolation via ouid+puid) |
+
+### Frontend (Vue SPA) Notes
+
+- `web/` 为产品主界面（Seller MVP 工作台），Gradio 保留为内部调试/备份入口。
+- 登录：`POST /auth/seller-login` → JWT 存 `localStorage`；所有请求带 `Authorization: Bearer`。
+- `web/` 依赖 Vite dev server proxy 或 CORS（后端已开 `allow_origins=["*"]`）直连 `:8000`。
+- 测试：Vitest + jsdom（`npm test`），构建/类型检查：`npm run build`（vue-tsc + vite）。
 
 ### Model Strategy (Development vs Production)
 
@@ -288,6 +295,7 @@ Backend: FastAPI at `http://localhost:8000`. Full API docs: `README.md`.
 | **初始化API实现建议** | ✅ Done | 7/21 |
 | **测试脚本更新** | ✅ Done | 7/21 |
 | **测试计划文档更新** | ✅ Done | 7/21 |
+| **FE-06 Vue SPA Spike** | ✅ Done | 8/2 |
 | AMD GPU verification | 🔴 Not started | 8/3 |
 | Submission | 🔴 Not started | 8/6 |
 

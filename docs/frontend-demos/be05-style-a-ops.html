@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BE-05 Demo A - Ops Desk</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #637083;
+      --line: #d8dee8;
+      --green: #117a55;
+      --red: #b42318;
+      --amber: #b7791f;
+      --blue: #1d4f91;
+      --teal: #0f766e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 236px 1fr;
+    }
+    .side {
+      background: #16202e;
+      color: #e7edf5;
+      padding: 22px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+    .brand {
+      font-weight: 800;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+    .brand span {
+      display: block;
+      color: #9fb3ca;
+      font-size: 12px;
+      font-weight: 500;
+      margin-top: 6px;
+    }
+    .nav {
+      display: grid;
+      gap: 6px;
+    }
+    .nav button {
+      border: 0;
+      color: #dbe5f0;
+      background: transparent;
+      text-align: left;
+      padding: 11px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: default;
+    }
+    .nav button.active {
+      background: #233247;
+      color: #ffffff;
+      border-left: 3px solid #45b8ac;
+    }
+    .account {
+      margin-top: auto;
+      padding: 12px;
+      border: 1px solid #2b3b52;
+      border-radius: 8px;
+      color: #c9d6e5;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .main {
+      padding: 22px;
+      display: grid;
+      gap: 16px;
+      grid-template-rows: auto auto 1fr;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 750;
+    }
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 5px;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 10px 13px;
+      font-weight: 650;
+      font-size: 13px;
+    }
+    .btn.primary {
+      background: var(--teal);
+      color: #ffffff;
+      border-color: var(--teal);
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric .value {
+      margin-top: 8px;
+      font-size: 22px;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+    .metric .delta {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .work {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      min-width: 0;
+    }
+    .panel-head {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-title {
+      font-size: 15px;
+      font-weight: 760;
+    }
+    .filters {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      background: #fbfcfe;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #edf0f4;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      background: #fafbfc;
+    }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .tag.ok { color: var(--green); background: #e8f6ef; }
+    .tag.warn { color: var(--amber); background: #fff6df; }
+    .tag.danger { color: var(--red); background: #fff0ee; }
+    .right {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 16px;
+      min-height: 0;
+    }
+    .low-list {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+    .low-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 10px 0;
+      border-bottom: 1px solid #edf0f4;
+      font-size: 13px;
+    }
+    .low-item:last-child { border-bottom: 0; }
+    .chat {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 360px;
+    }
+    .messages {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .msg {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .msg.ai { background: #eef7f6; border: 1px solid #cae9e6; }
+    .msg.user { background: #f2f4f7; justify-self: end; }
+    .ask {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 11px;
+      font-size: 13px;
+    }
+    @media (max-width: 980px) {
+      .shell { grid-template-columns: 1fr; }
+      .side { display: none; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .work { grid-template-columns: 1fr; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand">Uni-Resource Agent<span>淘宝小店 A · seller_a</span></div>
+      <nav class="nav">
+        <button class="active">经营工作台</button>
+        <button>库存</button>
+        <button>库存流水</button>
+        <button>经营摘要</button>
+        <button>Seller AI</button>
+      </nav>
+      <div class="account">当前店铺<br>taobao_shop_a<br>角色 owner</div>
+    </aside>
+    <main class="main">
+      <section class="topbar">
+        <div>
+          <h1>经营工作台</h1>
+          <div class="status">今日 14:30 更新 · 3 个低库存商品 · 库存估值采用采购均价</div>
+        </div>
+        <div class="actions">
+          <button class="btn">出库</button>
+          <button class="btn primary">入库</button>
+        </div>
+      </section>
+      <section class="metrics">
+        <div class="metric"><div class="label">销售收入</div><div class="value">¥12,840</div><div class="delta">今日 18 笔</div></div>
+        <div class="metric"><div class="label">采购支出</div><div class="value">¥7,260</div><div class="delta">本周 6 笔</div></div>
+        <div class="metric"><div class="label">净现金流</div><div class="value">¥5,580</div><div class="delta">较昨日 +12%</div></div>
+        <div class="metric"><div class="label">库存估值</div><div class="value">¥48,930</div><div class="delta">128 个库位</div></div>
+        <div class="metric"><div class="label">低库存</div><div class="value">3</div><div class="delta">阈值 5 件</div></div>
+      </section>
+      <section class="work">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">库存明细</div>
+            <div class="filters">
+              <span class="chip">全部商品</span>
+              <span class="chip">WH-A</span>
+              <span class="chip">仅看风险</span>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>商品</th>
+                <th>仓库</th>
+                <th>库位</th>
+                <th class="num">数量</th>
+                <th>单位</th>
+                <th>状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>phone_case_black</td><td>WH-A</td><td>A-01-03</td><td class="num">42</td><td>件</td><td><span class="tag ok">充足</span></td></tr>
+              <tr><td>usb_cable_1m</td><td>WH-A</td><td>A-02-01</td><td class="num">4</td><td>件</td><td><span class="tag danger">低库存</span></td></tr>
+              <tr><td>screen_film_hd</td><td>WH-B</td><td>B-01-08</td><td class="num">11</td><td>件</td><td><span class="tag ok">正常</span></td></tr>
+              <tr><td>charger_20w</td><td>WH-A</td><td>A-03-02</td><td class="num">2</td><td>件</td><td><span class="tag danger">低库存</span></td></tr>
+              <tr><td>packing_box_s</td><td>WH-C</td><td>C-04-10</td><td class="num">76</td><td>个</td><td><span class="tag ok">充足</span></td></tr>
+              <tr><td>earbud_case</td><td>WH-B</td><td>B-02-04</td><td class="num">5</td><td>件</td><td><span class="tag warn">临界</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <aside class="right">
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">低库存处理</div><span class="chip">3 项</span></div>
+            <div class="low-list">
+              <div class="low-item"><div>usb_cable_1m<br><span class="status">WH-A · A-02-01</span></div><strong>4 件</strong></div>
+              <div class="low-item"><div>charger_20w<br><span class="status">WH-A · A-03-02</span></div><strong>2 件</strong></div>
+              <div class="low-item"><div>earbud_case<br><span class="status">WH-B · B-02-04</span></div><strong>5 件</strong></div>
+            </div>
+          </div>
+          <div class="panel chat">
+            <div class="panel-head"><div class="panel-title">Seller AI</div><span class="chip">只读查询</span></div>
+            <div class="messages">
+              <div class="msg user">今天销售收入是多少？</div>
+              <div class="msg ai">今日销售收入 ¥12,840，销售 18 笔。低库存商品有 3 个，建议先补 charger_20w。</div>
+            </div>
+            <div class="ask">
+              <input value="查询低库存和采购支出">
+              <button class="btn primary">发送</button>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
+

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BE-05 Demo B - Command Board</title>
+  <style>
+    :root {
+      --bg: #f7f5f0;
+      --ink: #1d1f22;
+      --muted: #6f756f;
+      --panel: #fffdfa;
+      --line: #ded8cc;
+      --red: #b3261e;
+      --green: #236e4a;
+      --blue: #235789;
+      --gold: #ad7b20;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+    .page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      font-size: 18px;
+    }
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: #243447;
+      color: #ffffff;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+    }
+    .search {
+      flex: 1;
+      max-width: 560px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+    }
+    input, select {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 6px;
+      padding: 11px 12px;
+      font-size: 14px;
+    }
+    button {
+      border: 1px solid #1f4f72;
+      background: #1f4f72;
+      color: #ffffff;
+      border-radius: 6px;
+      padding: 11px 14px;
+      font-weight: 750;
+    }
+    main {
+      padding: 22px;
+      display: grid;
+      gap: 16px;
+      grid-template-columns: minmax(260px, 360px) minmax(0, 1fr) minmax(280px, 380px);
+      align-items: start;
+    }
+    .stack { display: grid; gap: 16px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .panel h2 {
+      margin: 0;
+      padding: 14px 16px;
+      font-size: 15px;
+      border-bottom: 1px solid var(--line);
+    }
+    .risk {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .risk-card {
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--red);
+      background: #fff7f5;
+      border-radius: 8px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .risk-card strong { font-size: 18px; }
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    .kpi {
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 96px;
+    }
+    .kpi .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .kpi .value {
+      margin-top: 10px;
+      font-size: 24px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 11px 12px;
+      border-bottom: 1px solid #ebe5da;
+      text-align: left;
+    }
+    th {
+      color: var(--muted);
+      background: #fbf8f1;
+      font-size: 12px;
+    }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .feed {
+      padding: 12px 16px 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .event {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #ebe5da;
+    }
+    .event:last-child { border-bottom: 0; padding-bottom: 0; }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--blue);
+    }
+    .dot.out { background: var(--green); }
+    .dot.in { background: var(--gold); }
+    .advisor {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .answer {
+      border: 1px solid #bdd0d7;
+      background: #f3fafb;
+      border-radius: 8px;
+      padding: 12px;
+      line-height: 1.5;
+      font-size: 13px;
+    }
+    .quick {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .quick span {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 12px;
+      color: #40505d;
+    }
+    @media (max-width: 1120px) {
+      main { grid-template-columns: 1fr; }
+      .kpis { grid-template-columns: repeat(2, 1fr); }
+      .grid2 { grid-template-columns: 1fr; }
+      header { align-items: stretch; flex-direction: column; }
+      .search { max-width: none; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="brand"><div class="mark">UA</div><div>淘宝小店 A 经营指挥板<div class="meta">taobao_shop_a · seller_a</div></div></div>
+      <div class="search">
+        <input value="哪些商品需要补货？">
+        <button>问 Seller AI</button>
+      </div>
+    </header>
+    <main>
+      <section class="stack">
+        <div class="panel">
+          <h2>今日风险</h2>
+          <div class="risk">
+            <div class="risk-card">
+              <strong>charger_20w 仅剩 2 件</strong>
+              <div class="meta">WH-A · A-03-02 · 近 7 日销量 23 件</div>
+              <button>创建入库单</button>
+            </div>
+            <div class="risk-card">
+              <strong>usb_cable_1m 低于阈值</strong>
+              <div class="meta">WH-A · A-02-01 · 当前 4 件</div>
+              <button>查看流水</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>快速动作</h2>
+          <div class="risk">
+            <button>入库</button>
+            <button>出库</button>
+            <button>刷新经营摘要</button>
+          </div>
+        </div>
+      </section>
+      <section class="stack">
+        <div class="kpis">
+          <div class="kpi"><div class="label">销售收入</div><div class="value">¥12,840</div><div class="meta">18 笔 sales_out</div></div>
+          <div class="kpi"><div class="label">采购支出</div><div class="value">¥7,260</div><div class="meta">6 笔 purchase_in</div></div>
+          <div class="kpi"><div class="label">净现金流</div><div class="value">¥5,580</div><div class="meta">今日</div></div>
+          <div class="kpi"><div class="label">库存估值</div><div class="value">¥48,930</div><div class="meta">采购均价估算</div></div>
+        </div>
+        <div class="grid2">
+          <div class="panel">
+            <h2>热销商品</h2>
+            <table>
+              <thead><tr><th>商品</th><th class="num">销量</th><th class="num">销售额</th></tr></thead>
+              <tbody>
+                <tr><td>phone_case_black</td><td class="num">36</td><td class="num">¥3,960</td></tr>
+                <tr><td>screen_film_hd</td><td class="num">24</td><td class="num">¥2,160</td></tr>
+                <tr><td>charger_20w</td><td class="num">23</td><td class="num">¥2,990</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <h2>库存位置</h2>
+            <table>
+              <thead><tr><th>商品</th><th>仓库</th><th class="num">数量</th></tr></thead>
+              <tbody>
+                <tr><td>phone_case_black</td><td>WH-A</td><td class="num">42</td></tr>
+                <tr><td>usb_cable_1m</td><td>WH-A</td><td class="num">4</td></tr>
+                <tr><td>packing_box_s</td><td>WH-C</td><td class="num">76</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>库存流水</h2>
+          <div class="feed">
+            <div class="event"><span class="dot out"></span><span>sales_out · phone_case_black · WH-A / A-01-03</span><strong>-3 件</strong></div>
+            <div class="event"><span class="dot in"></span><span>purchase_in · usb_cable_1m · WH-A / A-02-01</span><strong>+30 件</strong></div>
+            <div class="event"><span class="dot out"></span><span>sales_out · charger_20w · WH-A / A-03-02</span><strong>-5 件</strong></div>
+          </div>
+        </div>
+      </section>
+      <aside class="panel">
+        <h2>经营顾问</h2>
+        <div class="advisor">
+          <div class="answer">低库存集中在 WH-A。按近 7 日销量，charger_20w 会先断货，建议优先补到 40 件以上。</div>
+          <div class="quick">
+            <span>低库存商品</span>
+            <span>今天卖了多少钱</span>
+            <span>采购支出</span>
+            <span>库存流水</span>
+          </div>
+          <input value="查询采购支出是多少">
+          <button>发送</button>
+        </div>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>
+

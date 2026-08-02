@@ -1,6 +1,23 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { setToken } from './client'
-import { sellerLogin, sellerSummary } from './seller'
+import {
+  sellerLogin,
+  sellerSummary,
+  sellerStock,
+  sellerInventoryMovements,
+  sellerPurchaseIn,
+  sellerSalesOut,
+  sellerChat,
+} from './seller'
+
+function assertNoDbIdKeys(keys: string[]) {
+  for (const key of keys) {
+    expect(key).not.toBe('id')
+    expect(key).not.toBe('pid')
+    expect(key).not.toBe('oid')
+    expect(key.endsWith('_id')).toBe(false)
+  }
+}
 
 const fetchMock = vi.fn()
 
@@ -105,5 +122,173 @@ describe('sellerSummary', () => {
 
     await expect(sellerSummary()).rejects.toThrow(/unauthorized/)
     expect(localStorage.getItem('unires_token')).toBeNull()
+  })
+})
+
+const STOCK_ROWS = [
+  {
+    product_uid: 'usb_cable_1m',
+    warehouse_code: 'WH-A',
+    location_path: 'A-02-01',
+    quantity: 4,
+    unit: '件',
+  },
+  {
+    product_uid: 'charger_20w',
+    warehouse_code: 'WH-A',
+    location_path: 'A-03-02',
+    quantity: 2,
+    unit: '件',
+  },
+]
+
+const MOVEMENTS = [
+  {
+    movement_uid: 'mv_000000000001',
+    operation_type: 'purchase_in',
+    product_uid: 'usb_cable_1m',
+    warehouse_code: 'WH-A',
+    location_path: 'A-02-01',
+    quantity_delta: 20,
+    new_quantity: 24,
+    unit: '件',
+    total_amount: 80,
+    counterparty_name: '供应商甲',
+    created_at: '2026-08-02T10:00:00',
+  },
+]
+
+describe('sellerStock', () => {
+  it('fetches /seller/stock and returns stock rows', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(jsonResponse(STOCK_ROWS))
+
+    const rows = await sellerStock()
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('/seller/stock')
+    expect(rows[0].product_uid).toBe('usb_cable_1m')
+    expect(rows[0].warehouse_code).toBe('WH-A')
+  })
+
+  it('passes product_uid as a query parameter', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(jsonResponse(STOCK_ROWS))
+
+    await sellerStock('usb_cable_1m')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('product_uid=usb_cable_1m')
+  })
+})
+
+describe('sellerInventoryMovements', () => {
+  it('fetches /seller/inventory-movements and returns movement rows', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(jsonResponse(MOVEMENTS))
+
+    const rows = await sellerInventoryMovements()
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('/seller/inventory-movements')
+    expect(rows[0].operation_type).toBe('purchase_in')
+    expect(rows[0].movement_uid).toBe('mv_000000000001')
+  })
+
+  it('passes operation_type, date_from, date_to and limit filters', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(jsonResponse(MOVEMENTS))
+
+    await sellerInventoryMovements({
+      operationType: 'sales_out',
+      dateFrom: '2026-08-01',
+      dateTo: '2026-08-02',
+      limit: 20,
+    })
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('operation_type=sales_out')
+    expect(url).toContain('date_from=2026-08-01')
+    expect(url).toContain('date_to=2026-08-02')
+    expect(url).toContain('limit=20')
+  })
+})
+
+describe('sellerPurchaseIn', () => {
+  it('posts business fields only to /seller/purchase-in', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', new_quantity: 24 }))
+
+    await sellerPurchaseIn({
+      product_uid: 'usb_cable_1m',
+      warehouse_code: 'WH-A',
+      location_path: 'A-02-01',
+      quantity: 20,
+      unit: '件',
+      total_amount: 80,
+      counterparty_name: '供应商甲',
+    })
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toContain('/seller/purchase-in')
+    const body = JSON.parse(options.body)
+    expect(body).toEqual({
+      product_uid: 'usb_cable_1m',
+      warehouse_code: 'WH-A',
+      location_path: 'A-02-01',
+      quantity: 20,
+      unit: '件',
+      total_amount: 80,
+      counterparty_name: '供应商甲',
+    })
+    const bodyKeys = Object.keys(body)
+    assertNoDbIdKeys(bodyKeys)
+  })
+})
+
+describe('sellerSalesOut', () => {
+  it('posts business fields only to /seller/sales-out', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(jsonResponse({ status: 'ok', new_quantity: 4 }))
+
+    await sellerSalesOut({
+      product_uid: 'usb_cable_1m',
+      warehouse_code: 'WH-A',
+      location_path: 'A-02-01',
+      quantity: 20,
+      unit: '件',
+      total_amount: 60,
+      counterparty_name: '买家乙',
+    })
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toContain('/seller/sales-out')
+    const body = JSON.parse(options.body)
+    expect(body).toEqual({
+      product_uid: 'usb_cable_1m',
+      warehouse_code: 'WH-A',
+      location_path: 'A-02-01',
+      quantity: 20,
+      unit: '件',
+      total_amount: 60,
+      counterparty_name: '买家乙',
+    })
+    assertNoDbIdKeys(Object.keys(body))
+  })
+})
+
+describe('sellerChat', () => {
+  it('posts only the message to /seller/chat and returns the response', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(
+      jsonResponse({ response: '今日销售收入 ¥12,840', ouid: 'shop_demo' }),
+    )
+
+    const result = await sellerChat('今天销售收入是多少？')
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toContain('/seller/chat')
+    expect(JSON.parse(options.body)).toEqual({ message: '今天销售收入是多少？' })
+    expect(result.response).toContain('12,840')
   })
 })

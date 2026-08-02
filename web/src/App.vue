@@ -1,36 +1,89 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { getToken, clearToken } from './api/client'
 import type { SellerLoginResult } from './api/seller'
 import LoginView from './views/LoginView.vue'
+import WorkbenchView from './views/WorkbenchView.vue'
+import StockView from './views/StockView.vue'
+import MovementsView from './views/MovementsView.vue'
 import SummaryView from './views/SummaryView.vue'
+import ChatView from './views/ChatView.vue'
+import SidebarNav from './components/SidebarNav.vue'
+
+const CTX_KEY = 'unires_ctx'
+
+interface AppContext {
+  organizationName: string
+  ouid: string
+  role: string
+}
 
 const authenticated = ref(getToken() !== null)
-const organizationName = ref('')
+const currentView = ref('workbench')
+
+function loadCtx(): AppContext {
+  try {
+    const raw = localStorage.getItem(CTX_KEY)
+    if (raw) return JSON.parse(raw) as AppContext
+  } catch {
+    /* ignore corrupt ctx */
+  }
+  return { organizationName: '', ouid: '', role: '' }
+}
+
+const ctx = ref<AppContext>(loadCtx())
 
 function onAuthenticated(result: SellerLoginResult) {
-  organizationName.value = result.organization.name
+  const nextCtx = {
+    organizationName: result.organization.name,
+    ouid: result.organization.ouid,
+    role: result.membership.role,
+  }
+  ctx.value = nextCtx
+  localStorage.setItem(CTX_KEY, JSON.stringify(nextCtx))
+  currentView.value = 'workbench'
   authenticated.value = true
 }
 
 function onLoggedOut() {
   clearToken()
+  localStorage.removeItem(CTX_KEY)
   authenticated.value = false
 }
+
+const currentComponent = computed(() => {
+  switch (currentView.value) {
+    case 'stock':
+      return StockView
+    case 'movements':
+      return MovementsView
+    case 'summary':
+      return SummaryView
+    case 'chat':
+      return ChatView
+    default:
+      return WorkbenchView
+  }
+})
 </script>
 
 <template>
   <div class="shell">
-    <header v-if="authenticated" class="topbar">
-      <span class="topbar-brand">Uni-Resource Agent</span>
-      <span class="topbar-org">{{ organizationName }}</span>
-      <button class="btn btn-ghost" type="button" @click="onLoggedOut">
-        退出登录
-      </button>
-    </header>
-    <main class="main">
-      <LoginView v-if="!authenticated" @authenticated="onAuthenticated" />
-      <SummaryView v-else @logged-out="onLoggedOut" />
+    <template v-if="authenticated">
+      <SidebarNav
+        :current-view="currentView"
+        :organization-name="ctx.organizationName"
+        :ouid="ctx.ouid"
+        :role="ctx.role"
+        @navigate="currentView = $event"
+        @logout="onLoggedOut"
+      />
+      <main class="main">
+        <component :is="currentComponent" />
+      </main>
+    </template>
+    <main v-else class="main">
+      <LoginView @authenticated="onAuthenticated" />
     </main>
   </div>
 </template>
@@ -39,37 +92,18 @@ function onLoggedOut() {
 .shell {
   min-height: 100vh;
   background: var(--bg, #f4f6f8);
-  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
-}
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 24px;
-  background: var(--panel, #ffffff);
-  border-bottom: 1px solid var(--line, #d8dee8);
-}
-.topbar-brand {
-  font-weight: 600;
   color: var(--ink, #17202a);
-}
-.topbar-org {
-  color: var(--muted, #637083);
-}
-.btn {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.btn-ghost {
-  margin-left: auto;
-  background: transparent;
-  border: 1px solid var(--line, #d8dee8);
-  color: var(--muted, #637083);
+  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+  display: grid;
+  grid-template-columns: 236px 1fr;
 }
 .main {
-  padding: 24px;
+  padding: 22px;
+  min-width: 0;
+}
+@media (max-width: 980px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

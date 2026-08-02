@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BE-05 Demo C - Owner Console</title>
+  <style>
+    :root {
+      --bg: #eef3f4;
+      --ink: #172326;
+      --muted: #667477;
+      --panel: #ffffff;
+      --line: #d5e0e2;
+      --green: #0f7b55;
+      --blue: #2457a6;
+      --red: #b12a23;
+      --yellow: #f5c542;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+    .phone {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+    .hero {
+      background: #14353b;
+      color: #ffffff;
+      border-radius: 8px;
+      padding: 18px;
+      display: grid;
+      gap: 18px;
+    }
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.15;
+    }
+    .sub {
+      margin-top: 6px;
+      color: #b9ced2;
+      font-size: 13px;
+    }
+    .pill {
+      background: #22545d;
+      border: 1px solid #3b6971;
+      border-radius: 999px;
+      padding: 8px 11px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .hero-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .hero-card {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .hero-card span {
+      display: block;
+      color: #b9ced2;
+      font-size: 12px;
+    }
+    .hero-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 22px;
+      white-space: nowrap;
+    }
+    .quick-actions {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    button {
+      border: 0;
+      background: #ffffff;
+      color: #14353b;
+      border-radius: 8px;
+      padding: 13px 12px;
+      font-size: 14px;
+      font-weight: 780;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 14px;
+    }
+    .stack { display: grid; gap: 14px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-head strong { font-size: 15px; }
+    .panel-head span { color: var(--muted); font-size: 12px; }
+    .cards {
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .item h3 {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.25;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .stockline {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 12px;
+    }
+    .qty {
+      font-size: 24px;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+    }
+    .badge {
+      border-radius: 999px;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+    .badge.ok { color: var(--green); background: #e6f5ef; }
+    .badge.low { color: var(--red); background: #fdecea; }
+    .timeline {
+      padding: 12px 15px 15px;
+      display: grid;
+      gap: 12px;
+    }
+    .move {
+      display: grid;
+      grid-template-columns: 82px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #edf2f3;
+    }
+    .move:last-child { border-bottom: 0; padding-bottom: 0; }
+    .in { color: var(--blue); }
+    .out { color: var(--green); }
+    .ai {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .bubble {
+      background: #eff8f9;
+      border: 1px solid #cce5e8;
+      border-radius: 8px;
+      padding: 12px;
+      line-height: 1.5;
+      font-size: 13px;
+    }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chips span {
+      background: #f7fafb;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 12px;
+    }
+    input {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14px;
+      width: 100%;
+    }
+    .send {
+      background: #14353b;
+      color: #ffffff;
+    }
+    @media (max-width: 920px) {
+      .layout { grid-template-columns: 1fr; }
+      .hero-metrics { grid-template-columns: repeat(2, 1fr); }
+      .quick-actions { grid-template-columns: repeat(2, 1fr); }
+      .cards { grid-template-columns: 1fr; }
+      .hero-top { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <section class="hero">
+      <div class="hero-top">
+        <div>
+          <h1>淘宝小店 A</h1>
+          <div class="sub">今日经营 · taobao_shop_a · seller_a</div>
+        </div>
+        <div class="pill">库存估值 ¥48,930</div>
+      </div>
+      <div class="hero-metrics">
+        <div class="hero-card"><span>销售收入</span><strong>¥12,840</strong></div>
+        <div class="hero-card"><span>采购支出</span><strong>¥7,260</strong></div>
+        <div class="hero-card"><span>净现金流</span><strong>¥5,580</strong></div>
+        <div class="hero-card"><span>低库存</span><strong>3 项</strong></div>
+      </div>
+      <div class="quick-actions">
+        <button>入库</button>
+        <button>出库</button>
+        <button>查库存</button>
+        <button>问 AI</button>
+      </div>
+    </section>
+    <section class="layout">
+      <div class="stack">
+        <section class="panel">
+          <div class="panel-head"><strong>库存</strong><span>按风险排序</span></div>
+          <div class="cards">
+            <article class="item">
+              <h3>charger_20w</h3>
+              <div class="meta">WH-A · A-03-02</div>
+              <div class="stockline"><div class="qty">2 件</div><span class="badge low">低库存</span></div>
+            </article>
+            <article class="item">
+              <h3>usb_cable_1m</h3>
+              <div class="meta">WH-A · A-02-01</div>
+              <div class="stockline"><div class="qty">4 件</div><span class="badge low">低库存</span></div>
+            </article>
+            <article class="item">
+              <h3>phone_case_black</h3>
+              <div class="meta">WH-A · A-01-03</div>
+              <div class="stockline"><div class="qty">42 件</div><span class="badge ok">充足</span></div>
+            </article>
+            <article class="item">
+              <h3>packing_box_s</h3>
+              <div class="meta">WH-C · C-04-10</div>
+              <div class="stockline"><div class="qty">76 个</div><span class="badge ok">充足</span></div>
+            </article>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><strong>库存流水</strong><span>最近 50 条</span></div>
+          <div class="timeline">
+            <div class="move"><strong class="out">出库</strong><span>phone_case_black · WH-A / A-01-03</span><strong>-3 件</strong></div>
+            <div class="move"><strong class="in">入库</strong><span>usb_cable_1m · WH-A / A-02-01</span><strong>+30 件</strong></div>
+            <div class="move"><strong class="out">出库</strong><span>charger_20w · WH-A / A-03-02</span><strong>-5 件</strong></div>
+          </div>
+        </section>
+      </div>
+      <aside class="panel">
+        <div class="panel-head"><strong>Seller AI</strong><span>只读查询</span></div>
+        <div class="ai">
+          <div class="bubble">今日销售收入 ¥12,840，采购支出 ¥7,260。低库存 3 项，其中 charger_20w 最紧急。</div>
+          <div class="chips">
+            <span>低库存</span>
+            <span>销售收入</span>
+            <span>采购支出</span>
+            <span>库存流水</span>
+          </div>
+          <input value="今天还需要补哪些货？">
+          <button class="send">发送</button>
+        </div>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>
+

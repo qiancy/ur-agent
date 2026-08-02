@@ -6,20 +6,24 @@ import MovementTable from '../components/MovementTable.vue'
 const rows = ref<SellerMovement[]>([])
 const loading = ref(true)
 const filterOperation = ref('')
+const dateFrom = ref('')
+const dateTo = ref('')
 
 async function load() {
   loading.value = true
   try {
-    rows.value = await sellerInventoryMovements(
-      filterOperation.value ? { operationType: filterOperation.value } : {},
-    )
+    const params: Record<string, string> = {}
+    if (filterOperation.value) params.operationType = filterOperation.value
+    if (dateFrom.value) params.dateFrom = dateFrom.value
+    if (dateTo.value) params.dateTo = dateTo.value
+    rows.value = await sellerInventoryMovements(params)
   } finally {
     loading.value = false
   }
 }
 
 onMounted(load)
-watch(filterOperation, load)
+watch([filterOperation, dateFrom, dateTo], load)
 </script>
 
 <template>
@@ -30,6 +34,14 @@ watch(filterOperation, load)
         <div class="status">{{ rows.length }} 条记录</div>
       </div>
       <div class="filters">
+        <label class="date">
+          从
+          <input v-model="dateFrom" data-test="date-from" type="date" />
+        </label>
+        <label class="date">
+          至
+          <input v-model="dateTo" data-test="date-to" type="date" />
+        </label>
         <select v-model="filterOperation" data-test="filter-operation">
           <option value="">全部类型</option>
           <option value="purchase_in">入库</option>
@@ -86,6 +98,19 @@ select {
   padding: 9px 11px;
   font-size: 13px;
   background: var(--panel, #ffffff);
+}
+.filters input {
+  border: 1px solid var(--line, #d8dee8);
+  border-radius: 6px;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+.date {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted, #637083);
 }
 .btn {
   border: 1px solid var(--line, #d8dee8);

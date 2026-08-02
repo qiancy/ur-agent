@@ -1,8 +1,9 @@
+import { setAuthenticated } from './session'
+
 export const TOKEN_KEY = 'unires_token'
 
 export const API_BASE: string =
   import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
-
 export function apiUrl(path: string): string {
   return `${API_BASE}${path}`
 }
@@ -47,6 +48,7 @@ export async function request<T>(
 
   if (response.status === 401) {
     clearToken()
+    setAuthenticated(false)
   }
 
   if (!response.ok) {

@@ -43,4 +43,35 @@ describe('StockView', () => {
     await flushPromises()
     expect(stockMock).toHaveBeenCalledTimes(1)
   })
+
+  it('filters stock by product uid when the filter is applied', async () => {
+    stockMock.mockResolvedValue(STOCK)
+    const wrapper = mount(StockView)
+    await flushPromises()
+
+    stockMock.mockClear()
+    await wrapper.find('input[data-test="filter-product"]').setValue('usb_cable_1m')
+    await wrapper.find('button[data-test="btn-filter"]').trigger('click')
+    await flushPromises()
+
+    expect(stockMock).toHaveBeenCalledWith('usb_cable_1m')
+  })
+
+  it('clears the product filter and reloads the full stock', async () => {
+    stockMock.mockResolvedValue(STOCK)
+    const wrapper = mount(StockView)
+    await flushPromises()
+
+    stockMock.mockClear()
+    await wrapper.find('input[data-test="filter-product"]').setValue('usb_cable_1m')
+    await wrapper.find('button[data-test="btn-filter"]').trigger('click')
+    await flushPromises()
+
+    stockMock.mockClear()
+    await wrapper.find('input[data-test="filter-product"]').setValue('')
+    await wrapper.find('button[data-test="btn-filter"]').trigger('click')
+    await flushPromises()
+
+    expect(stockMock).toHaveBeenCalledWith()
+  })
 })

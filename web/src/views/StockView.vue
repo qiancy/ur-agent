@@ -5,11 +5,13 @@ import StockTable from '../components/StockTable.vue'
 
 const rows = ref<SellerStockRow[]>([])
 const loading = ref(true)
+const productFilter = ref('')
 
 async function load() {
   loading.value = true
   try {
-    rows.value = await sellerStock()
+    const q = productFilter.value.trim()
+    rows.value = q ? await sellerStock(q) : await sellerStock()
   } finally {
     loading.value = false
   }
@@ -33,6 +35,16 @@ onMounted(load)
       <div class="panel-head">
         <div class="panel-title">全部库存</div>
         <div class="filters">
+          <input
+            v-model="productFilter"
+            data-test="filter-product"
+            type="text"
+            placeholder="按商品筛选"
+            @keyup.enter="load"
+          />
+          <button class="btn" type="button" data-test="btn-filter" @click="load">
+            筛选
+          </button>
           <span class="chip">低库存阈值 5 件</span>
         </div>
       </div>
@@ -99,6 +111,17 @@ h1 {
   color: var(--muted, #637083);
   font-size: 12px;
   background: #fbfcfe;
+}
+.filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.filters input {
+  border: 1px solid var(--line, #d8dee8);
+  border-radius: 6px;
+  padding: 9px 11px;
+  font-size: 13px;
 }
 .hint {
   padding: 16px;

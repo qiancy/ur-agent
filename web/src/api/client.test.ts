@@ -8,6 +8,7 @@ import {
   request,
   ApiError,
 } from './client'
+import { isAuthenticated, setAuthenticated } from './session'
 
 const TOKEN_KEY = 'unires_token'
 
@@ -96,5 +97,18 @@ describe('client request', () => {
 
     await expect(request('/seller/summary')).rejects.toThrow(ApiError)
     expect(getToken()).toBeNull()
+  })
+
+  it('marks the session unauthenticated on 401 so the app returns to login', async () => {
+    setToken('expired-token')
+    setAuthenticated(true)
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: () => Promise.resolve('unauthorized'),
+    })
+
+    await expect(request('/seller/summary')).rejects.toThrow(ApiError)
+    expect(isAuthenticated.value).toBe(false)
   })
 })

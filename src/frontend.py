@@ -13,6 +13,7 @@ import gradio as gr
 from dotenv import load_dotenv
 
 from src.logging_config import setup_logging
+from html import escape as _esc
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
 
@@ -755,6 +756,122 @@ def seller_chat_fn(message, history, state):
     history.append({"role": "user", "content": message})
     history.append({"role": "assistant", "content": reply})
     return history, ""
+
+
+# ── Seller 工作台展示层（BE-05）────────────────────────────────────────────
+
+_SELLER_CSS = """
+.be05-brand { background:#16202e; color:#e7edf5; padding:16px 20px; border-radius:10px; margin-bottom:14px; }
+.be05-brand b { font-size:18px; color:#ffffff; }
+.be05-brand span { color:#9fb3ca; font-size:12px; margin-left:10px; }
+.be05-metrics { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:14px; }
+.be05-metric { background:#ffffff; border:1px solid #d8dee8; border-radius:8px; padding:14px; }
+.be05-metric .lb { color:#637083; font-size:12px; }
+.be05-metric .vl { margin-top:8px; font-size:22px; font-weight:780; white-space:nowrap; }
+.be05-metric .dl { margin-top:8px; font-size:12px; color:#637083; }
+.be05-table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+.be05-table th, .be05-table td { padding:11px 14px; border-bottom:1px solid #edf0f4; text-align:left; }
+.be05-table th { color:#637083; font-size:12px; background:#fafbfc; }
+.be05-num { text-align:right; font-variant-numeric:tabular-nums; }
+.be05-tag { display:inline-flex; border-radius:999px; padding:4px 9px; font-size:12px; font-weight:700; }
+.be05-tag.ok { color:#117a55; background:#e8f6ef; }
+.be05-tag.low { color:#b42318; background:#fff0ee; }
+.be05-low { background:#fff; border:1px solid #d8dee8; border-radius:8px; padding:12px; }
+.be05-low .it { display:flex; justify-content:space-between; padding:9px 2px; border-bottom:1px solid #edf0f4; font-size:13px; }
+.be05-low .it:last-child { border-bottom:0; }
+.be05-low .it .wh { color:#637083; font-size:12px; }
+.be05-updated { color:#637083; font-size:13px; }
+"""
+
+
+def _fmt_num(v):
+    if v is None:
+        return "-"
+    try:
+        f = float(v)
+        if abs(f - round(f)) < 1e-9:
+            return f"{int(round(f)):,}"
+        return f"{f:,.2f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _money(v):
+    return f"¥{_fmt_num(v)}" if v is not None else "-"
+
+
+def _seller_metrics_html(summary: dict) -> str:
+    low = summary.get("low_stock_items") or []
+
+    def card(label, value, delta):
+        return (f'<div class="be05-metric"><div class="lb">{_esc(label)}</div>'
+                f'<div class="vl">{value}</div><div class="dl">{_esc(delta)}</div></div>')
+
+    cards = [
+        card("销售收入", _money(summary.get("sales_amount")),
+             f"{_fmt_num(summary.get('movement_count'))} 笔"),
+        card("采购支出", _money(summary.get("purchase_amount")), "本周"),
+        card("净现金流", _money(summary.get("net_cash_flow")), "较昨日"),
+        card("库存估值", _money(summary.get("estimated_inventory_value")),
+             f"{_fmt_num(summary.get('product_count'))} 个商品"),
+        card("低库存", _fmt_num(len(low)), "阈值 5 件"),
+    ]
+    return f'<div class="be05-metrics">{"".join(cards)}</div>'
+
+
+def _filter_stock(rows, warehouse="", only_low=False, low_set=None):
+    low_set = low_set or set()
+    out = []
+    for r in rows:
+        if warehouse and r.get("warehouse_code") != warehouse:
+            continue
+        if only_low and r.get("product_uid") not in low_set:
+            continue
+        out.append(r)
+    return out
+
+
+def _seller_stock_html(rows, low_set=None) -> str:
+    low_set = low_set or set()
+    if not rows:
+        return '<div class="be05-low">暂无库存数据</div>'
+    thead = ("<tr><th>商品</th><th>仓库</th><th>库位</th>"
+             '<th class="be05-num">数量</th><th>单位</th><th>状态</th></tr>')
+    body = []
+    for r in rows:
+        pid = r.get("product_uid", "")
+        tag = ('<span class="be05-tag low">低库存</span>'
+               if pid in low_set else '<span class="be05-tag ok">充足</span>')
+        body.append(
+            f"<tr><td>{_esc(pid)}</td><td>{_esc(r.get('warehouse_code') or '')}</td>"
+            f"<td>{_esc(r.get('location_path') or '')}</td>"
+            f"<td class='be05-num'>{_esc(_fmt_num(r.get('quantity')))}</td>"
+            f"<td>{_esc(r.get('unit') or '')}</td><td>{tag}</td></tr>"
+        )
+    return (f'<table class="be05-table"><thead>{thead}</thead>'
+            f'<tbody>{"".join(body)}</tbody></table>')
+
+
+def _seller_low_html(summary: dict) -> str:
+    low = summary.get("low_stock_items") or []
+    if not low:
+        return '<div class="be05-low">无低库存商品</div>'
+    items = []
+    for it in low:
+        items.append(
+            f'<div class="it"><div>{_esc(it.get("product_uid") or "")}'
+            f'<div class="wh">{_esc(it.get("warehouse_code") or "")} · '
+            f'{_esc(it.get("location_path") or "")}</div></div>'
+            f'<strong>{_esc(_fmt_num(it.get("quantity")))} '
+            f'{_esc(it.get("unit") or "")}</strong></div>'
+        )
+    return f'<div class="be05-low">{"".join(items)}</div>'
+
+
+def _seller_status_text(summary: dict, state=None) -> str:
+    low = summary.get("low_stock_items") or []
+    org = (state or {}).get("org_name") or ""
+    return f"{org} · 今日更新 · {len(low)} 个低库存商品"
 
 
 # ── Build UI ─────────────────────────────────────────────────────────────────

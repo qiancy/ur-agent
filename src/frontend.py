@@ -1040,27 +1040,49 @@ def build_app():
                         chat_send = gr.Button("发送", variant="primary", scale=1)
 
         with seller_panel:
-            with gr.Tabs():
-                with gr.TabItem("Seller 库存"):
-                    seller_stock_out = gr.Markdown()
-                    seller_stock_refresh = gr.Button("刷新")
-                with gr.TabItem("Seller 流水"):
-                    seller_mov_out = gr.Markdown()
+            gr.HTML(f"<style>{_SELLER_CSS}</style>")
+            seller_metrics_html = gr.HTML()
+            seller_updated = gr.Markdown("今日更新", elem_classes=["be05-updated"])
+            with gr.Row():
+                seller_nav = gr.Radio(
+                    ["库存明细", "库存流水"], value="库存明细", label="",
+                    elem_classes=["be05-chip"],
+                )
+                with gr.Row():
+                    seller_open_pur = gr.Button("入库", variant="primary")
+                    seller_open_sales = gr.Button("出库", variant="secondary")
+                    seller_refresh = gr.Button("刷新", variant="secondary")
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=3):
+                    with gr.Group() as seller_stock_group:
+                        with gr.Row():
+                            seller_wh = gr.Textbox(
+                                label="仓库", placeholder="WH-A", scale=1)
+                            seller_only_low = gr.Checkbox(
+                                label="仅看低库存", scale=1)
+                            seller_stock_html = gr.HTML()
+                    with gr.Group(visible=False) as seller_mov_group:
+                        with gr.Row():
+                            seller_mov_op = gr.Dropdown(
+                                choices=["", "purchase_in", "sales_out"],
+                                value="", label="操作类型", scale=1)
+                            seller_mov_from = gr.Textbox(
+                                label="开始日期", placeholder="YYYY-MM-DD", scale=1)
+                            seller_mov_to = gr.Textbox(
+                                label="结束日期", placeholder="YYYY-MM-DD", scale=1)
+                            seller_mov_limit = gr.Number(
+                                label="条数", value=50, precision=0, scale=1)
+                        seller_mov_out = gr.Markdown()
+                with gr.Column(scale=1):
+                    gr.HTML('<div class="be05-brand"><b>低库存处理</b></div>')
+                    seller_low_html = gr.HTML()
+                    gr.HTML('<div class="be05-brand"><b>Seller AI</b>'
+                            '<span>只读查询</span></div>')
+                    seller_chatbot = gr.Chatbot(height=340)
                     with gr.Row():
-                        seller_mov_op = gr.Dropdown(
-                            choices=["", "purchase_in", "sales_out"],
-                            value="",
-                            label="操作类型",
-                        )
-                        seller_mov_from = gr.Textbox(label="开始日期", placeholder="YYYY-MM-DD")
-                        seller_mov_to = gr.Textbox(label="结束日期", placeholder="YYYY-MM-DD")
-                        seller_mov_limit = gr.Number(label="条数", value=50, precision=0)
-                    seller_mov_refresh = gr.Button("刷新")
-                with gr.TabItem("Seller 摘要"):
-                    seller_sum_out = gr.Markdown()
-                    seller_sum_refresh = gr.Button("刷新")
-                with gr.TabItem("Seller AI"):
-                    seller_chatbot = gr.Chatbot(height=400)
+                        seller_quick_low = gr.Button("低库存", scale=1)
+                        seller_quick_sales = gr.Button("今日销售", scale=1)
+                        seller_quick_purchase = gr.Button("今日采购", scale=1)
                     with gr.Row():
                         seller_chat_input = gr.Textbox(
                             label="消息",
@@ -1068,6 +1090,29 @@ def build_app():
                             scale=4,
                         )
                         seller_chat_send = gr.Button("发送", variant="primary", scale=1)
+            with gr.Accordion("入库 / 出库", open=False):
+                seller_op_msg = gr.Markdown()
+                with gr.Row(equal_height=False):
+                    with gr.Group():
+                        gr.Markdown("**入库**")
+                        pur_product = gr.Textbox(label="商品", placeholder="product_uid")
+                        pur_wh = gr.Textbox(label="仓库", placeholder="WH-A")
+                        pur_loc = gr.Textbox(label="库位", placeholder="A-01-03")
+                        pur_qty = gr.Number(label="数量", value=1, precision=0)
+                        pur_unit = gr.Textbox(label="单位", value="件")
+                        pur_amt = gr.Number(label="总金额", value=0)
+                        pur_cp = gr.Textbox(label="供应商/来源", placeholder="供货商")
+                        seller_pur_btn = gr.Button("确认入库", variant="primary")
+                    with gr.Group():
+                        gr.Markdown("**出库**")
+                        sales_product = gr.Textbox(label="商品", placeholder="product_uid")
+                        sales_wh = gr.Textbox(label="仓库", placeholder="WH-A")
+                        sales_loc = gr.Textbox(label="库位", placeholder="A-01-03")
+                        sales_qty = gr.Number(label="数量", value=1, precision=0)
+                        sales_unit = gr.Textbox(label="单位", value="件")
+                        sales_amt = gr.Number(label="总金额", value=0)
+                        sales_cp = gr.Textbox(label="客户/去向", placeholder="买家")
+                        seller_sales_btn = gr.Button("确认出库", variant="primary")
 
         session_state.change(
             restore_login_view_fn,

@@ -10,17 +10,13 @@ const NAV_ITEMS = [
   'chat',
 ]
 
-describe('SidebarNav', () => {
-  it('renders all five nav items and the shop brand', () => {
-    const wrapper = mount(SidebarNav, {
-      props: {
-        currentView: 'workbench',
-        organizationName: '淘宝小店 A',
-        ouid: 'shop_a',
-        role: 'owner',
-      },
-    })
+function mountNav(currentView = 'workbench') {
+  return mount(SidebarNav, { props: { currentView } })
+}
 
+describe('SidebarNav', () => {
+  it('renders all five nav items and the brand', () => {
+    const wrapper = mountNav()
     expect(wrapper.text()).toContain('Uni-Resource Agent')
     for (const item of NAV_ITEMS) {
       expect(wrapper.find(`[data-view="${item}"]`).exists()).toBe(true)
@@ -28,15 +24,7 @@ describe('SidebarNav', () => {
   })
 
   it('marks the current view active', () => {
-    const wrapper = mount(SidebarNav, {
-      props: {
-        currentView: 'stock',
-        organizationName: '淘宝小店 A',
-        ouid: 'shop_a',
-        role: 'owner',
-      },
-    })
-
+    const wrapper = mountNav('stock')
     expect(wrapper.find('[data-view="stock"]').classes()).toContain('active')
     expect(wrapper.find('[data-view="workbench"]').classes()).not.toContain(
       'active',
@@ -44,47 +32,15 @@ describe('SidebarNav', () => {
   })
 
   it('emits navigate when a nav button is clicked', async () => {
-    const wrapper = mount(SidebarNav, {
-      props: {
-        currentView: 'workbench',
-        organizationName: '淘宝小店 A',
-        ouid: 'shop_a',
-        role: 'owner',
-      },
-    })
-
+    const wrapper = mountNav()
     await wrapper.find('[data-view="movements"]').trigger('click')
     expect(wrapper.emitted('navigate')).toBeTruthy()
     expect(wrapper.emitted('navigate')![0]).toEqual(['movements'])
   })
 
-  it('shows shop identity without any DB id fields', () => {
-    const wrapper = mount(SidebarNav, {
-      props: {
-        currentView: 'workbench',
-        organizationName: '淘宝小店 A',
-        ouid: 'shop_a',
-        role: 'owner',
-      },
-    })
-
-    const text = wrapper.text()
-    expect(text).toContain('shop_a')
-    expect(text).not.toMatch(/\b(id|pid|oid)\b/i)
-    expect(text).not.toMatch(/[a-z]+_id/i)
-  })
-
-  it('emits logout when the logout button is clicked', async () => {
-    const wrapper = mount(SidebarNav, {
-      props: {
-        currentView: 'workbench',
-        organizationName: '淘宝小店 A',
-        ouid: 'shop_a',
-        role: 'owner',
-      },
-    })
-
-    await wrapper.find('[data-test="logout"]').trigger('click')
-    expect(wrapper.emitted('logout')).toBeTruthy()
+  it('no longer duplicates the current shop or logout (moved to the header)', () => {
+    const wrapper = mountNav()
+    expect(wrapper.find('[data-test="logout"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toMatch(/\b(id|pid|oid)\b/i)
   })
 })

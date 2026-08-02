@@ -497,6 +497,22 @@ def get_person_memberships(person_id: int) -> List[Dict]:
     return _fetch(sql, (person_id,))
 
 
+def list_person_organizations(person_id: int) -> List[Dict]:
+    """Business-facing organization list for a person.
+
+    Explicit DTO source: only ouid/name/type/role — never leaks DB numeric ids
+    (unlike get_person_memberships which exposes membership.id).
+    """
+    sql = """
+        SELECT o.ouid, o.name, o.type, m.role
+        FROM membership m
+        JOIN organization o ON o.id = m.organization_id
+        WHERE m.person_id = %s
+        ORDER BY o.ouid
+    """
+    return _fetch(sql, (person_id,))
+
+
 # --- Resource ---
 
 def create_resource(organization_id: int, name: str, resource_type: str,

@@ -383,3 +383,198 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ============================================================================
+# FE-08 TDD (RED): GET /auth/me/organizations + POST /auth/switch-organization
+# ============================================================================
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+
+from src.app import app
+
+client = TestClient(app)
+
+_AUTH_FORBIDDEN_FIELDS = {
+    "id", "pid", "oid", "person_id", "organization_id", "membership_id",
+}
+
+
+def _assert_no_db_ids(obj):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            assert k not in _AUTH_FORBIDDEN_FIELDS, f"leaked db id field: {k}"
+            assert not k.endswith("_id"), f"leaked db id field: {k}"
+            _assert_no_db_ids(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            _assert_no_db_ids(item)
+
+
+def _make_org(org_type="company"):
+    s = uuid.uuid4().hex[:8]
+    ouid = f"fe08_{org_type}_{s}"
+    resp = client.post("/organizations", json={
+        "name": f"FE08_{org_type}_{s}", "org_type": org_type, "ouid": ouid,
+    })
+    assert resp.status_code in (200, 201), resp.text
+    return ouid, resp.json()
+
+
+def _register(puid, ouid, name=None, password="pass123"):
+    login = f"{puid}@{ouid}"
+    resp = client.post("/auth/register", json={
+        "login": login, "password": password, "name": name or puid,
+    })
+    assert resp.status_code == 201, resp.text
+
+
+def _login(puid, ouid, password="pass123"):
+    resp = client.post("/auth/login", json={
+        "login": f"{puid}@{ouid}", "password": password,
+    })
+    assert resp.status_code == 200, resp.text
+    return resp.json()["access_token"]
+
+
+def _auth(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+# 1. GET /auth/me/organizations without a JWT returns 401.
+def test_me_organizations_requires_jwt():
+    resp = client.get("/auth/me/organizations")
+    assert resp.status_code == 401
+
+
+# 2. A user only sees their own organizations.
+# 3. Response has no DB numeric ids and no legacy pid/oid.
+def test_me_organizations_lists_only_own_orgs_without_db_ids():
+    u = uuid.uuid4().hex[:8]
+    ouid_a, _ = _make_org("company")
+    ouid_b, _ = _make_org("company")
+    ouid_c, _ = _make_org("company")
+
+    _register(f"alice_{u}", ouid_a)
+    _register(f"alice_{u}", ouid_b)  # same person, second membership
+    _register(f"bob_{u}", ouid_c)
+
+    token_b = _login(f"alice_{u}", ouid_b)
+    token_c = _login(f"bob_{u}", ouid_c)
+
+    resp = client.get("/auth/me/organizations", headers=_auth(token_b))
+    assert resp.status_code == 200, resp.text
+    orgs = resp.json()
+    ouids = {o["ouid"] for o in orgs}
+    assert ouid_a in ouids
+    assert ouid_b in ouids
+    assert ouid_c not in ouids
+    for o in orgs:
+        assert set(o.keys()) == {"ouid", "name", "type", "role"}
+    _assert_no_db_ids(orgs)
+
+    resp = client.get("/auth/me/organizations", headers=_auth(token_c))
+    assert resp.status_code == 200
+    orgs_c = resp.json()
+    assert [o["ouid"] for o in orgs_c] == [ouid_c]
+
+
+# GET /auth/me/organizations rejects puid/ouid query parameters.
+def test_me_organizations_rejects_puid_ouid_query_params():
+    u = uuid.uuid4().hex[:8]
+    ouid, _ = _make_org("company")
+    _register(f"carol_{u}", ouid)
+    token = _login(f"carol_{u}", ouid)
+    for param in ("puid", "ouid"):
+        resp = client.get(
+            f"/auth/me/organizations?{param}=whatever",
+            headers=_auth(token),
+        )
+        assert resp.status_code == 400, resp.text
+
+
+# 4. Switch to a member organization issues a new token + target context.
+def test_switch_organization_success_issues_new_token():
+    u = uuid.uuid4().hex[:8]
+    ouid_a, _ = _make_org("company")
+    ouid_b, _ = _make_org("ecommerce")
+    _register(f"dave_{u}", ouid_a)
+    _register(f"dave_{u}", ouid_b)
+
+    token_a = _login(f"dave_{u}", ouid_a)
+
+    resp = client.post(
+        "/auth/switch-organization",
+        headers=_auth(token_a),
+        json={"ouid": ouid_b},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["access_token"]
+    assert data["organization"]["ouid"] == ouid_b
+    assert data["organization"]["type"] == "ecommerce"
+    assert data["person"]["puid"] == f"dave_{u}"
+    assert data["membership"]["role"]
+    _assert_no_db_ids(data)
+
+    # The new token keeps the same person but re-scopes to the target org.
+    resp = client.get(
+        "/auth/me/organizations",
+        headers=_auth(data["access_token"]),
+    )
+    assert resp.status_code == 200
+    ouids = {o["ouid"] for o in resp.json()}
+    assert ouid_a in ouids and ouid_b in ouids
+
+
+# 5. Switch to a non-member organization returns 403.
+def test_switch_organization_non_member_403():
+    u = uuid.uuid4().hex[:8]
+    ouid_a, _ = _make_org("company")
+    ouid_b, _ = _make_org("company")
+    _register(f"frank_{u}", ouid_b)  # frank is only in ouid_b
+
+    token_b = _login(f"frank_{u}", ouid_b)
+    resp = client.post(
+        "/auth/switch-organization",
+        headers=_auth(token_b),
+        json={"ouid": ouid_a},
+    )
+    assert resp.status_code == 403, resp.text
+
+
+def test_switch_organization_unknown_org_404():
+    u = uuid.uuid4().hex[:8]
+    ouid, _ = _make_org("company")
+    _register(f"grace_{u}", ouid)
+    token = _login(f"grace_{u}", ouid)
+    resp = client.post(
+        "/auth/switch-organization",
+        headers=_auth(token),
+        json={"ouid": "no_such_org"},
+    )
+    assert resp.status_code == 404, resp.text
+
+
+def test_switch_organization_requires_jwt():
+    resp = client.post("/auth/switch-organization", json={"ouid": "x"})
+    assert resp.status_code == 401
+
+
+# 6. Request body with DB-id / legacy fields is rejected (422).
+@pytest.mark.parametrize("forbidden", [
+    "id", "pid", "oid", "person_id", "organization_id", "membership_id",
+])
+def test_switch_organization_rejects_db_id_fields(forbidden):
+    u = uuid.uuid4().hex[:8]
+    ouid, _ = _make_org("company")
+    _register(f"heidi_{u}", ouid)
+    token = _login(f"heidi_{u}", ouid)
+    resp = client.post(
+        "/auth/switch-organization",
+        headers=_auth(token),
+        json={"ouid": ouid, forbidden: "x"},
+    )
+    assert resp.status_code == 422, resp.text

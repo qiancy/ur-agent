@@ -1,19 +1,21 @@
 """
 Authentication endpoints: register and login.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
-from src.models.schemas import RegisterRequest, LoginRequest
+from src.models.schemas import RegisterRequest, LoginRequest, SwitchOrganizationRequest
 from src.db.database import (
     create_person, add_membership,
     query_person_by_puid, query_organization_by_ouid, query_membership,
     create_account, query_account_by_login, query_accounts_by_person_id,
+    list_person_organizations,
 )
 from src.auth.auth import (
     parse_login_name, validate_puid, validate_ouid,
     hash_password, verify_password,
     create_access_token,
 )
+from src.routers.deps import require_authenticated
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -210,4 +212,68 @@ async def seller_login(body: LoginRequest):
             "role": membership["role"]
         },
         "system_role": account.get("system_role", "user"),
+    }
+
+
+@router.get("/me/organizations")
+async def my_organizations(request: Request):
+    """List the current user's organizations (business fields only)."""
+    if request.query_params.get("puid") is not None or request.query_params.get("ouid") is not None:
+        raise HTTPException(
+            400, "puid/ouid query parameters are not accepted here")
+    payload = require_authenticated(request)
+    puid = payload.get("puid")
+    persons = query_person_by_puid(puid)
+    if not persons:
+        raise HTTPException(401, "Invalid person in token")
+    rows = list_person_organizations(persons[0]["id"])
+    return [
+        {"ouid": r["ouid"], "name": r["name"], "type": r["type"], "role": r["role"]}
+        for r in rows
+    ]
+
+
+@router.post("/switch-organization")
+async def switch_organization(body: SwitchOrganizationRequest, request: Request):
+    """Re-issue a JWT scoped to a target organization the user belongs to."""
+    payload = require_authenticated(request)
+    puid = payload.get("puid")
+    if not puid:
+        raise HTTPException(401, "JWT must include puid")
+
+    persons = query_person_by_puid(puid)
+    if not persons:
+        raise HTTPException(401, "Invalid person in token")
+    person = persons[0]
+
+    orgs = query_organization_by_ouid(body.ouid)
+    if not orgs:
+        raise HTTPException(404, "Organization not found")
+    org = orgs[0]
+
+    memberships = query_membership(person["id"], org["id"])
+    if not memberships:
+        raise HTTPException(403, "No membership in this organization")
+    membership = memberships[0]
+
+    access_token = _build_token(
+        person, org, {"system_role": payload.get("system_role", "user")}, membership)
+
+    # Response reuses the login shape; no database numeric IDs.
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "person": {
+            "puid": person["puid"],
+            "name": person["name"]
+        },
+        "organization": {
+            "ouid": org["ouid"],
+            "name": org["name"],
+            "type": org["type"]
+        },
+        "membership": {
+            "role": membership["role"]
+        },
+        "system_role": payload.get("system_role", "user"),
     }

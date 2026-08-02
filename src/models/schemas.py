@@ -136,6 +136,11 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class SwitchOrganizationRequest(BaseModel):
+    ouid: str
+    model_config = {"extra": "forbid"}
+
+
 # ── Campaign ─────────────────────────────────────────────────────────────────
 
 class CampaignImportRequest(BaseModel):

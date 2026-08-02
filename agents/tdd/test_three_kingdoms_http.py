@@ -393,6 +393,10 @@ class TestTransactionAPI:
         data = resp.json()
         assert data["amount"] == 100.0
         assert data["category"] == "test"
+        assert data.get("transaction_uid"), "POST /transaction must return transaction_uid"
+        assert "id" not in data and "organization_id" not in data, (
+            "POST /transaction must not expose DB ids"
+        )
 
     def test_create_with_party(self):
         """测试创建带参与方的交易"""
@@ -420,6 +424,11 @@ class TestTransactionAPI:
             },
         )
         assert party_resp.status_code in (200, 201)
+        party_data = party_resp.json()
+        assert party_data["role"] == "payer"
+        assert "id" not in party_data and "person_id" not in party_data, (
+            "POST /party must not expose DB ids"
+        )
         
         # 创建交易
         resp = client.post(
@@ -449,10 +458,13 @@ class TestPartyAPI:
         assert len(data) >= 1
         
         party = data[0]
-        assert "id" in party
         assert "puid" in party
         assert "ouid" in party
+        assert "person_name" in party
         assert "role" in party
+        assert "id" not in party and "person_id" not in party, (
+            "GET /party must not expose DB ids"
+        )
 
     def test_list_with_puid_filter(self):
         """测试按人员业务标识过滤参与方"""
@@ -505,6 +517,10 @@ class TestPartyAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
+        for p in data:
+            assert "id" not in p and "person_id" not in p, (
+                "GET /party/transaction/{uid} must not expose DB ids"
+            )
 
 
 class TestSummaryAPI:

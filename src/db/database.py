@@ -709,7 +709,9 @@ def query_party_by_transaction(transaction_uid: str, organization_id: int) -> Li
 def query_party(organization_id: int, person_id: int = None,
                 name: str = None, puid: str = None) -> List[Dict]:
     sql = """
-        SELECT p.*, per.puid AS puid, per.name AS person_name, org.ouid AS ouid
+        SELECT per.puid AS puid, per.name AS person_name,
+               org.ouid AS ouid, org.name AS organization_name,
+               p.role, p.description, p.funds_change, p.reputation_change, p.created_at
         FROM party p
         JOIN person per ON per.id = p.person_id
         JOIN organization org ON org.id = p.organization_id

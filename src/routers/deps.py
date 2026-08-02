@@ -91,6 +91,7 @@ def require_org_context(request: Request) -> dict:
                 "system_role": "user",
                 "role": None,
                 "org_type": org["type"],
+                "org_name": org["name"],
             }
             _enforce_ecommerce_jwt(request, ctx)
             return ctx

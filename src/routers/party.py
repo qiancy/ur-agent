@@ -13,6 +13,15 @@ from src.routers.deps import require_org_context
 
 router = APIRouter(tags=["party"])
 
+_PARTY_DTO_FIELDS = (
+    "role", "description", "funds_change", "reputation_change", "created_at",
+)
+
+
+def _party_dto(row: dict) -> dict:
+    """Map a party row to business fields (no DB ids)."""
+    return {k: row.get(k) for k in _PARTY_DTO_FIELDS}
+
 
 @router.get("/party")
 async def list_party(request: Request, name: Optional[str] = None, puid: Optional[str] = None):
@@ -45,7 +54,7 @@ async def add_party(body: PartyCreate, request: Request):
     if not transaction:
         raise HTTPException(404, "Transaction not found in this organization")
 
-    return create_party(
+    return _party_dto(create_party(
         person_id=person_id,
         organization_id=ctx["organization_id"],
         transaction_id=transaction["id"],
@@ -53,4 +62,4 @@ async def add_party(body: PartyCreate, request: Request):
         description=body.description,
         funds_change=body.funds_change,
         reputation_change=body.reputation_change,
-    )
+    ))

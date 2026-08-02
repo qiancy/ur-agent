@@ -82,6 +82,26 @@ def _direction_amount(direction: str, amount: float) -> float:
     raise HTTPException(400, f"Invalid party direction: {direction}")
 
 
+_CAMPAIGN_IMPORT_DTO_FIELDS = (
+    "campaign_code", "campaign_name", "source_file",
+    "imported_by_puid", "status", "created_at", "deleted_at",
+)
+_ORG_DTO_FIELDS = ("ouid", "name", "type", "description", "funds", "reputation")
+_PERSON_DTO_FIELDS = ("puid", "name", "birth_date")
+
+
+def _campaign_import_dto(row: dict) -> dict:
+    return {k: row.get(k) for k in _CAMPAIGN_IMPORT_DTO_FIELDS}
+
+
+def _org_dto(row: dict) -> dict:
+    return {k: row.get(k) for k in _ORG_DTO_FIELDS}
+
+
+def _person_dto(row: dict) -> dict:
+    return {k: row.get(k) for k in _PERSON_DTO_FIELDS}
+
+
 @router.get("/templates")
 async def list_campaign_templates(request: Request):
     require_authenticated(request)
@@ -108,7 +128,7 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
     existing = get_active_campaign_import_by_code(template["campaign_code"])
     if existing:
         return {
-            "campaign_import": existing[0],
+            "campaign_import": _campaign_import_dto(existing[0]),
             "already_imported": True,
             "message": "Campaign already imported and active",
         }
@@ -228,9 +248,9 @@ async def import_campaign(body: CampaignImportRequest, request: Request):
         raise
 
     return {
-        "campaign_import": campaign,
-        "organizations": list(orgs.values()),
-        "persons": list(people.values()),
+        "campaign_import": _campaign_import_dto(campaign),
+        "organizations": [_org_dto(o) for o in orgs.values()],
+        "persons": [_person_dto(p) for p in people.values()],
         "resources": len(resources),
         "warehouses": len(warehouses),
         "transactions": len(transactions),
@@ -294,4 +314,6 @@ async def remove_campaign_import(campaign_code: str, request: Request):
     result = delete_campaign_import(rows[0]["id"])
     if not result.get("deleted"):
         raise HTTPException(404, "Campaign import not found")
+    if "campaign_import" in result:
+        result["campaign_import"] = _campaign_import_dto(result["campaign_import"])
     return result

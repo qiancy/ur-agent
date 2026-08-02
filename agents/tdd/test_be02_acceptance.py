@@ -406,6 +406,13 @@ class TestResourceWarehouseOwnership:
         campaign_import = body.get("campaign_import")
         campaign_code = campaign_import.get("campaign_code") or body.get("campaign_code")
         assert campaign_code, f"Import response has no campaign_code: {body}"
+        assert "id" not in campaign_import, (
+            f"Campaign import response must not expose DB id: {campaign_import}"
+        )
+        for org in body.get("organizations", []):
+            assert "id" not in org, f"Import response org must not expose DB id: {org}"
+        for person in body.get("persons", []):
+            assert "id" not in person, f"Import response person must not expose DB id: {person}"
 
         # Data exists before delete
         resp = client.get("/organizations", params={"ouid": "fire_xinye_shu"})
@@ -421,6 +428,9 @@ class TestResourceWarehouseOwnership:
         del_body = resp.json()
         assert del_body.get("deleted") is True
         assert del_body.get("campaign_import", {}).get("status") == "deleted"
+        assert "id" not in del_body.get("campaign_import", {}), (
+            f"Campaign delete response must not expose DB id: {del_body.get('campaign_import')}"
+        )
 
         # Imported orgs/resources/warehouses are gone
         resp = client.get("/organizations", params={"ouid": "fire_xinye_shu"})

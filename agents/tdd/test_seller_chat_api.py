@@ -241,6 +241,19 @@ def test_seller_chat_rejects_non_ecommerce_org(monkeypatch):
     assert resp.status_code == 403, resp.text
 
 
+def test_generic_chat_rejects_ecommerce_org(monkeypatch):
+    """Ecommerce orgs must use /seller/chat; generic /chat must 403."""
+    _install_fake_llm(monkeypatch)
+    shop = _create_shop("genchat")
+    resp = client.post(
+        "/chat",
+        headers=_auth_header(shop["token"]),
+        json={"message": "我是谁"},
+    )
+    assert resp.status_code == 403, resp.text
+    assert "seller/chat" in resp.text
+
+
 def test_seller_read_endpoints_reject_non_ecommerce_org(monkeypatch):
     _install_fake_llm(monkeypatch)
     company = _create_company_token("gne")

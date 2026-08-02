@@ -9,6 +9,15 @@ from src.routers.deps import require_org_context
 
 router = APIRouter(tags=["transaction"])
 
+_TRANSACTION_DTO_FIELDS = (
+    "transaction_uid", "amount", "category", "description", "created_at",
+)
+
+
+def _transaction_dto(tx: dict) -> dict:
+    """Map a transaction row to business fields (no DB ids)."""
+    return {k: tx.get(k) for k in _TRANSACTION_DTO_FIELDS}
+
 
 @router.get("/transaction")
 @router.get("/transactions")
@@ -21,5 +30,6 @@ async def list_transaction(request: Request, limit: int = 20):
 @router.post("/transactions", status_code=201)
 async def add_transaction(body: TransactionCreate, request: Request):
     ctx = require_org_context(request)
-    return create_transaction(body.amount, body.category, body.description,
-                              organization_id=ctx["organization_id"])
+    tx = create_transaction(body.amount, body.category, body.description,
+                            organization_id=ctx["organization_id"])
+    return _transaction_dto(tx)

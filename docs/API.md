@@ -112,7 +112,7 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| ouid | int | 是 | 组织ID |
+| ouid | string | 是 | 组织业务标识 |
 | name | string | 否 | 名称模糊搜索 |
 
 **Response**: `Person[]`
@@ -189,7 +189,7 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| ouid | int | 是 | 组织ID |
+| ouid | string | 是 | 组织业务标识 |
 | name | string | 否 | 名称模糊搜索 |
 | resource_type | string | 否 | 类型: `physical`, `financial`, `human`, `knowledge` |
 
@@ -280,7 +280,7 @@
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| ouid | int | 是 | 组织ID |
+| ouid | string | 是 | 组织业务标识 |
 | name | string | 否 | 名称模糊搜索 |
 
 **Response**: `Warehouse[]`
@@ -652,14 +652,14 @@ Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登�
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| ouid | int | 是 | 组织ID |
+| ouid | string | 是 | 组织业务标识 |
 | limit | int | 否 | 返回条数, 默认50, 范围1-200 |
 
-**Response**: `Transaction[]`
+**Response**: `Transaction[]`（仅业务字段，不含 DB 数字 ID）
 ```json
 [
   {
-    "id": 1,
+    "transaction_uid": "tx_1a2b3c4d5e6f",
     "amount": 1000.00,
     "category": "军费",
     "description": "诸葛亮家资助蜀汉军费",
@@ -694,6 +694,15 @@ Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登�
 ```
 
 **Response**: `Transaction` (201)
+```json
+{
+  "transaction_uid": "tx_1a2b3c4d5e6f",
+  "amount": 1000.00,
+  "category": "军费",
+  "description": "诸葛亮家资助蜀汉军费",
+  "created_at": "2025-01-01T00:00:00"
+}
+```
 
 ---
 
@@ -706,29 +715,30 @@ Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登�
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| ouid | int | 是 | 组织ID |
-| puid | int | 否 | 人员ID过滤 |
+| ouid | string | 是 | 组织业务标识 |
+| puid | string | 否 | 人员业务标识过滤 |
 
-**Response**: `Party[]`
+**Response**: `Party[]`（仅业务字段，不含 DB 数字 ID）
 ```json
 [
   {
-    "id": 1,
     "puid": "liubei",
+    "person_name": "刘备",
     "ouid": "shu",
-    "transaction_id": 1,
     "role": "payer",
     "description": "蜀汉集团支付",
-    "person_name": "刘备"
+    "funds_change": -1000.00,
+    "reputation_change": 1,
+    "created_at": "2025-01-01T00:00:00"
   }
 ]
 ```
 
-### `GET /party/transaction/{transaction_id}`
+### `GET /party/transaction/{transaction_uid}`
 
-查询交易的所有参与方。
+按交易业务标识查询该交易的所有参与方。
 
-**Response**: `Party[]`
+**Response**: `Party[]`（仅业务字段，不含 DB 数字 ID）
 
 ### `POST /party`
 
@@ -739,13 +749,13 @@ Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登�
 {
   "puid": "liubei",
   "ouid": "shu",
-  "transaction_id": 1,
+  "transaction_uid": "tx_1a2b3c4d5e6f",
   "role": "payer",
   "description": "蜀汉集团支付"
 }
 ```
 
-**Response**: `Party` (201)
+**Response**: `Party` (201)（仅业务字段，不含 DB 数字 ID）
 
 ---
 
@@ -758,7 +768,7 @@ Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登�
 **Query Parameters**:
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| ouid | int | 是 | 组织ID |
+| ouid | string | 是 | 组织业务标识 |
 
 **Response**:
 ```json
@@ -775,7 +785,7 @@ Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登�
 
 ### `POST /chat`
 
-发送消息给 AI Agent。
+发送消息给 AI Agent。**ecommerce 组织不可调用通用 `/chat`，返回 403**，必须使用 `/seller/chat`（ecommerce 的 AI 入口唯一为 Seller AI，只挂只读 Seller 工具）。
 
 **Request Body**:
 ```json
@@ -898,7 +908,7 @@ Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登�
 ### Transaction
 ```json
 {
-  "id": "int",
+  "transaction_uid": "string (业务键, 如 tx_1a2b3c4d5e6f)",
   "amount": "decimal",
   "category": "string",
   "description": "string|null",
@@ -909,12 +919,13 @@ Seller AI 只读对话。使用 strict JWT：店铺上下文只来自当前登�
 ### Party
 ```json
 {
-  "id": "int",
   "puid": "string",
+  "person_name": "string",
   "ouid": "string",
-  "transaction_id": "int",
   "role": "string (payer|payee|...)",
   "description": "string|null",
-  "person_name": "string"
+  "funds_change": "decimal",
+  "reputation_change": "int",
+  "created_at": "datetime"
 }
 ```

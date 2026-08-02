@@ -20,29 +20,22 @@ IDENTITY_MESSAGES = {
 
 def _get_org_context(ctx: dict) -> dict:
     return {
-        "id": ctx["organization_id"],
-        "name": ctx.get("org_name", f"Org {ctx['organization_id']}"),
+        "name": ctx.get("org_name") or ctx.get("ouid") or "Unknown",
         "type": ctx.get("org_type", "unknown"),
         "ouid": ctx.get("ouid"),
     }
-
-
-def _tool_names_for_org(org_type: str) -> list:
-    from src.tools import ALL_TOOLS
-    all_names = [t.name for t in ALL_TOOLS]
-    if org_type == "ecommerce":
-        return [n for n in all_names if n in {
-            "query_resource_tool", "query_resource_stock",
-            "get_transaction_history", "get_summary",
-            "rag_search",
-        }]
-    return all_names
 
 
 @router.post("/chat")
 async def chat(body: ChatRequest, request: Request):
     try:
         ctx = require_org_context(request)
+        if ctx.get("org_type") == "ecommerce":
+            raise HTTPException(
+                403,
+                "Ecommerce organizations must use /seller/chat (Seller AI is the only "
+                "allowed AI entry point for ecommerce organizations)",
+            )
         message = body.message.strip()
         org = _get_org_context(ctx)
         ouid_str = ctx["ouid"]
@@ -57,15 +50,14 @@ async def chat(body: ChatRequest, request: Request):
                 f"{m['name']}({m['role'] or 'member'})" for m in members[:5]
             ) or "no members"
             response = (
-                f"Organization: {org['name']}, type: {org['type']}, id: {org['id']}. "
+                f"Organization: {org['name']}, type: {org['type']}. "
                 f"Members: {member_text}."
             )
             logger.info("Chat fast-path response from DB: %s", response)
             return {"response": response, "ouid": ouid_str}
 
         agent_input = (
-            f"Database confirmed organization.id={org['id']}, name={org['name']}, "
-            f"type={org['type']}.\n"
+            f"Database confirmed organization name={org['name']}, type={org['type']}.\n"
             "When calling tools, you MUST explicitly pass the ouid.\n"
             f"User question: {message}"
         )
@@ -73,9 +65,8 @@ async def chat(body: ChatRequest, request: Request):
         def _run_agent():
             from src.agents.agent import create_uni_resource_agent
             from langchain.agents import AgentExecutor
-            tool_names = _tool_names_for_org(org["type"])
             from src.tools import ALL_TOOLS
-            tools = [t for t in ALL_TOOLS if t.name in tool_names]
+            tools = list(ALL_TOOLS)
             agent = create_uni_resource_agent(tools=tools)
             agent_executor = AgentExecutor(
                 agent=agent,

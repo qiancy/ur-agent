@@ -107,6 +107,9 @@ function onAsk(event: Event) {
 
 <style scoped>
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   background: var(--panel, #ffffff);
   border-bottom: 1px solid var(--line, #d8dee8);
   padding: 12px 22px;

@@ -150,36 +150,38 @@ onMounted(() => {
 
 <template>
   <div v-if="authenticated" class="shell authed">
-    <SidebarNav :current-view="currentView" @navigate="currentView = $event" />
-    <div class="main-col">
-      <AppHeader
-        :person-name="ctx.personName"
-        :puid="ctx.puid"
-        :organization-name="ctx.organizationName"
-        :ouid="ctx.ouid"
-        :org-type="ctx.orgType"
-        :role="ctx.role"
-        :organizations="organizations"
-        @switch-organization="onSwitchOrganization"
-        @logout="onLoggedOut"
-        @ask="onHeaderAsk"
-      />
-      <main class="main">
-        <div v-if="isEcommerce" class="views">
-          <component
-            :is="currentComponent"
-            :header-exchange="currentView === 'chat' ? headerExchange : null"
-            @logged-out="onLoggedOut"
-          />
-        </div>
-        <div v-else class="empty" data-test="non-ecommerce-empty">
-          <p class="empty-title">该业务形态暂未接入经营工作台</p>
-          <p class="empty-sub">
-            当前空间为 {{ ctx.orgType }} · {{ ctx.organizationName }}，Seller
-            经营工作台仅面向 ecommerce 空间。
-          </p>
-        </div>
-      </main>
+    <AppHeader
+      :person-name="ctx.personName"
+      :puid="ctx.puid"
+      :organization-name="ctx.organizationName"
+      :ouid="ctx.ouid"
+      :org-type="ctx.orgType"
+      :role="ctx.role"
+      :organizations="organizations"
+      @switch-organization="onSwitchOrganization"
+      @logout="onLoggedOut"
+      @ask="onHeaderAsk"
+    />
+    <div class="body-grid">
+      <SidebarNav :current-view="currentView" @navigate="currentView = $event" />
+      <div class="main-col">
+        <main class="main">
+          <div v-if="isEcommerce" class="views">
+            <component
+              :is="currentComponent"
+              :header-exchange="currentView === 'chat' ? headerExchange : null"
+              @logged-out="onLoggedOut"
+            />
+          </div>
+          <div v-else class="empty" data-test="non-ecommerce-empty">
+            <p class="empty-title">该业务形态暂未接入经营工作台</p>
+            <p class="empty-sub">
+              当前空间为 {{ ctx.orgType }} · {{ ctx.organizationName }}，Seller
+              经营工作台仅面向 ecommerce 空间。
+            </p>
+          </div>
+        </main>
+      </div>
     </div>
   </div>
   <div v-else class="auth-area" data-test="auth-area">
@@ -203,10 +205,13 @@ onMounted(() => {
   background: var(--bg, #f4f6f8);
   color: var(--ink, #17202a);
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
 }
-.shell.authed {
+.body-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
   grid-template-columns: 236px 1fr;
 }
 .main-col {
@@ -239,7 +244,7 @@ onMounted(() => {
   font-size: 13px;
 }
 @media (max-width: 980px) {
-  .shell.authed {
+  .body-grid {
     grid-template-columns: 1fr;
   }
 }

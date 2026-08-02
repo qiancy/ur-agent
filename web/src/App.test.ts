@@ -114,6 +114,25 @@ describe('App shell', () => {
     expect(wrapper.find('[data-test="auth-area"]').exists()).toBe(false)
   })
 
+  it('places the header full-width on top, above the sidebar+main body grid', async () => {
+    const wrapper = mount(App)
+    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
+    await wrapper.find('input[data-test="password"]').setValue('pass123')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const shell = wrapper.find('.shell.authed')
+    const header = shell.find('[data-test="app-header"]')
+    expect(header.exists()).toBe(true)
+    expect(shell.element.firstElementChild).toBe(header.element)
+
+    const body = shell.find('.body-grid')
+    expect(body.exists()).toBe(true)
+    expect(body.find('.side').exists()).toBe(true)
+    expect(body.find('.main').exists()).toBe(true)
+    expect(body.element.previousElementSibling).toBe(header.element)
+  })
+
   it('returns to the login view when the session is unauthenticated (401 path)', async () => {
     const wrapper = mount(App)
     await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')

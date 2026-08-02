@@ -191,11 +191,14 @@ def _show_workspace(state):
 
 
 def _blank_workspace():
-    return "", "", "", "", "", [], "", "", "", "", [], ""
+    return ("", "", "", "", "", [], "", "", "", "", "", "", "", [], "")
 
 
 def _workspace_payload(org_label: str, state):
     ecommerce = (state or {}).get("org_type") == "ecommerce"
+    seller_metrics, seller_stock, seller_low, seller_updated = (
+        render_seller_workbench(state) if ecommerce else ("", "", "", "")
+    )
     return (
         load_personnel(org_label, state),
         load_assets(org_label, state),
@@ -204,9 +207,12 @@ def _workspace_payload(org_label: str, state):
         load_campaigns(state),
         [],
         "",
-        load_seller_stock(state) if ecommerce else "",
+        seller_metrics,
+        seller_stock,
+        seller_low,
+        seller_updated,
         load_seller_movements(state) if ecommerce else "",
-        load_seller_summary(state) if ecommerce else "",
+        "" if ecommerce else "",
         [] if ecommerce else [],
         "" if ecommerce else "",
     )
@@ -238,7 +244,7 @@ def login_fn(login, password, state):
         resp = _post("/auth/seller-login", {"login": login.strip(), "password": password.strip()}, state=state)
         new_state = _login_state_from_response(resp)
         org_label = _current_org_label(new_state)
-        per, ast, tx, summary, campaigns, chatbot, chat_input, seller_stock, seller_mov, seller_sum, seller_chatbot, seller_chat_input = _workspace_payload(org_label, new_state)
+        per, ast, tx, summary, campaigns, chatbot, chat_input, seller_metrics, seller_stock, seller_low, seller_updated, seller_mov, seller_op_msg, seller_chatbot, seller_chat_input = _workspace_payload(org_label, new_state)
         return (
             new_state,
             f"登录成功：{new_state.get('person_name')} @ {new_state.get('org_name')}",
@@ -252,9 +258,12 @@ def login_fn(login, password, state):
             campaigns,
             chatbot,
             chat_input,
+            seller_metrics,
             seller_stock,
+            seller_low,
+            seller_updated,
             seller_mov,
-            seller_sum,
+            seller_op_msg,
             seller_chatbot,
             seller_chat_input,
         )
@@ -325,7 +334,7 @@ def restore_login_fn(state):
 
     try:
         org_label = _current_org_label(state)
-        per, ast, tx, summary, campaigns, chatbot, chat_input, seller_stock, seller_mov, seller_sum, seller_chatbot, seller_chat_input = _workspace_payload(org_label, state)
+        per, ast, tx, summary, campaigns, chatbot, chat_input, seller_metrics, seller_stock, seller_low, seller_updated, seller_mov, seller_op_msg, seller_chatbot, seller_chat_input = _workspace_payload(org_label, state)
         return (
             state,
             "已恢复登录",
@@ -339,9 +348,12 @@ def restore_login_fn(state):
             campaigns,
             chatbot,
             chat_input,
+            seller_metrics,
             seller_stock,
+            seller_low,
+            seller_updated,
             seller_mov,
-            seller_sum,
+            seller_op_msg,
             seller_chatbot,
             seller_chat_input,
         )
@@ -1117,7 +1129,7 @@ def build_app():
         session_state.change(
             restore_login_view_fn,
             [session_state],
-            [auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_stock_out, seller_mov_out, seller_sum_out, seller_chatbot, seller_chat_input],
+            [auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_metrics_html, seller_stock_html, seller_low_html, seller_updated, seller_mov_out, seller_op_msg, seller_chatbot, seller_chat_input],
             queue=False,
         )
 
@@ -1127,7 +1139,7 @@ def build_app():
         back_btn.click(back_home_fn, [], [auth_status, landing_panel, auth_panel, workspace_panel, seller_panel])
 
         # top logout mirrors workspace logout
-        logout_outputs = [session_state, auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_stock_out, seller_mov_out, seller_sum_out, seller_chatbot, seller_chat_input]
+        logout_outputs = [session_state, auth_status, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_metrics_html, seller_stock_html, seller_low_html, seller_updated, seller_mov_out, seller_op_msg, seller_chatbot, seller_chat_input]
         logout_btn_top.click(logout_fn, [], logout_outputs)
         logout_btn.click(logout_fn, [], logout_outputs)
 
@@ -1135,7 +1147,7 @@ def build_app():
         login_btn.click(
             login_fn,
             [login_input, login_pwd, session_state],
-            [session_state, login_info, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_stock_out, seller_mov_out, seller_sum_out, seller_chatbot, seller_chat_input],
+            [session_state, login_info, user_banner, current_org, landing_panel, auth_panel, workspace_panel, seller_panel, per_out, ast_out, tx_out, sum_out, camp_out, chatbot, chat_input, seller_metrics_html, seller_stock_html, seller_low_html, seller_updated, seller_mov_out, seller_op_msg, seller_chatbot, seller_chat_input],
         )
         reg_btn.click(
             register_fn,
@@ -1164,15 +1176,60 @@ def build_app():
         chat_send.click(chat_fn, [chat_input, chatbot, current_org, session_state], [chatbot, chat_input])
         chat_input.submit(chat_fn, [chat_input, chatbot, current_org, session_state], [chatbot, chat_input])
 
-        # ── Seller events ────────────────────────────────────────────
-        seller_stock_refresh.click(load_seller_stock, [session_state], seller_stock_out, queue=False)
+        # ── Seller 工作台事件（BE-05）──────────────────────────────────
+        seller_refresh.click(
+            render_seller_workbench,
+            [session_state, seller_wh, seller_only_low],
+            [seller_metrics_html, seller_stock_html, seller_low_html, seller_updated],
+            queue=False,
+        )
+        seller_nav.change(
+            lambda v: (
+                gr.update(visible=(v == "库存明细")),
+                gr.update(visible=(v == "库存流水")),
+            ),
+            [seller_nav],
+            [seller_stock_group, seller_mov_group],
+        )
+        seller_mov_refresh = gr.Button("刷新流水", visible=False)
         seller_mov_refresh.click(
             load_seller_movements,
             [session_state, seller_mov_op, seller_mov_from, seller_mov_to, seller_mov_limit],
             seller_mov_out,
             queue=False,
         )
-        seller_sum_refresh.click(load_seller_summary, [session_state], seller_sum_out, queue=False)
+        seller_pur_btn.click(
+            seller_purchase_in_fn,
+            [session_state, pur_product, pur_wh, pur_loc, pur_qty, pur_unit, pur_amt, pur_cp],
+            seller_op_msg,
+        ).then(
+            render_seller_workbench,
+            [session_state, seller_wh, seller_only_low],
+            [seller_metrics_html, seller_stock_html, seller_low_html, seller_updated],
+        ).then(
+            load_seller_movements,
+            [session_state, seller_mov_op, seller_mov_from, seller_mov_to, seller_mov_limit],
+            seller_mov_out,
+        ).then(
+            lambda: ("", "", "", 1, "件", 0, ""),
+            outputs=[pur_product, pur_wh, pur_loc, pur_qty, pur_unit, pur_amt, pur_cp],
+        )
+        seller_sales_btn.click(
+            seller_sales_out_fn,
+            [session_state, sales_product, sales_wh, sales_loc, sales_qty, sales_unit, sales_amt, sales_cp],
+            seller_op_msg,
+        ).then(
+            render_seller_workbench,
+            [session_state, seller_wh, seller_only_low],
+            [seller_metrics_html, seller_stock_html, seller_low_html, seller_updated],
+        ).then(
+            load_seller_movements,
+            [session_state, seller_mov_op, seller_mov_from, seller_mov_to, seller_mov_limit],
+            seller_mov_out,
+        ).then(
+            lambda: ("", "", "", 1, "件", 0, ""),
+            outputs=[sales_product, sales_wh, sales_loc, sales_qty, sales_unit, sales_amt, sales_cp],
+        )
         seller_chat_send.click(
             seller_chat_fn,
             [seller_chat_input, seller_chatbot, session_state],
@@ -1181,6 +1238,21 @@ def build_app():
         seller_chat_input.submit(
             seller_chat_fn,
             [seller_chat_input, seller_chatbot, session_state],
+            [seller_chatbot, seller_chat_input],
+        )
+        seller_quick_low.click(
+            seller_chat_fn,
+            [gr.State("查询低库存商品"), seller_chatbot, session_state],
+            [seller_chatbot, seller_chat_input],
+        )
+        seller_quick_sales.click(
+            seller_chat_fn,
+            [gr.State("今日销售收入是多少？"), seller_chatbot, session_state],
+            [seller_chatbot, seller_chat_input],
+        )
+        seller_quick_purchase.click(
+            seller_chat_fn,
+            [gr.State("今日采购支出是多少？"), seller_chatbot, session_state],
             [seller_chatbot, seller_chat_input],
         )
 

@@ -4,10 +4,14 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from src.models.schemas import SellerPurchaseIn, SellerSalesOut, SellerChatRequest
+from src.models.schemas import (
+    SellerPurchaseIn, SellerSalesOut, SellerChatRequest,
+    SellerProductCreate, SellerProductStatus,
+)
 from src.db.database import (
     execute_purchase_in, execute_sales_out, query_stock, query_inventory_movements,
     get_seller_summary, query_product_summary,
+    list_seller_products, create_seller_product, set_seller_product_status,
 )
 from src.routers.deps import require_ecommerce_context
 from src.agents.seller_agent import create_seller_agent
@@ -168,6 +172,39 @@ async def seller_product_summary(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+@router.get("/products")
+async def seller_products(request: Request):
+    _reject_identity_params(request)
+    ctx = require_ecommerce_context(request)
+    return list_seller_products(ctx["organization_id"])
+
+
+@router.post("/products", status_code=201)
+async def seller_create_product(body: SellerProductCreate, request: Request):
+    ctx = require_ecommerce_context(request)
+    try:
+        return create_seller_product(
+            ctx["organization_id"],
+            product_uid=body.product_uid,
+            unit=body.unit,
+            description=body.description,
+        )
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.patch("/products/{product_uid}")
+async def seller_patch_product(product_uid: str, body: SellerProductStatus,
+                               request: Request):
+    ctx = require_ecommerce_context(request)
+    try:
+        return set_seller_product_status(
+            ctx["organization_id"], product_uid, body.status,
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
 def _is_write_intent(message: str) -> bool:

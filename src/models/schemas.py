@@ -122,6 +122,18 @@ class SellerChatRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class SellerProductCreate(BaseModel):
+    product_uid: str
+    unit: str
+    description: Optional[str] = None
+    model_config = {"extra": "forbid"}
+
+
+class SellerProductStatus(BaseModel):
+    status: str = Field(pattern="^(active|inactive)$")
+    model_config = {"extra": "forbid"}
+
+
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):

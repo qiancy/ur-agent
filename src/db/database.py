@@ -1529,3 +1529,254 @@ def query_product_summary(
         return {"status": "ok", "items": items}
     items.sort(key=lambda x: x["product_uid"])
     return {"status": "ok", "items": items}
+
+
+# ---------------------------------------------------------------------------
+# Seller products (BE-09) + Spaces observation (BE-10)
+# ---------------------------------------------------------------------------
+
+def list_seller_products(organization_id: int) -> List[Dict]:
+    """All products (active+inactive) for a shop. Business DTO only.
+
+    product_uid = resource.name; description = resource.content (P0-1).
+    stock_total sums non-'total' resource_warehouse rows;
+    stock_location_count counts distinct location_path (excl 'total').
+    """
+    sql = """
+        SELECT r.name AS product_uid, r.unit, r.status, r.content AS description,
+               COALESCE(SUM(CASE WHEN rw.location_path = 'total' THEN 0
+                                 ELSE rw.quantity END), 0) AS stock_total,
+               COUNT(DISTINCT CASE WHEN rw.location_path <> 'total'
+                                   THEN rw.location_path END) AS stock_location_count
+        FROM resource r
+        LEFT JOIN resource_warehouse rw ON rw.resource_id = r.id
+        WHERE r.organization_id = %s AND r.type = 'physical'
+        GROUP BY r.name, r.unit, r.status, r.content
+        ORDER BY r.name
+    """
+    rows = _fetch(sql, (organization_id,))
+    return [{
+        "product_uid": row["product_uid"],
+        "unit": row["unit"],
+        "status": row["status"],
+        "stock_total": float(row["stock_total"] or 0),
+        "stock_location_count": int(row["stock_location_count"] or 0),
+        "description": row["description"],
+    } for row in rows]
+
+
+def create_seller_product(organization_id: int, product_uid: str, unit: str,
+                          description: str = None) -> Dict[str, Any]:
+    """Create a physical product row. Raises ValueError on duplicate name."""
+    rows = _fetch(
+        "SELECT id FROM resource WHERE organization_id = %s AND name = %s",
+        (organization_id, product_uid),
+    )
+    if rows:
+        raise ValueError(f"Product already exists: {product_uid}")
+    row = create_resource(organization_id=organization_id, name=product_uid,
+                          resource_type="physical", unit=unit, content=description)
+    return {
+        "product_uid": row["name"],
+        "unit": row["unit"],
+        "status": row["status"],
+        "stock_total": 0,
+        "stock_location_count": 0,
+        "description": row["content"],
+    }
+
+
+def set_seller_product_status(organization_id: int, product_uid: str,
+                              status: str) -> Dict[str, Any]:
+    """Set product active/inactive. Raises ValueError if not found (any status)."""
+    rows = _fetch(
+        "SELECT id FROM resource WHERE organization_id = %s AND name = %s",
+        (organization_id, product_uid),
+    )
+    if not rows:
+        raise ValueError(f"Product not found: {product_uid}")
+    _execute(
+        "UPDATE resource SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+        (status, rows[0]["id"]),
+    )
+    return {
+        "product_uid": product_uid,
+        "unit": rows[0].get("unit"),
+        "status": status,
+    }
+
+
+def get_space_overview(organization_id: int, role: str) -> Dict[str, Any]:
+    """Space overview: business fields + counts + funds."""
+    org = _fetch(
+        "SELECT ouid, name, type, funds FROM organization WHERE id = %s",
+        (organization_id,),
+    )[0]
+    counts = {}
+    counts["resources"] = int(_fetch(
+        "SELECT COUNT(*) AS c FROM resource WHERE organization_id = %s",
+        (organization_id,),
+    )[0]["c"])
+    counts["persons"] = int(_fetch(
+        "SELECT COUNT(*) AS c FROM membership WHERE organization_id = %s",
+        (organization_id,),
+    )[0]["c"])
+    counts["transactions"] = int(_fetch(
+        "SELECT COUNT(*) AS c FROM transaction WHERE organization_id = %s",
+        (organization_id,),
+    )[0]["c"])
+    recent = _fetch(
+        """
+        SELECT COUNT(*) AS c FROM campaign_event
+        WHERE organization_id = %s
+        """,
+        (organization_id,),
+    )[0]["c"]
+    counts["recent_events"] = int(recent)
+    return {
+        "space": {
+            "ouid": org["ouid"],
+            "name": org["name"],
+            "type": org["type"],
+            "role": role,
+        },
+        "counts": counts,
+        "funds": float(org["funds"] or 0),
+    }
+
+
+def get_space_resources(organization_id: int) -> Dict[str, Any]:
+    """Resources grouped by type. physical entries carry locations (no DB ids)."""
+    rows = _fetch(
+        """
+        SELECT r.name, r.type, r.unit, r.amount, r.content AS description, r.id AS rid
+        FROM resource r
+        WHERE r.organization_id = %s
+        ORDER BY r.name
+        """,
+        (organization_id,),
+    )
+    grouped = {"physical": [], "knowledge": [], "financial": [], "human": []}
+    for row in rows:
+        entry = {
+            "name": row["name"],
+            "type": row["type"],
+            "unit": row["unit"],
+            "amount": float(row["amount"]) if row["amount"] is not None else None,
+            "description": row["description"],
+        }
+        if row["type"] == "physical":
+            locs = _fetch(
+                """
+                SELECT w.code AS warehouse_code, rw.location_path, rw.quantity, rw.unit
+                FROM resource_warehouse rw
+                JOIN warehouse w ON w.id = rw.warehouse_id
+                WHERE rw.resource_id = %s AND rw.location_path <> 'total'
+                ORDER BY w.code, rw.location_path
+                """,
+                (row["rid"],),
+            )
+            entry["locations"] = [
+                {
+                    "warehouse_code": l["warehouse_code"],
+                    "location_path": l["location_path"],
+                    "quantity": float(l["quantity"]),
+                    "unit": l["unit"],
+                }
+                for l in locs
+            ]
+        else:
+            entry["locations"] = None
+        grouped.setdefault(row["type"] or "other", []).append(entry)
+    return {"grouped": grouped}
+
+
+def get_space_persons(organization_id: int) -> List[Dict]:
+    rows = _fetch(
+        """
+        SELECT p.name, p.puid, m.role
+        FROM membership m
+        JOIN person p ON p.id = m.person_id
+        WHERE m.organization_id = %s
+        ORDER BY p.name
+        """,
+        (organization_id,),
+    )
+    return [{"name": r["name"], "puid": r["puid"], "role": r["role"]} for r in rows]
+
+
+def get_space_transactions(organization_id: int, limit: int = 20) -> List[Dict]:
+    """Transaction list with party names resolved to business fields."""
+    rows = _fetch(
+        """
+        SELECT t.transaction_uid, t.amount, t.category, t.description, t.created_at,
+               COALESCE(json_agg(json_build_object(
+                   'role', p.role,
+                   'person_name', per.name
+               )) FILTER (WHERE p.id IS NOT NULL), '[]') AS parties
+        FROM transaction t
+        LEFT JOIN party p ON p.transaction_id = t.id
+        LEFT JOIN person per ON per.id = p.person_id
+        WHERE t.organization_id = %s
+        GROUP BY t.id
+        ORDER BY t.created_at DESC, t.transaction_uid
+        LIMIT %s
+        """,
+        (organization_id, limit),
+    )
+    out = []
+    for r in rows:
+        parties = r["parties"]
+        from_name = None
+        to_name = None
+        for p in parties:
+            role = p.get("role") or ""
+            if p.get("person_name"):
+                if not from_name:
+                    from_name = p["person_name"]
+                elif not to_name:
+                    to_name = p["person_name"]
+                if role in ("payer", "付款方", "支出方"):
+                    from_name = p["person_name"]
+                if role in ("payee", "收款方", "受益方"):
+                    to_name = p["person_name"]
+        out.append({
+            "transaction_uid": r["transaction_uid"],
+            "from_party_name": from_name,
+            "to_party_name": to_name,
+            "amount": float(r["amount"]),
+            "category": r["category"],
+            "description": r["description"],
+            "created_at": r["created_at"],
+        })
+    return out
+
+
+def get_space_timeline(organization_id: int) -> List[Dict]:
+    """All active-import events for the org, sorted campaign_code ASC, seq ASC.
+
+    Each event carries campaign_code/campaign_name business fields (P1-2).
+    """
+    rows = _fetch(
+        """
+        SELECT ci.campaign_code, ci.campaign_name, ce.seq, ce.title, ce.description, ce.payload
+        FROM campaign_event ce
+        JOIN campaign_import ci ON ci.id = ce.campaign_import_id
+        WHERE ce.organization_id = %s AND ci.status = 'active'
+        ORDER BY ci.campaign_code ASC, ce.seq ASC
+        """,
+        (organization_id,),
+    )
+    return [
+        {
+            "seq": r["seq"],
+            "campaign_code": r["campaign_code"],
+            "campaign_name": r["campaign_name"],
+            "title": r["title"],
+            "description": r["description"],
+            "payload": r["payload"] or {},
+        }
+        for r in rows
+    ]
+    items.sort(key=lambda x: x["product_uid"])
+    return {"status": "ok", "items": items}

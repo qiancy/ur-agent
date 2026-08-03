@@ -141,7 +141,6 @@ class RegisterRequest(BaseModel):
     password: str
     name: str
     puid: Optional[str] = None  # business person id; defaults to login when safe
-    initial_ouid: Optional[str] = None  # initial organization membership (role=member)
     model_config = {"extra": "forbid"}
 
 
@@ -153,6 +152,54 @@ class LoginRequest(BaseModel):
 
 class SwitchOrganizationRequest(BaseModel):
     ouid: str
+    model_config = {"extra": "forbid"}
+
+
+# ── Space governance (AUTH-03/ORG-01) ───────────────────────────────────────
+
+class SpaceCreate(BaseModel):
+    name: str
+    org_type: str
+    ouid: Optional[str] = None
+    description: Optional[str] = None
+    model_config = {"extra": "forbid"}
+
+
+class InviteCreate(BaseModel):
+    invitee_puid: str
+    role: Optional[str] = "member"
+    model_config = {"extra": "forbid"}
+
+
+class AcceptInviteRequest(BaseModel):
+    invite_uid: str
+    model_config = {"extra": "forbid"}
+
+
+class JoinRequestCreate(BaseModel):
+    message: Optional[str] = None
+    model_config = {"extra": "forbid"}
+
+
+class ApproveJoinRequestRequest(BaseModel):
+    request_uid: str
+    model_config = {"extra": "forbid"}
+
+
+class LeaveSpaceRequest(BaseModel):
+    ouid: str
+    model_config = {"extra": "forbid"}
+
+
+class KickMemberRequest(BaseModel):
+    ouid: str
+    member_puid: str
+    model_config = {"extra": "forbid"}
+
+
+class TransferOwnerRequest(BaseModel):
+    ouid: str
+    new_owner_puid: str
     model_config = {"extra": "forbid"}
 
 

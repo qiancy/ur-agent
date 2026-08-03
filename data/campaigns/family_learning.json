@@ -1,0 +1,308 @@
+{
+  "campaign_code": "family_learning",
+  "campaign_name": "家庭学习空间",
+  "organizations": [
+    {
+      "ouid": "zhangsan_family",
+      "name": "张三家庭",
+      "type": "family",
+      "description": "张三一家五口的家庭学习空间，涵盖学习计划、教材资料、课程费用与成员分工",
+      "funds": 20000,
+      "reputation": 80
+    }
+  ],
+  "persons": [
+    {
+      "puid": "zhangsan",
+      "name": "张三"
+    },
+    {
+      "puid": "wangfang",
+      "name": "王芳"
+    },
+    {
+      "puid": "zhangxiaobao",
+      "name": "张小宝"
+    },
+    {
+      "puid": "zhangxiaobei",
+      "name": "张小贝"
+    },
+    {
+      "puid": "zhangxiaotao",
+      "name": "张小桃"
+    }
+  ],
+  "memberships": [
+    {
+      "puid": "zhangsan",
+      "ouid": "zhangsan_family",
+      "role": "owner"
+    },
+    {
+      "puid": "wangfang",
+      "ouid": "zhangsan_family",
+      "role": "owner"
+    },
+    {
+      "puid": "zhangxiaobao",
+      "ouid": "zhangsan_family",
+      "role": "member"
+    },
+    {
+      "puid": "zhangxiaobei",
+      "ouid": "zhangsan_family",
+      "role": "member"
+    },
+    {
+      "puid": "zhangxiaotao",
+      "ouid": "zhangsan_family",
+      "role": "member"
+    }
+  ],
+  "warehouses": [
+    {
+      "ouid": "zhangsan_family",
+      "name": "家庭书房",
+      "code": "STUDY",
+      "location": "书房"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "文具收纳箱",
+      "code": "DESK",
+      "location": "书桌"
+    }
+  ],
+  "resources": [
+    {
+      "ouid": "zhangsan_family",
+      "name": "数学教材",
+      "type": "physical",
+      "unit": "本",
+      "amount": 10,
+      "content": "小学五年级数学教材（上下册）",
+      "warehouse_code": "STUDY"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "语文教材",
+      "type": "physical",
+      "unit": "本",
+      "amount": 10,
+      "content": "小学五年级语文教材（上下册）",
+      "warehouse_code": "STUDY"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "课外绘本",
+      "type": "physical",
+      "unit": "本",
+      "amount": 20,
+      "content": "课外阅读绘本与桥梁书",
+      "warehouse_code": "STUDY"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "文具用品",
+      "type": "physical",
+      "unit": "套",
+      "amount": 5,
+      "content": "铅笔、橡皮、尺子等学习文具套装",
+      "warehouse_code": "DESK"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "学习计划",
+      "type": "knowledge",
+      "unit": "份",
+      "content": "每周学习计划：周一至周五口算20题、阅读30分钟，周末复习与家庭小测"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "错题本",
+      "type": "knowledge",
+      "unit": "份",
+      "content": "张小宝与张小贝各科错题整理记录，每周复盘一次"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "阅读书单",
+      "type": "knowledge",
+      "unit": "份",
+      "content": "按年级整理的课外阅读推荐书单与阅读进度表"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "家庭教育预算",
+      "type": "financial",
+      "unit": "元",
+      "amount": 20000,
+      "currency": "人民币",
+      "content": "家庭学期教育经费预算：学费、购书、文具与兴趣班"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "课程费用预算",
+      "type": "financial",
+      "unit": "元",
+      "amount": 5000,
+      "currency": "人民币",
+      "content": "兴趣班课程费用预算（美术与编程）"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "阅读任务",
+      "type": "human",
+      "unit": "项",
+      "amount": 1,
+      "puid": "zhangxiaobao",
+      "content": "每日课外阅读30分钟，并写一句话读后感"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "书桌整理任务",
+      "type": "human",
+      "unit": "项",
+      "amount": 1,
+      "puid": "zhangxiaobei",
+      "content": "每日整理书桌与书架，保持学习区整洁"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "name": "运动任务",
+      "type": "human",
+      "unit": "项",
+      "amount": 1,
+      "puid": "zhangxiaotao",
+      "content": "每日跳绳200个或户外运动30分钟"
+    }
+  ],
+  "transactions": [
+    {
+      "ouid": "zhangsan_family",
+      "amount": 12000,
+      "category": "学费",
+      "description": "春季学期学杂费",
+      "parties": [
+        {
+          "puid": "zhangsan",
+          "role": "付款方",
+          "direction": "out",
+          "amount": 12000,
+          "description": "家庭教育经费支出"
+        }
+      ]
+    },
+    {
+      "ouid": "zhangsan_family",
+      "amount": 480,
+      "category": "教育支出",
+      "description": "购买教材与课外读物",
+      "parties": [
+        {
+          "puid": "zhangsan",
+          "role": "付款方",
+          "direction": "out",
+          "amount": 480
+        },
+        {
+          "puid": "zhangxiaobao",
+          "role": "受益方",
+          "direction": "in",
+          "amount": 480
+        }
+      ]
+    },
+    {
+      "ouid": "zhangsan_family",
+      "amount": 260,
+      "category": "学习用品",
+      "description": "文具与错题本采购",
+      "parties": [
+        {
+          "puid": "wangfang",
+          "role": "付款方",
+          "direction": "out",
+          "amount": 260
+        }
+      ]
+    },
+    {
+      "ouid": "zhangsan_family",
+      "amount": 3000,
+      "category": "兴趣班",
+      "description": "美术与编程兴趣班费用",
+      "parties": [
+        {
+          "puid": "wangfang",
+          "role": "付款方",
+          "direction": "out",
+          "amount": 3000
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "ouid": "zhangsan_family",
+      "seq": 1,
+      "title": "新学期开学",
+      "description": "家庭制定新学期学习计划，采购教材与文具。",
+      "info_flow": "学习计划与课程安排在家庭通知群传达",
+      "logistics_flow": "教材与文具采购到货，归入书房收纳",
+      "people_flow": "张三、王芳、张小宝",
+      "risk": "开学季采购延迟影响上课"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "seq": 2,
+      "title": "每日学习打卡",
+      "description": "完成口算20题与课外阅读30分钟。",
+      "info_flow": "学习打卡记录每日同步到家庭记录表",
+      "logistics_flow": "错题本与练习册流转于书桌",
+      "people_flow": "张小宝、张三",
+      "risk": "孩子情绪抵触导致打卡中断"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "seq": 3,
+      "title": "期中测评",
+      "description": "阶段小测，检查学习效果并调整计划。",
+      "info_flow": "测评结果由老师反馈给家长",
+      "logistics_flow": "试卷与成绩单归档书房",
+      "people_flow": "张小宝、张小贝、王芳",
+      "risk": "偏科导致整体成绩波动"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "seq": 4,
+      "title": "家长会",
+      "description": "参加家长会了解孩子在校表现。",
+      "info_flow": "家长会纪要整理后在家庭内传阅",
+      "logistics_flow": "会议资料带回家中归档",
+      "people_flow": "张三、王芳",
+      "risk": "请假缺席错过关键沟通"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "seq": 5,
+      "title": "阶段总结与奖励",
+      "description": "总结学期成果，安排家庭奖励。",
+      "info_flow": "学期总结与奖励方案在家会上公布",
+      "logistics_flow": "奖励采购到货归入书房",
+      "people_flow": "张三、王芳、张小宝、张小贝、张小桃",
+      "risk": "奖励标准不统一引发孩子不满"
+    },
+    {
+      "ouid": "zhangsan_family",
+      "seq": 6,
+      "title": "暑假学习安排",
+      "description": "制定暑假阅读与运动计划，衔接新学期。",
+      "info_flow": "暑期安排与兴趣班课表下发到各成员",
+      "logistics_flow": "暑期书单与运动器材采购到家",
+      "people_flow": "王芳、张小宝、张小贝、张小桃",
+      "risk": "暑期计划过载导致孩子疲劳"
+    }
+  ]
+}

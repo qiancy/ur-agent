@@ -338,31 +338,51 @@
       "ouid": "fire_xinye_wei",
       "seq": 1,
       "title": "曹军南下",
-      "description": "曹洪率军逼近新野，军需辎重进入前线。"
+      "description": "曹洪率军逼近新野，军需辎重进入前线。",
+      "info_flow": "曹军南下动向经细作谍报与前线斥候传至刘备营中",
+      "logistics_flow": "曹军军需辎重沿官道进入新野前线粮仓",
+      "people_flow": "曹洪、夏侯惇、于禁",
+      "risk": "辎重线过长易遭伏击截断"
     },
     {
       "ouid": "fire_xinye_shu",
       "seq": 2,
       "title": "诸葛亮布置火攻",
-      "description": "蜀汉在城中准备火油、火把与伏兵路线。"
+      "description": "蜀汉在城中准备火油、火把与伏兵路线。",
+      "info_flow": "诸葛亮汇总谍报，确定火攻部署并密令各营",
+      "logistics_flow": "火油、火把、硫磺等火攻物资运抵新野城中",
+      "people_flow": "诸葛亮、刘备、赵云、黄忠",
+      "risk": "火攻物资暴露将使计谋泄漏"
     },
     {
       "ouid": "fire_xinye_shu",
       "seq": 3,
       "title": "诱敌入城",
-      "description": "刘备军主动撤出新野，诱使曹军进入空城。"
+      "description": "刘备军主动撤出新野，诱使曹军进入空城。",
+      "info_flow": "撤退信号沿约定路线逐营传递",
+      "logistics_flow": "城中可用物资随撤军转移至城外",
+      "people_flow": "刘备、关羽、张飞、赵云",
+      "risk": "撤退节奏失控会被识破诱敌意图"
     },
     {
       "ouid": "fire_xinye_shu",
       "seq": 4,
       "title": "火烧新野",
-      "description": "夜间火起，曹军军械和粮草大量损失。"
+      "description": "夜间火起，曹军军械和粮草大量损失。",
+      "info_flow": "火起信号及时传至各处伏兵",
+      "logistics_flow": "火油与草料引燃，曹军辎重粮草尽毁",
+      "people_flow": "刘备、诸葛亮、关羽、张飞、赵云",
+      "risk": "风向逆转将反噬蜀军自身"
     },
     {
       "ouid": "fire_xinye_wei",
       "seq": 5,
       "title": "曹军撤退",
-      "description": "曹军混乱撤退，蜀汉完成战役目标。"
+      "description": "曹军混乱撤退，蜀汉完成战役目标。",
+      "info_flow": "败报经驿站急传曹操中军大营",
+      "logistics_flow": "曹军丢弃辎重粮草，轻装北撤",
+      "people_flow": "曹操、曹洪、夏侯惇、于禁",
+      "risk": "溃退途中遭蜀军追击，折损加剧"
     }
   ]
 }

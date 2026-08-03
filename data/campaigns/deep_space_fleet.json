@@ -1,0 +1,341 @@
+{
+  "campaign_code": "deep_space_fleet",
+  "campaign_name": "深空远航舰队",
+  "organizations": [
+    {
+      "ouid": "deep_space_fleet",
+      "name": "深空远航舰队",
+      "type": "starship",
+      "description": "旗舰「破晓号」深空远航舰队，执行仙女座外侧勘测任务",
+      "funds": 5000000,
+      "reputation": 90
+    }
+  ],
+  "persons": [
+    {
+      "puid": "linyuan",
+      "name": "林远"
+    },
+    {
+      "puid": "suqing",
+      "name": "苏晴"
+    },
+    {
+      "puid": "chentie",
+      "name": "陈铁"
+    },
+    {
+      "puid": "heyue",
+      "name": "何月"
+    },
+    {
+      "puid": "luosheng",
+      "name": "罗声"
+    },
+    {
+      "puid": "zhaoqi",
+      "name": "赵启"
+    }
+  ],
+  "memberships": [
+    {
+      "puid": "linyuan",
+      "ouid": "deep_space_fleet",
+      "role": "owner"
+    },
+    {
+      "puid": "suqing",
+      "ouid": "deep_space_fleet",
+      "role": "member"
+    },
+    {
+      "puid": "chentie",
+      "ouid": "deep_space_fleet",
+      "role": "member"
+    },
+    {
+      "puid": "heyue",
+      "ouid": "deep_space_fleet",
+      "role": "member"
+    },
+    {
+      "puid": "luosheng",
+      "ouid": "deep_space_fleet",
+      "role": "member"
+    },
+    {
+      "puid": "zhaoqi",
+      "ouid": "deep_space_fleet",
+      "role": "member"
+    }
+  ],
+  "warehouses": [
+    {
+      "ouid": "deep_space_fleet",
+      "name": "能源舱",
+      "code": "ENERGY",
+      "location": "舰尾能源区"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "维修库",
+      "code": "REPAIR",
+      "location": "轮机舱"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "物资舱",
+      "code": "STORE",
+      "location": "中层货舱"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "医疗舱",
+      "code": "MED",
+      "location": "医疗区"
+    }
+  ],
+  "resources": [
+    {
+      "ouid": "deep_space_fleet",
+      "name": "聚变能源块",
+      "type": "physical",
+      "unit": "块",
+      "amount": 120,
+      "content": "反应堆备用聚变能源块",
+      "warehouse_code": "ENERGY"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "饮用水",
+      "type": "physical",
+      "unit": "吨",
+      "amount": 60,
+      "content": "舰载循环净化饮用水储备",
+      "warehouse_code": "STORE"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "氧气储备",
+      "type": "physical",
+      "unit": "罐",
+      "amount": 80,
+      "content": "高压氧气储备罐",
+      "warehouse_code": "STORE"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "维修备件",
+      "type": "physical",
+      "unit": "箱",
+      "amount": 40,
+      "content": "推进器与循环系统常用备件",
+      "warehouse_code": "REPAIR"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "应急食品",
+      "type": "physical",
+      "unit": "箱",
+      "amount": 200,
+      "content": "深空应急营养餐包",
+      "warehouse_code": "STORE"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "医疗物资",
+      "type": "physical",
+      "unit": "箱",
+      "amount": 25,
+      "content": "常用药品与急救耗材",
+      "warehouse_code": "MED"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "舰船知识库",
+      "type": "knowledge",
+      "unit": "套",
+      "content": "「破晓号」系统手册、航行规程与故障处置知识库"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "深空星图",
+      "type": "knowledge",
+      "unit": "份",
+      "content": "已勘测航道与天体的星图数据"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "补给资金",
+      "type": "financial",
+      "unit": "信用点",
+      "amount": 5000000,
+      "currency": "信用点",
+      "content": "舰队航行、采购与维修预算"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "岗位职责",
+      "type": "human",
+      "unit": "份",
+      "amount": 1,
+      "puid": "linyuan",
+      "content": "舰长林远：统筹航行决策与任务执行"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "name": "航行值班排班",
+      "type": "human",
+      "unit": "份",
+      "amount": 1,
+      "puid": "suqing",
+      "content": "领航员苏晴：轮值表与航道监控责任"
+    }
+  ],
+  "transactions": [
+    {
+      "ouid": "deep_space_fleet",
+      "amount": 250000,
+      "category": "物资采购",
+      "description": "在伽马空间站采购饮用水与应急食品",
+      "parties": [
+        {
+          "puid": "linyuan",
+          "role": "审批方",
+          "direction": "out",
+          "amount": 250000
+        },
+        {
+          "puid": "zhaoqi",
+          "role": "经办方",
+          "direction": "in",
+          "amount": 250000
+        }
+      ]
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "amount": 180000,
+      "category": "维修支出",
+      "description": "更换一号推进器密封环",
+      "parties": [
+        {
+          "puid": "linyuan",
+          "role": "审批方",
+          "direction": "out",
+          "amount": 180000
+        },
+        {
+          "puid": "chentie",
+          "role": "经办方",
+          "direction": "in",
+          "amount": 180000
+        }
+      ]
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "amount": 400000,
+      "category": "能源采购",
+      "description": "采购聚变能源块补充能源舱",
+      "parties": [
+        {
+          "puid": "zhaoqi",
+          "role": "经办方",
+          "direction": "out",
+          "amount": 400000
+        }
+      ]
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "amount": 60000,
+      "category": "医疗采购",
+      "description": "补充医疗舱药品与急救耗材",
+      "parties": [
+        {
+          "puid": "heyue",
+          "role": "经办方",
+          "direction": "out",
+          "amount": 60000
+        }
+      ]
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "amount": 95000,
+      "category": "设备升级",
+      "description": "升级深空通讯中继设备",
+      "parties": [
+        {
+          "puid": "luosheng",
+          "role": "经办方",
+          "direction": "out",
+          "amount": 95000
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "ouid": "deep_space_fleet",
+      "seq": 1,
+      "title": "启航脱离母港",
+      "description": "「破晓号」从母港出发，进入深空航道。",
+      "info_flow": "母港调度指令通过深空通讯下发至舰桥",
+      "logistics_flow": "补给物资装舱完毕，能源舱满载",
+      "people_flow": "林远、苏晴、罗声",
+      "risk": "出发窗口延误导致错过引力弹弓时机"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "seq": 2,
+      "title": "第一航段引力弹弓",
+      "description": "借助气态巨行星引力场加速。",
+      "info_flow": "星图与轨道参数由领航员计算并传至舰桥",
+      "logistics_flow": "推进器燃料消耗按预案分配",
+      "people_flow": "苏晴、林远",
+      "risk": "引力弹弓轨道偏移超出安全阈值"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "seq": 3,
+      "title": "氧气循环系统故障",
+      "description": "生活区氧气循环泵停机，启用备用系统。",
+      "info_flow": "传感器告警推送至轮机舱与医疗舱",
+      "logistics_flow": "维修备件从维修库调出更换",
+      "people_flow": "陈铁、何月",
+      "risk": "备用循环泵耗尽前无法修复则全员缺氧"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "seq": 4,
+      "title": "伽马空间站补给",
+      "description": "停靠空间站采购饮用水、食品与能源。",
+      "info_flow": "补给清单与报价单经通讯官核对后上报",
+      "logistics_flow": "饮用水、食品与能源块入库各舱",
+      "people_flow": "赵启、罗声、陈铁",
+      "risk": "空间站物资短缺需临时改航"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "seq": 5,
+      "title": "微陨石带规避",
+      "description": "探测到微陨石带，变更航道规避。",
+      "info_flow": "探测数据实时上舰桥，航道调整指令下发",
+      "logistics_flow": "规避机动消耗额外燃料",
+      "people_flow": "苏晴、林远",
+      "risk": "规避机动燃油消耗超出预算"
+    },
+    {
+      "ouid": "deep_space_fleet",
+      "seq": 6,
+      "title": "抵达深空目标区",
+      "description": "抵达预定勘测目标区，开始科学勘测。",
+      "info_flow": "目标区勘测简报发送回地球总部",
+      "logistics_flow": "科研仪器与备用能源出舱部署",
+      "people_flow": "林远、苏晴、陈铁、何月、罗声、赵启",
+      "risk": "未知天体辐射环境威胁舰体与船员"
+    }
+  ]
+}

@@ -48,6 +48,21 @@ vi.mock('./views/SummaryView.vue', () => ({
 vi.mock('./views/ChatView.vue', () => ({
   default: { name: 'ChatView', template: '<div class="view-chat">Seller AI</div>' },
 }))
+vi.mock('./views/ProductsView.vue', () => ({
+  default: {
+    name: 'ProductsView',
+    emits: ['logged-out'],
+    template: '<div class="view-products" data-test="products-view">商品管理</div>',
+  },
+}))
+vi.mock('./views/GenericSpaceView.vue', () => ({
+  default: {
+    name: 'GenericSpaceView',
+    props: ['ouid'],
+    template:
+      '<div class="view-generic" data-test="generic-space">空间观察({{ ouid }})</div>',
+  },
+}))
 
 const LOGIN_RESULT = {
   access_token: 'token-1',
@@ -72,6 +87,15 @@ const FAMILY_RESULT = {
   system_role: 'user',
 }
 
+const ECOMMERCE_CTX = {
+  personName: '店主',
+  puid: 'shopkeeper',
+  organizationName: '示例店铺',
+  ouid: 'shop_demo',
+  orgType: 'ecommerce',
+  role: 'owner',
+}
+
 beforeEach(() => {
   localStorage.clear()
   setAuthenticated(false)
@@ -81,7 +105,11 @@ beforeEach(() => {
   myOrganizationsMock.mockReset()
   myOrganizationsMock.mockResolvedValue(ORG_LIST)
   switchOrganizationMock.mockReset()
-  switchOrganizationMock.mockResolvedValue(FAMILY_RESULT)
+  switchOrganizationMock.mockImplementation((ouid: string) =>
+    ouid === 'family'
+      ? Promise.resolve(FAMILY_RESULT)
+      : Promise.resolve(LOGIN_RESULT),
+  )
   sellerSummaryMock.mockReset()
   sellerStockMock.mockReset()
   sellerMovementsMock.mockReset()
@@ -90,6 +118,19 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
 })
+
+async function login(wrapper: ReturnType<typeof mount>) {
+  await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
+  await wrapper.find('input[data-test="password"]').setValue('pass123')
+  await wrapper.find('form').trigger('submit')
+  await flushPromises()
+}
+
+function mountAuthed(localCtx: Record<string, string> = ECOMMERCE_CTX) {
+  localStorage.setItem('unires_token', 'existing-token')
+  localStorage.setItem('unires_ctx', JSON.stringify(localCtx))
+  return mount(App)
+}
 
 describe('App shell', () => {
   it('shows the login view when there is no token', () => {
@@ -105,21 +146,14 @@ describe('App shell', () => {
 
   it('uses the two-column layout only after login', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-
+    await login(wrapper)
     expect(wrapper.find('.shell.authed').exists()).toBe(true)
     expect(wrapper.find('[data-test="auth-area"]').exists()).toBe(false)
   })
 
   it('places the header full-width on top, above the sidebar+main body grid', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
+    await login(wrapper)
 
     const shell = wrapper.find('.shell.authed')
     const header = shell.find('[data-test="app-header"]')
@@ -135,10 +169,7 @@ describe('App shell', () => {
 
   it('returns to the login view when the session is unauthenticated (401 path)', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
+    await login(wrapper)
     expect(wrapper.find('.view-workbench').exists()).toBe(true)
 
     setAuthenticated(false)
@@ -149,19 +180,7 @@ describe('App shell', () => {
   })
 
   it('returns to the login view when a view emits logged-out', async () => {
-    localStorage.setItem('unires_token', 'existing-token')
-    localStorage.setItem(
-      'unires_ctx',
-      JSON.stringify({
-        personName: '店主',
-        puid: 'shopkeeper',
-        organizationName: '示例店铺',
-        ouid: 'shop_demo',
-        orgType: 'ecommerce',
-        role: 'owner',
-      }),
-    )
-    const wrapper = mount(App)
+    const wrapper = mountAuthed()
     expect(wrapper.find('.view-workbench').exists()).toBe(true)
 
     await wrapper.find('[data-view="summary"]').trigger('click')
@@ -176,21 +195,14 @@ describe('App shell', () => {
 
   it('shows the workbench by default after login', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-
+    await login(wrapper)
     expect(wrapper.find('.view-workbench').exists()).toBe(true)
     expect(wrapper.find('.view-stock').exists()).toBe(false)
   })
 
-  it('navigates to the selected view when a nav item is clicked', async () => {
+  it('navigates to the selected ecommerce view when a nav item is clicked', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
+    await login(wrapper)
 
     await wrapper.find('[data-view="movements"]').trigger('click')
     expect(wrapper.find('.view-movements').exists()).toBe(true)
@@ -199,42 +211,32 @@ describe('App shell', () => {
     expect(wrapper.find('.view-chat').exists()).toBe(true)
   })
 
-  it('returns to the workbench on refresh-like remount when a token exists', () => {
-    localStorage.setItem('unires_token', 'existing-token')
-    localStorage.setItem(
-      'unires_ctx',
-      JSON.stringify({
-        personName: '店主',
-        puid: 'shopkeeper',
-        organizationName: '示例店铺',
-        ouid: 'shop_demo',
-        orgType: 'ecommerce',
-        role: 'owner',
-      }),
-    )
+  it('opens the ProductsView for the products route key', async () => {
     const wrapper = mount(App)
+    await login(wrapper)
+
+    await wrapper.find('[data-view="products"]').trigger('click')
+    expect(wrapper.find('[data-test="products-view"]').exists()).toBe(true)
+    expect(wrapper.find('.view-workbench').exists()).toBe(false)
+  })
+
+  it('returns to the workbench on refresh-like remount when a token exists', () => {
+    const wrapper = mountAuthed()
     expect(wrapper.find('.view-workbench').exists()).toBe(true)
   })
 
   it('logs out and returns to login via the header', async () => {
-    localStorage.setItem('unires_token', 'existing-token')
-    const wrapper = mount(App)
-
+    const wrapper = mountAuthed()
     await wrapper.find('[data-test="header-logout"]').trigger('click')
-
     expect(localStorage.getItem('unires_token')).toBeNull()
     expect(wrapper.find('[data-test="login"]').exists()).toBe(true)
   })
 })
 
-describe('FE-08 organization switching', () => {
+describe('organization switching', () => {
   it('renders the current user and organization in the header after login', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-
+    await login(wrapper)
     expect(wrapper.find('[data-test="app-header"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="app-header"]').text()).toContain('示例店铺')
     expect(wrapper.find('[data-test="app-header"]').text()).toContain('店主')
@@ -242,22 +244,15 @@ describe('FE-08 organization switching', () => {
 
   it('pulls the organization list after login and lists them in the dropdown', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-
+    await login(wrapper)
     expect(myOrganizationsMock).toHaveBeenCalled()
     const options = wrapper.findAll('select[data-test="org-switch"] option')
     expect(options).toHaveLength(2)
   })
 
-  it('switches organization by posting only ouid and updates token + context', async () => {
+  it('switches organization by posting only ouid and lands on the space overview', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
+    await login(wrapper)
 
     await wrapper.find('select[data-test="org-switch"]').setValue('family')
     await flushPromises()
@@ -265,16 +260,14 @@ describe('FE-08 organization switching', () => {
     expect(switchOrganizationMock).toHaveBeenCalledWith('family')
     expect(wrapper.find('[data-test="app-header"]').text()).toContain('我的家庭')
     expect(JSON.parse(localStorage.getItem('unires_ctx')!).ouid).toBe('family')
-    // family is non-ecommerce: the empty state shows instead of the workbench
-    expect(wrapper.find('[data-test="non-ecommerce-empty"]').exists()).toBe(true)
+    // family is non-ecommerce: the GenericSpaceView renders, no empty state
+    expect(wrapper.find('[data-test="generic-space"]').exists()).toBe(true)
+    expect(wrapper.find('.view-workbench').exists()).toBe(false)
   })
 
-  it('shows an empty state for non-ecommerce orgs and never calls seller APIs', async () => {
+  it('renders GenericSpaceView for non-ecommerce orgs and never calls seller APIs', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
+    await login(wrapper)
 
     sellerSummaryMock.mockClear()
     sellerStockMock.mockClear()
@@ -283,32 +276,76 @@ describe('FE-08 organization switching', () => {
     await wrapper.find('select[data-test="org-switch"]').setValue('family')
     await flushPromises()
 
-    expect(wrapper.find('[data-test="non-ecommerce-empty"]').exists()).toBe(true)
-    expect(wrapper.find('.view-workbench').exists()).toBe(false)
+    expect(wrapper.find('[data-test="generic-space"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="non-ecommerce-empty"]').exists()).toBe(false)
     expect(sellerSummaryMock).not.toHaveBeenCalled()
     expect(sellerStockMock).not.toHaveBeenCalled()
     expect(sellerMovementsMock).not.toHaveBeenCalled()
   })
+
+  it('clamps the current view to a legal key when switching back to ecommerce', async () => {
+    const wrapper = mount(App)
+    await login(wrapper)
+
+    await wrapper.find('select[data-test="org-switch"]').setValue('family')
+    await flushPromises()
+    expect(wrapper.find('[data-test="generic-space"]').exists()).toBe(true)
+
+    await wrapper.find('select[data-test="org-switch"]').setValue('shop_demo')
+    await flushPromises()
+    expect(wrapper.find('.view-workbench').exists()).toBe(true)
+  })
+
+  it('shows space navigation for non-ecommerce orgs and navigates the overview', async () => {
+    const wrapper = mount(App)
+    await login(wrapper)
+    await wrapper.find('select[data-test="org-switch"]').setValue('family')
+    await flushPromises()
+
+    expect(wrapper.find('[data-view="overview"]').exists()).toBe(true)
+    expect(wrapper.find('[data-view="products"]').exists()).toBe(false)
+    expect(wrapper.find('[data-view="chat"]').exists()).toBe(false)
+
+    await wrapper.find('[data-view="resources"]').trigger('click')
+    expect(wrapper.find('[data-test="generic-space"]').exists()).toBe(true)
+  })
 })
 
-describe('FE-08 header AI', () => {
-  it('asks the seller chat only through /seller/chat and switches to the AI view', async () => {
-    sellerChatMock.mockResolvedValue({
-      response: '当前低库存 2 项',
-      ouid: 'shop_demo',
-    })
+describe('header AI entry and space menu navigation', () => {
+  it('routes the AI entry to the chat view in ecommerce spaces', async () => {
     const wrapper = mount(App)
-    await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
-    await wrapper.find('input[data-test="password"]').setValue('pass123')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
+    await login(wrapper)
 
-    await wrapper.find('input[data-test="header-ai"]').setValue('低库存有哪些')
-    await wrapper.find('input[data-test="header-ai"]').trigger('keyup.enter')
-    await flushPromises()
-
-    expect(sellerChatMock).toHaveBeenCalledTimes(1)
-    expect(sellerChatMock).toHaveBeenCalledWith('低库存有哪些')
+    await wrapper.find('[data-test="header-ai-entry"]').trigger('click')
     expect(wrapper.find('.view-chat').exists()).toBe(true)
+    expect(sellerChatMock).not.toHaveBeenCalled()
+  })
+
+  it('routes the AI entry to a placeholder in non-ecommerce spaces', async () => {
+    const wrapper = mount(App)
+    await login(wrapper)
+    await wrapper.find('select[data-test="org-switch"]').setValue('family')
+    await flushPromises()
+
+    await wrapper.find('[data-test="header-ai-entry"]').trigger('click')
+    expect(wrapper.find('[data-test="placeholder-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="placeholder-message"]').text()).toBe(
+      '该业务空间暂未接入 AI',
+    )
+    expect(sellerChatMock).not.toHaveBeenCalled()
+  })
+
+  it('routes a space menu action to the placeholder with 功能即将开放', async () => {
+    const wrapper = mount(App)
+    await login(wrapper)
+
+    await wrapper.find('[data-test="space-menu-toggle"]').trigger('click')
+    await wrapper.find('[data-test="space-menu-item-manage"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-test="placeholder-view"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="placeholder-message"]').text()).toBe(
+      '功能即将开放',
+    )
   })
 })

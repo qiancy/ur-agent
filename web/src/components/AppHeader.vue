@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { UserOrganization } from '../api/auth'
+import SpaceMenu from './SpaceMenu.vue'
 
 const props = defineProps<{
   personName: string
@@ -15,10 +15,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'switch-organization', ouid: string): void
   (e: 'logout'): void
-  (e: 'ask', message: string): void
+  (e: 'navigate-ai'): void
+  (e: 'navigate-space-menu', action: string): void
 }>()
-
-const aiEnabled = computed(() => props.orgType === 'ecommerce')
 
 function onSwitch(event: Event) {
   const target = event.target as HTMLSelectElement
@@ -26,15 +25,6 @@ function onSwitch(event: Event) {
   if (ouid && ouid !== props.ouid) {
     emit('switch-organization', ouid)
   }
-}
-
-function onAsk(event: Event) {
-  if (!aiEnabled) return
-  const input = event.target as HTMLInputElement
-  const message = input.value.trim()
-  if (!message) return
-  emit('ask', message)
-  input.value = ''
 }
 </script>
 
@@ -64,27 +54,16 @@ function onAsk(event: Event) {
       </select>
     </div>
 
-    <div class="ai">
-      <input
-        data-test="header-ai"
-        type="text"
-        :disabled="!aiEnabled"
-        :placeholder="
-          aiEnabled
-            ? '查询当前空间的库存、低库存、销售收入、采购支出'
-            : 'AI 查询仅 ecommerce 空间可用'
-        "
-        @keyup.enter="onAsk"
-      />
+    <div class="quick">
       <button
         type="button"
-        class="btn primary"
-        data-test="header-ai-send"
-        :disabled="!aiEnabled"
-        @click="onAsk"
+        class="btn"
+        data-test="header-ai-entry"
+        @click="emit('navigate-ai')"
       >
-        问 AI
+        AI
       </button>
+      <SpaceMenu :role="role" @select="(action) => emit('navigate-space-menu', action)" />
     </div>
 
     <div class="user">
@@ -173,24 +152,11 @@ function onAsk(event: Event) {
   color: var(--ink, #17202a);
   max-width: 200px;
 }
-.ai {
-  flex: 1;
-  min-width: 220px;
-  max-width: 420px;
-  display: grid;
-  grid-template-columns: 1fr auto;
+.quick {
+  display: flex;
+  align-items: center;
   gap: 8px;
-}
-.ai input {
-  border: 1px solid var(--line, #d8dee8);
-  background: #ffffff;
-  border-radius: 6px;
-  padding: 9px 11px;
-  font-size: 13px;
-}
-.ai input:disabled {
-  background: #f4f6f8;
-  color: var(--muted, #637083);
+  margin-left: auto;
 }
 .btn {
   border: 1px solid var(--line, #d8dee8);
@@ -244,9 +210,8 @@ function onAsk(event: Event) {
     align-items: stretch;
     flex-direction: column;
   }
-  .ai {
-    max-width: none;
-    width: 100%;
+  .quick {
+    margin-left: 0;
   }
   .user {
     text-align: left;

@@ -1,19 +1,38 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps<{
   currentView: string
+  orgType: string
 }>()
 
 const emit = defineEmits<{
   (e: 'navigate', view: string): void
 }>()
 
-const navItems = [
-  { key: 'workbench', label: '经营工作台' },
-  { key: 'stock', label: '库存' },
-  { key: 'movements', label: '库存流水' },
-  { key: 'summary', label: '经营摘要' },
-  { key: 'chat', label: 'Seller AI' },
-]
+interface NavItem {
+  key: string
+  label: string
+}
+
+const navItems = computed<NavItem[]>(() =>
+  props.orgType === 'ecommerce'
+    ? [
+        { key: 'workbench', label: '工作台' },
+        { key: 'products', label: '商品' },
+        { key: 'stock', label: '库存' },
+        { key: 'movements', label: '库存流水' },
+        { key: 'summary', label: '经营摘要' },
+        { key: 'chat', label: 'Seller AI' },
+      ]
+    : [
+        { key: 'overview', label: '空间总览' },
+        { key: 'resources', label: '资源' },
+        { key: 'persons', label: '人员' },
+        { key: 'timeline', label: '时间线' },
+        { key: 'flows', label: '多维观察' },
+      ],
+)
 
 function onNavigate(view: string) {
   if (view !== props.currentView) {

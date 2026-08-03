@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getToken, clearToken } from './api/client'
 import { isAuthenticated, setAuthenticated } from './api/session'
-import { sellerChat, type SellerLoginResult } from './api/seller'
+import type { SellerLoginResult } from './api/seller'
 import {
   myOrganizations,
   switchOrganization,
@@ -14,6 +14,9 @@ import StockView from './views/StockView.vue'
 import MovementsView from './views/MovementsView.vue'
 import SummaryView from './views/SummaryView.vue'
 import ChatView from './views/ChatView.vue'
+import ProductsView from './views/ProductsView.vue'
+import GenericSpaceView from './views/GenericSpaceView.vue'
+import PlaceholderView from './views/PlaceholderView.vue'
 import SidebarNav from './components/SidebarNav.vue'
 import AppHeader from './components/AppHeader.vue'
 
@@ -39,6 +42,7 @@ const authenticated = isAuthenticated
 const currentView = ref('workbench')
 const organizations = ref<UserOrganization[]>([])
 const headerExchange = ref<Exchange | null>(null)
+const placeholderMessage = ref('功能即将开放')
 
 function loadCtx(): AppContext {
   try {
@@ -60,6 +64,10 @@ function loadCtx(): AppContext {
 const ctx = ref<AppContext>(loadCtx())
 
 const isEcommerce = computed(() => ctx.value.orgType === 'ecommerce')
+
+function defaultViewFor(orgType: string): string {
+  return orgType === 'ecommerce' ? 'workbench' : 'overview'
+}
 
 async function refreshOrganizations() {
   try {
@@ -84,7 +92,7 @@ function applyContext(result: SellerLoginResult) {
 
 async function onAuthenticated(result: SellerLoginResult) {
   applyContext(result)
-  currentView.value = 'workbench'
+  currentView.value = defaultViewFor(result.organization.type)
   headerExchange.value = null
   setAuthenticated(true)
   await refreshOrganizations()
@@ -95,28 +103,16 @@ async function onSwitchOrganization(ouid: string) {
   try {
     const result = await switchOrganization(ouid)
     applyContext(result)
+    // Clamp to a legal view key for the new organization type.
+    currentView.value = defaultViewFor(result.organization.type)
   } catch {
     // token/ctx unchanged; keep the old selection via the dropdown value
     await refreshOrganizations()
     return
   }
-  currentView.value = 'workbench'
   headerExchange.value = null
+  placeholderMessage.value = '功能即将开放'
   await refreshOrganizations()
-}
-
-async function onHeaderAsk(message: string) {
-  if (!isEcommerce.value) return
-  try {
-    const result = await sellerChat(message)
-    headerExchange.value = { question: message, answer: result.response }
-  } catch (e) {
-    headerExchange.value = {
-      question: message,
-      answer: e instanceof Error ? e.message : 'AI 处理失败，请稍后重试',
-    }
-  }
-  currentView.value = 'chat'
 }
 
 function onLoggedOut() {
@@ -126,19 +122,44 @@ function onLoggedOut() {
   currentView.value = 'workbench'
 }
 
-const currentComponent = computed(() => {
-  switch (currentView.value) {
-    case 'stock':
-      return StockView
-    case 'movements':
-      return MovementsView
-    case 'summary':
-      return SummaryView
-    case 'chat':
-      return ChatView
-    default:
-      return WorkbenchView
+function onNavigate(view: string) {
+  currentView.value = view
+}
+
+function onNavigateAi() {
+  if (isEcommerce.value) {
+    currentView.value = 'chat'
+    return
   }
+  placeholderMessage.value = '该业务空间暂未接入 AI'
+  currentView.value = 'placeholder'
+}
+
+function onSpaceMenuAction(_action: string) {
+  placeholderMessage.value = '功能即将开放'
+  currentView.value = 'placeholder'
+}
+
+const currentComponent = computed(() => {
+  const view = currentView.value
+  if (view === 'placeholder') return PlaceholderView
+  if (isEcommerce.value) {
+    switch (view) {
+      case 'stock':
+        return StockView
+      case 'movements':
+        return MovementsView
+      case 'summary':
+        return SummaryView
+      case 'chat':
+        return ChatView
+      case 'products':
+        return ProductsView
+      default:
+        return WorkbenchView
+    }
+  }
+  return GenericSpaceView
 })
 
 onMounted(() => {
@@ -160,25 +181,34 @@ onMounted(() => {
       :organizations="organizations"
       @switch-organization="onSwitchOrganization"
       @logout="onLoggedOut"
-      @ask="onHeaderAsk"
+      @navigate-ai="onNavigateAi"
+      @navigate-space-menu="onSpaceMenuAction"
     />
     <div class="body-grid">
-      <SidebarNav :current-view="currentView" @navigate="currentView = $event" />
+      <SidebarNav
+        :current-view="currentView"
+        :org-type="ctx.orgType"
+        @navigate="onNavigate"
+      />
       <div class="main-col">
         <main class="main">
-          <div v-if="isEcommerce" class="views">
+          <div class="views">
+            <PlaceholderView
+              v-if="currentView === 'placeholder'"
+              :message="placeholderMessage"
+            />
             <component
+              v-else-if="isEcommerce"
               :is="currentComponent"
               :header-exchange="currentView === 'chat' ? headerExchange : null"
               @logged-out="onLoggedOut"
             />
-          </div>
-          <div v-else class="empty" data-test="non-ecommerce-empty">
-            <p class="empty-title">该业务形态暂未接入经营工作台</p>
-            <p class="empty-sub">
-              当前空间为 {{ ctx.orgType }} · {{ ctx.organizationName }}，Seller
-              经营工作台仅面向 ecommerce 空间。
-            </p>
+            <component
+              v-else
+              :is="currentComponent"
+              :ouid="ctx.ouid"
+              @logged-out="onLoggedOut"
+            />
           </div>
         </main>
       </div>
@@ -225,23 +255,6 @@ onMounted(() => {
 }
 .views {
   min-width: 0;
-}
-.empty {
-  background: var(--panel, #ffffff);
-  border: 1px solid var(--line, #d8dee8);
-  border-radius: 8px;
-  padding: 48px 24px;
-  text-align: center;
-}
-.empty-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 750;
-}
-.empty-sub {
-  margin: 8px 0 0;
-  color: var(--muted, #637083);
-  font-size: 13px;
 }
 @media (max-width: 980px) {
   .body-grid {

@@ -55,17 +55,25 @@ describe('AppHeader', () => {
     expect(wrapper.emitted('logout')).toHaveLength(1)
   })
 
-  it('emits ask with the message when Enter is pressed in ecommerce mode', async () => {
+  it('renders an AI entry that only emits navigate-ai (never sends a request)', async () => {
     const wrapper = mountHeader()
-    await wrapper.find('input[data-test="header-ai"]').setValue('低库存有哪些')
-    await wrapper.find('input[data-test="header-ai"]').trigger('keyup.enter')
-    expect(wrapper.emitted('ask')).toBeTruthy()
-    expect(wrapper.emitted('ask')![0]).toEqual(['低库存有哪些'])
+    const entry = wrapper.find('button[data-test="header-ai-entry"]')
+    expect(entry.exists()).toBe(true)
+    await entry.trigger('click')
+    expect(wrapper.emitted('navigate-ai')).toHaveLength(1)
   })
 
-  it('disables the AI input for non-ecommerce organizations', () => {
-    const wrapper = mountHeader({ orgType: 'family' })
-    const input = wrapper.find('input[data-test="header-ai"]')
-    expect(input.attributes('disabled')).toBeDefined()
+  it('removed the header AI input and 问 AI button', () => {
+    const wrapper = mountHeader()
+    expect(wrapper.find('input[data-test="header-ai"]').exists()).toBe(false)
+    expect(wrapper.find('button[data-test="header-ai-send"]').exists()).toBe(false)
+  })
+
+  it('exposes the space menu and re-emits its action as navigate-space-menu', async () => {
+    const wrapper = mountHeader({ role: 'member' })
+    await wrapper.find('[data-test="space-menu-toggle"]').trigger('click')
+    await wrapper.find('[data-test="space-menu-item-join"]').trigger('click')
+    expect(wrapper.emitted('navigate-space-menu')).toBeTruthy()
+    expect(wrapper.emitted('navigate-space-menu')![0]).toEqual(['join'])
   })
 })

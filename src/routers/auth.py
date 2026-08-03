@@ -9,13 +9,12 @@ from fastapi import APIRouter, HTTPException, Request
 
 from src.models.schemas import RegisterRequest, LoginRequest, SwitchOrganizationRequest
 from src.db.database import (
-    create_person, add_membership,
     query_person_by_puid, query_organization_by_ouid, query_membership,
-    create_account, query_account_by_login, list_person_organizations,
+    query_account_by_login, list_person_organizations,
 )
 from src.auth.auth import (
-    validate_puid, validate_ouid, derive_puid_from_login,
-    hash_password, verify_password,
+    validate_puid, derive_puid_from_login,
+    verify_password,
     create_access_token,
 )
 from src.routers.deps import require_authenticated
@@ -122,15 +121,16 @@ def _resolve_default_org(person: dict, organizations: list):
 
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest):
-    """Create account + person; optionally join an initial organization.
+    """Create account + person + personal space atomically.
 
-    Public registration never grants privileged roles.
+    Registration always yields a personal space (owner) and its JWT.
+    Public registration never grants privileged roles (system_role stays 'user').
+    Joining another org now happens only via invite / join request, never at
+    registration (no initial-org membership on register).
     """
-    # 1. login is required and unique; it is never parsed as ouid context.
     if not body.login.strip():
         raise HTTPException(422, "login is required")
 
-    # 2. Determine puid: explicit value, or a safe login-derived default.
     if body.puid is not None and body.puid.strip():
         puid = body.puid.strip()
         if not validate_puid(puid):
@@ -142,40 +142,23 @@ async def register(body: RegisterRequest):
                 422, "A safe puid is required when login cannot be used as puid "
                      "(only letters, numbers, underscores, hyphens).")
 
-    # 3. Reject an already-bound puid or an already-taken login.
     persons = query_person_by_puid(puid)
     if persons and any(a["login"] != body.login for a in _accounts_of(persons[0]["id"])):
         raise HTTPException(409, "puid already registered by another user")
     if query_account_by_login(body.login):
         raise HTTPException(409, "Login already taken")
-
-    # 4. Create person (only when not already bound to this login).
     if persons:
         raise HTTPException(409, "puid already registered")
-    person = create_person(name=body.name, puid=puid)
 
-    # 5. Create account with hashed password.
+    from src.auth.auth import hash_password
     hashed_password, salt = hash_password(body.password)
-    account = create_account(
-        person_id=person["id"],
-        login=body.login,
-        password=hashed_password,
-        salt=salt,
-        system_role="user",
-    )
 
-    # 6. Optional initial organization membership (role fixed to member).
-    if body.initial_ouid:
-        if not validate_ouid(body.initial_ouid):
-            raise HTTPException(422, "Invalid initial_ouid. Only letters, numbers, underscores, hyphens allowed.")
-        orgs = query_organization_by_ouid(body.initial_ouid)
-        if not orgs:
-            raise HTTPException(404, "Organization not found")
-        org = orgs[0]
-        membership = add_membership(person["id"], org["id"], "member")
-        return _context_dto(person, org, account, membership)
+    from src.db.database import register_personal_space
+    person, account, org, membership = register_personal_space(
+        puid=puid, name=body.name, login=body.login,
+        password_hash=hashed_password, salt=salt)
 
-    return _requires_org_dto(person, account)
+    return _context_dto(person, org, account, membership)
 
 
 def _accounts_of(person_id: int) -> list:

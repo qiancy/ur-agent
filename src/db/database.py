@@ -101,6 +101,28 @@ CREATE TABLE IF NOT EXISTS membership (
     UNIQUE(person_id, organization_id)
 );
 
+-- Space Invite: 组织邀请 (owner/admin 创建, 受邀人接受)
+CREATE TABLE IF NOT EXISTS space_invite (
+    id              SERIAL PRIMARY KEY,
+    invite_uid      VARCHAR(100) UNIQUE NOT NULL,
+    organization_id INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    invitee_puid    VARCHAR(100) NOT NULL,
+    role            VARCHAR(100) NOT NULL DEFAULT 'member',
+    status          VARCHAR(30) NOT NULL DEFAULT 'pending',
+    created_by_puid VARCHAR(100) NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Space Join Request: 加入申请 (用户提交, owner/admin 审批)
+CREATE TABLE IF NOT EXISTS space_join_request (
+    id              SERIAL PRIMARY KEY,
+    request_uid     VARCHAR(100) UNIQUE NOT NULL,
+    organization_id INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+    requester_puid  VARCHAR(100) NOT NULL,
+    status          VARCHAR(30) NOT NULL DEFAULT 'pending',
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Resource: 资源 (单表设计, type 区分 physical/financial/human/knowledge)
 CREATE TABLE IF NOT EXISTS resource (
     id              SERIAL PRIMARY KEY,
@@ -272,6 +294,8 @@ def init_database(drop_all: bool = False):
                 DROP TABLE IF EXISTS personnel CASCADE;
                 DROP TABLE IF EXISTS person_org CASCADE;
                 DROP TABLE IF EXISTS party_member CASCADE;
+                DROP TABLE IF EXISTS space_join_request CASCADE;
+                DROP TABLE IF EXISTS space_invite CASCADE;
             """)
         cur.execute(SCHEMA_SQL)
         cur.execute("""
@@ -329,6 +353,45 @@ def _execute(sql: str, params: tuple = (), fetch_returning: bool = False) -> Any
     except Exception as e:
         conn.rollback()
         raise e
+    finally:
+        conn.close()
+
+
+def register_personal_space(puid: str, name: str, login: str,
+                            password_hash: str, salt: str):
+    """Atomically create person + account + personal org + owner membership.
+
+    Returns (person, account, org, membership). Any failure rolls back.
+    personal space: ouid={puid}_personal, type=personal, name={name}的个人空间.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "INSERT INTO person (puid, name) VALUES (%s, %s) RETURNING *",
+            (puid, name))
+        person = dict(cur.fetchone())
+        cur.execute(
+            "INSERT INTO account (person_id, login, password, salt, system_role)"
+            " VALUES (%s, %s, %s, %s, 'user') RETURNING *",
+            (person["id"], login, password_hash, salt))
+        account = dict(cur.fetchone())
+        org_ouid = f"{puid}_personal"
+        cur.execute(
+            "INSERT INTO organization (ouid, name, type, description)"
+            " VALUES (%s, %s, 'personal', '个人空间') RETURNING *",
+            (org_ouid, f"{name}的个人空间"))
+        org = dict(cur.fetchone())
+        cur.execute(
+            "INSERT INTO membership (person_id, organization_id, role)"
+            " VALUES (%s, %s, 'owner') RETURNING *",
+            (person["id"], org["id"]))
+        membership = dict(cur.fetchone())
+        conn.commit()
+        return person, account, org, membership
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -508,9 +571,133 @@ def list_person_organizations(person_id: int) -> List[Dict]:
         FROM membership m
         JOIN organization o ON o.id = m.organization_id
         WHERE m.person_id = %s
-        ORDER BY o.ouid
+        ORDER BY CASE WHEN o.type = 'personal' THEN 0 ELSE 1 END, o.ouid
     """
     return _fetch(sql, (person_id,))
+
+
+# --- Governance (space invite / join request / membership) ---
+
+def create_org_invite(organization_id: int, invitee_puid: str,
+                      role: str, created_by_puid: str) -> Dict[str, Any]:
+    import secrets as _secrets
+    invite_uid = f"inv_{_secrets.token_hex(4)}"
+    sql = """
+        INSERT INTO space_invite
+            (invite_uid, organization_id, invitee_puid, role, created_by_puid, status)
+        VALUES (%s, %s, %s, %s, %s, 'pending')
+        RETURNING *
+    """
+    return dict(_execute(sql, (invite_uid, organization_id, invitee_puid,
+                               role, created_by_puid), fetch_returning=True)[0])
+
+
+def query_invite_by_uid(invite_uid: str) -> List[Dict]:
+    return _fetch("SELECT * FROM space_invite WHERE invite_uid = %s", (invite_uid,))
+
+
+def accept_invite(invite_uid: str, person_id: int) -> Optional[Dict[str, Any]]:
+    """Atomically add membership and mark invite accepted. Returns membership or None."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM space_invite WHERE invite_uid = %s FOR UPDATE",
+                    (invite_uid,))
+        invite = cur.fetchone()
+        if not invite or invite["status"] != "pending":
+            return None
+        cur.execute(
+            "INSERT INTO membership (person_id, organization_id, role)"
+            " VALUES (%s, %s, %s) ON CONFLICT (person_id, organization_id) DO NOTHING"
+            " RETURNING *",
+            (person_id, invite["organization_id"], invite["role"]))
+        membership = cur.fetchone()
+        cur.execute("UPDATE space_invite SET status = 'accepted' WHERE invite_uid = %s",
+                    (invite_uid,))
+        conn.commit()
+        return dict(membership) if membership else None
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def create_join_request(organization_id: int, requester_puid: str) -> Dict[str, Any]:
+    import secrets as _secrets
+    request_uid = f"req_{_secrets.token_hex(4)}"
+    sql = """
+        INSERT INTO space_join_request
+            (request_uid, organization_id, requester_puid, status)
+        VALUES (%s, %s, %s, 'pending')
+        RETURNING *
+    """
+    return dict(_execute(sql, (request_uid, organization_id, requester_puid),
+                         fetch_returning=True)[0])
+
+
+def query_join_request_by_uid(request_uid: str) -> List[Dict]:
+    return _fetch("SELECT * FROM space_join_request WHERE request_uid = %s",
+                  (request_uid,))
+
+
+def approve_join_request(request_uid: str, person_id: int,
+                         role: str = "member") -> Optional[Dict[str, Any]]:
+    """Atomically add membership and mark request approved. Returns membership or None."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM space_join_request WHERE request_uid = %s FOR UPDATE",
+                    (request_uid,))
+        req = cur.fetchone()
+        if not req or req["status"] != "pending":
+            return None
+        cur.execute(
+            "INSERT INTO membership (person_id, organization_id, role)"
+            " VALUES (%s, %s, %s) ON CONFLICT (person_id, organization_id) DO NOTHING"
+            " RETURNING *",
+            (person_id, req["organization_id"], role))
+        membership = cur.fetchone()
+        cur.execute("UPDATE space_join_request SET status = 'approved' WHERE request_uid = %s",
+                    (request_uid,))
+        conn.commit()
+        return dict(membership) if membership else None
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def remove_membership(person_id: int, organization_id: int) -> int:
+    return _execute("DELETE FROM membership WHERE person_id = %s AND organization_id = %s",
+                    (person_id, organization_id))
+
+
+def count_org_owners(organization_id: int) -> int:
+    rows = _fetch(
+        "SELECT COUNT(*) AS n FROM membership WHERE organization_id = %s AND role = 'owner'",
+        (organization_id,))
+    return int(rows[0]["n"])
+
+
+def transfer_ownership(organization_id: int, new_owner_person_id: int) -> None:
+    """Transfer: old owner -> admin, new member -> owner (single transaction)."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "UPDATE membership SET role = 'admin' WHERE organization_id = %s AND role = 'owner'",
+            (organization_id,))
+        cur.execute(
+            "UPDATE membership SET role = 'owner' WHERE organization_id = %s AND person_id = %s",
+            (organization_id, new_owner_person_id))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 # --- Resource ---

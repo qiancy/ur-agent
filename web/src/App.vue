@@ -78,6 +78,9 @@ async function refreshOrganizations() {
 }
 
 function applyContext(result: SellerLoginResult) {
+  if (!result.organization || !result.membership) {
+    return
+  }
   const nextCtx: AppContext = {
     personName: result.person.name,
     puid: result.person.puid,
@@ -92,6 +95,10 @@ function applyContext(result: SellerLoginResult) {
 
 async function onAuthenticated(result: SellerLoginResult) {
   applyContext(result)
+  if (!result.organization || !result.access_token) {
+    setAuthenticated(false)
+    return
+  }
   currentView.value = defaultViewFor(result.organization.type)
   headerExchange.value = null
   setAuthenticated(true)
@@ -104,7 +111,9 @@ async function onSwitchOrganization(ouid: string) {
     const result = await switchOrganization(ouid)
     applyContext(result)
     // Clamp to a legal view key for the new organization type.
-    currentView.value = defaultViewFor(result.organization.type)
+    currentView.value = result.organization
+      ? defaultViewFor(result.organization.type)
+      : currentView.value
   } catch {
     // token/ctx unchanged; keep the old selection via the dropdown value
     await refreshOrganizations()

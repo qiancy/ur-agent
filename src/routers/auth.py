@@ -1,5 +1,9 @@
 """
-Authentication endpoints: register and login.
+Authentication endpoints: register, login, organization switch.
+
+AUTH-02 model: account.login is the single login credential. A user logs in
+once and switches between organizations through membership + JWT re-issue.
+login is NEVER parsed as puid/ouid context.
 """
 from fastapi import APIRouter, HTTPException, Request
 
@@ -7,11 +11,10 @@ from src.models.schemas import RegisterRequest, LoginRequest, SwitchOrganization
 from src.db.database import (
     create_person, add_membership,
     query_person_by_puid, query_organization_by_ouid, query_membership,
-    create_account, query_account_by_login, query_accounts_by_person_id,
-    list_person_organizations,
+    create_account, query_account_by_login, list_person_organizations,
 )
 from src.auth.auth import (
-    parse_login_name, validate_puid, validate_ouid,
+    validate_puid, validate_ouid, derive_puid_from_login,
     hash_password, verify_password,
     create_access_token,
 )
@@ -33,21 +36,61 @@ def _build_token(person: dict, org: dict, account: dict, membership: dict) -> st
     return create_access_token(token_data)
 
 
-def _authenticate_login(body: LoginRequest):
-    parsed = parse_login_name(body.login)
-    if not parsed:
-        raise HTTPException(400, "Invalid login format. Must be {puid}@{ouid} or {puid}@{ouid}.{suffix}")
+def _orgs_dto(person: dict) -> list:
+    """Business-facing organization list for a person (no DB ids)."""
+    return [
+        {"ouid": r["ouid"], "name": r["name"], "type": r["type"], "role": r["role"]}
+        for r in list_person_organizations(person["id"])
+    ]
 
-    puid, ouid = parsed
 
-    persons = query_person_by_puid(puid)
-    if not persons:
-        raise HTTPException(401, "Invalid credentials")
-    person = persons[0]
+def _context_dto(person: dict, org: dict, account: dict, membership: dict) -> dict:
+    return {
+        "access_token": _build_token(person, org, account, membership),
+        "token_type": "bearer",
+        "person": {"puid": person["puid"], "name": person["name"]},
+        "organization": {"ouid": org["ouid"], "name": org["name"], "type": org["type"]},
+        "account": {
+            "login": account["login"],
+            "status": account["status"],
+            "system_role": account.get("system_role", "user"),
+        },
+        "membership": {"role": membership["role"]},
+        "organizations": _orgs_dto(person),
+        "requires_organization": False,
+    }
 
-    accounts = query_account_by_login(body.login)
-    if not accounts:
-        accounts = query_accounts_by_person_id(person["id"])
+
+def _requires_org_dto(person: dict, account: dict) -> dict:
+    return {
+        "access_token": None,
+        "token_type": None,
+        "person": {"puid": person["puid"], "name": person["name"]},
+        "account": {
+            "login": account["login"],
+            "status": account["status"],
+            "system_role": account.get("system_role", "user"),
+        },
+        "organizations": [],
+        "requires_organization": True,
+    }
+
+
+def _load_person_for_account(account: dict) -> dict:
+    """Load person by account.person_id (business fields only)."""
+    from src.db.database import _fetch
+    rows = _fetch("SELECT * FROM person WHERE id = %s", (account["person_id"],))
+    if not rows:
+        raise HTTPException(401, "Invalid account binding")
+    return rows[0]
+
+
+def _authenticate_account(login: str, password: str):
+    """Authenticate by account.login only; login is never parsed as ouid.
+
+    Returns (account, person) or raises.
+    """
+    accounts = query_account_by_login(login)
     if not accounts:
         raise HTTPException(401, "Invalid credentials")
     account = accounts[0]
@@ -55,164 +98,106 @@ def _authenticate_login(body: LoginRequest):
     if account["status"] != "active":
         raise HTTPException(403, "Account is not active")
 
-    orgs = query_organization_by_ouid(ouid)
-    if not orgs:
-        raise HTTPException(401, "Invalid credentials")
-    org = orgs[0]
-
-    memberships = query_membership(person["id"], org["id"])
-    if not memberships:
-        raise HTTPException(401, "No membership in this organization")
-    membership = memberships[0]
-
-    if not verify_password(body.password, account["password"], account["salt"]):
+    if not verify_password(password, account["password"], account["salt"]):
         raise HTTPException(401, "Invalid password")
 
-    return person, org, account, membership
+    person = _load_person_for_account(account)
+    return account, person
+
+
+def _resolve_default_org(person: dict, organizations: list):
+    """Pick the default organization from a stable server-side order.
+
+    Returns (org, membership) for the first active membership.
+    """
+    orgs = query_organization_by_ouid(organizations[0]["ouid"])
+    if not orgs:
+        raise HTTPException(401, "Invalid organization in membership")
+    org = orgs[0]
+    memberships = query_membership(person["id"], org["id"])
+    if not memberships:
+        raise HTTPException(401, "Invalid membership")
+    return org, memberships[0]
 
 
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest):
-    """Register new user and add to organization."""
-    # 1. Parse and validate login format
-    parsed = parse_login_name(body.login)
-    if not parsed:
-        raise HTTPException(400, "Invalid login format. Must be {puid}@{ouid} or {puid}@{ouid}.{suffix}")
+    """Create account + person; optionally join an initial organization.
 
-    puid, ouid = parsed
+    Public registration never grants privileged roles.
+    """
+    # 1. login is required and unique; it is never parsed as ouid context.
+    if not body.login.strip():
+        raise HTTPException(422, "login is required")
 
-    # 2. Validate puid and ouid format
-    if not validate_puid(puid):
-        raise HTTPException(400, "Invalid puid format. Only letters, numbers, underscores, hyphens allowed.")
-    if not validate_ouid(ouid):
-        raise HTTPException(400, "Invalid ouid format. Only letters, numbers, underscores, hyphens allowed.")
+    # 2. Determine puid: explicit value, or a safe login-derived default.
+    if body.puid is not None and body.puid.strip():
+        puid = body.puid.strip()
+        if not validate_puid(puid):
+            raise HTTPException(422, "Invalid puid. Only letters, numbers, underscores, hyphens allowed.")
+    else:
+        puid = derive_puid_from_login(body.login)
+        if puid is None:
+            raise HTTPException(
+                422, "A safe puid is required when login cannot be used as puid "
+                     "(only letters, numbers, underscores, hyphens).")
 
-    # 3. Check if organization exists
-    orgs = query_organization_by_ouid(ouid)
-    if not orgs:
-        raise HTTPException(404, "Organization not found")
-    org = orgs[0]
-
-    # 4. Check if person exists
+    # 3. Reject an already-bound puid or an already-taken login.
     persons = query_person_by_puid(puid)
+    if persons and any(a["login"] != body.login for a in _accounts_of(persons[0]["id"])):
+        raise HTTPException(409, "puid already registered by another user")
+    if query_account_by_login(body.login):
+        raise HTTPException(409, "Login already taken")
 
+    # 4. Create person (only when not already bound to this login).
     if persons:
-        person = persons[0]
-    else:
-        # Create new person
-        person = create_person(
-            name=body.name,
-            puid=puid,
-        )
+        raise HTTPException(409, "puid already registered")
+    person = create_person(name=body.name, puid=puid)
 
-    # 5. Check if account exists
-    accounts = query_account_by_login(body.login)
+    # 5. Create account with hashed password.
+    hashed_password, salt = hash_password(body.password)
+    account = create_account(
+        person_id=person["id"],
+        login=body.login,
+        password=hashed_password,
+        salt=salt,
+        system_role="user",
+    )
 
-    if accounts:
-        account = accounts[0]
-        # Account exists, verify it belongs to same person
-        if account["person_id"] != person["id"]:
-            raise HTTPException(409, "Login already taken by another user")
-        # Verify password
-        if not verify_password(body.password, account["password"], account["salt"]):
-            raise HTTPException(409, "Password mismatch for existing user")
-    else:
-        # Create new account
-        hashed_password, salt = hash_password(body.password)
-        account = create_account(
-            person_id=person["id"],
-            login=body.login,
-            password=hashed_password,
-            salt=salt,
-            system_role="user",
-        )
+    # 6. Optional initial organization membership (role fixed to member).
+    if body.initial_ouid:
+        if not validate_ouid(body.initial_ouid):
+            raise HTTPException(422, "Invalid initial_ouid. Only letters, numbers, underscores, hyphens allowed.")
+        orgs = query_organization_by_ouid(body.initial_ouid)
+        if not orgs:
+            raise HTTPException(404, "Organization not found")
+        org = orgs[0]
+        membership = add_membership(person["id"], org["id"], "member")
+        return _context_dto(person, org, account, membership)
 
-    # 6. Check if membership exists
-    memberships = query_membership(person["id"], org["id"])
+    return _requires_org_dto(person, account)
 
-    if memberships:
-        membership = memberships[0]
-    else:
-        # Public registration cannot grant system or organization privileged roles.
-        requested_role = (body.role or "member").strip() or "member"
-        if requested_role.lower() in {"super", "admin", "owner"}:
-            requested_role = "member"
-        membership = add_membership(person["id"], org["id"], requested_role)
 
-    # 7. Return result (no database numeric IDs in public API)
-    return {
-        "person": {
-            "puid": person["puid"],
-            "name": person["name"]
-        },
-        "organization": {
-            "ouid": org["ouid"],
-            "name": org["name"],
-            "type": org["type"]
-        },
-        "account": {
-            "login": account["login"],
-            "status": account["status"],
-            "system_role": account.get("system_role", "user")
-        },
-        "membership": {
-            "role": membership["role"]
-        }
-    }
+def _accounts_of(person_id: int) -> list:
+    from src.db.database import _fetch
+    return _fetch("SELECT * FROM account WHERE person_id = %s", (person_id,))
 
 
 @router.post("/login")
 async def login(body: LoginRequest):
-    """Login user and return JWT token."""
-    person, org, account, membership = _authenticate_login(body)
-    access_token = _build_token(person, org, account, membership)
-
-    # 8. Return token and context (no database numeric IDs in public API)
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "person": {
-            "puid": person["puid"],
-            "name": person["name"]
-        },
-        "organization": {
-            "ouid": org["ouid"],
-            "name": org["name"],
-            "type": org["type"]
-        },
-        "account": {
-            "login": account["login"],
-            "status": account["status"],
-            "system_role": account.get("system_role", "user")
-        },
-        "membership": {
-            "role": membership["role"]
-        }
-    }
+    """Login by account.login; returns default space + switchable organizations."""
+    account, person = _authenticate_account(body.login, body.password)
+    organizations = _orgs_dto(person)
+    if not organizations:
+        return _requires_org_dto(person, account)
+    org, membership = _resolve_default_org(person, organizations)
+    return _context_dto(person, org, account, membership)
 
 
 @router.post("/seller-login")
 async def seller_login(body: LoginRequest):
-    """Seller login response with no database numeric IDs."""
-    person, org, account, membership = _authenticate_login(body)
-    access_token = _build_token(person, org, account, membership)
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "person": {
-            "puid": person["puid"],
-            "name": person["name"]
-        },
-        "organization": {
-            "ouid": org["ouid"],
-            "name": org["name"],
-            "type": org["type"]
-        },
-        "membership": {
-            "role": membership["role"]
-        },
-        "system_role": account.get("system_role", "user"),
-    }
+    """Alias of /auth/login sharing the same single-account authentication."""
+    return await login(body)
 
 
 @router.get("/me/organizations")
@@ -226,11 +211,7 @@ async def my_organizations(request: Request):
     persons = query_person_by_puid(puid)
     if not persons:
         raise HTTPException(401, "Invalid person in token")
-    rows = list_person_organizations(persons[0]["id"])
-    return [
-        {"ouid": r["ouid"], "name": r["name"], "type": r["type"], "role": r["role"]}
-        for r in rows
-    ]
+    return _orgs_dto(persons[0])
 
 
 @router.post("/switch-organization")
@@ -256,24 +237,11 @@ async def switch_organization(body: SwitchOrganizationRequest, request: Request)
         raise HTTPException(403, "No membership in this organization")
     membership = memberships[0]
 
-    access_token = _build_token(
-        person, org, {"system_role": payload.get("system_role", "user")}, membership)
-
-    # Response reuses the login shape; no database numeric IDs.
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "person": {
-            "puid": person["puid"],
-            "name": person["name"]
-        },
-        "organization": {
-            "ouid": org["ouid"],
-            "name": org["name"],
-            "type": org["type"]
-        },
-        "membership": {
-            "role": membership["role"]
-        },
+    from src.db.database import _fetch
+    accounts = _fetch("SELECT * FROM account WHERE person_id = %s ORDER BY id",
+                      (person["id"],))
+    account = accounts[0] if accounts else {
         "system_role": payload.get("system_role", "user"),
+        "login": payload.get("puid"), "status": "active",
     }
+    return _context_dto(person, org, account, membership)

@@ -59,9 +59,10 @@ def _create_shop(client: TestClient, tag: str) -> dict:
     })
     assert resp.status_code in (200, 201), resp.text
 
-    login = f"seller_{tag}_{s}@{ouid}"
+    login = f"seller_{tag}_{s}"
     resp = client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"卖家{tag}_{s}",
+        "initial_ouid": ouid,
     })
     assert resp.status_code == 201, resp.text
 

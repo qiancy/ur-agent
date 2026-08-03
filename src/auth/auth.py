@@ -29,30 +29,33 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 72
 
 
-# ── Login name parsing ───────────────────────────────────────────────────────
+# ── Login name / identity helpers ───────────────────────────────────────────
 
-LOGIN_PATTERN = re.compile(r'^([a-zA-Z0-9_-]+)@([a-zA-Z0-9_-]+)(?:\.[a-zA-Z0-9_-]+)?$')
-
-
-def parse_login_name(login: str) -> Optional[Tuple[str, str]]:
-    """
-    Parse login name format: {puid}@{ouid} or {puid}@{ouid}.{suffix}.
-    Returns (puid, ouid) or None if invalid.
-    """
-    match = LOGIN_PATTERN.match(login)
-    if match:
-        return match.group(1), match.group(2)
-    return None
+_PUID_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
 
 
 def validate_puid(puid: str) -> bool:
     """Validate person puid: only letters, numbers, underscores, hyphens."""
-    return bool(re.match(r'^[a-zA-Z0-9_-]+$', puid))
+    return bool(_PUID_PATTERN.match(puid))
 
 
 def validate_ouid(ouid: str) -> bool:
     """Validate organization ouid: only letters, numbers, underscores, hyphens."""
-    return bool(re.match(r'^[a-zA-Z0-9_-]+$', ouid))
+    return bool(_PUID_PATTERN.match(ouid))
+
+
+def derive_puid_from_login(login: str) -> Optional[str]:
+    """Derive a safe person puid from an account login.
+
+    Used ONLY as the registration fallback when the request does not
+    supply an explicit `puid`. Returns the login itself when it is a
+    valid puid (letters/numbers/underscore/hyphen), otherwise None so the
+    caller can require an explicit puid. A login is never parsed for
+    organization context.
+    """
+    if not login:
+        return None
+    return login if _PUID_PATTERN.match(login) else None
 
 
 # ── Password hashing ─────────────────────────────────────────────────────────

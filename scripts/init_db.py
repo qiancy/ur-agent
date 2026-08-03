@@ -1,10 +1,17 @@
 """
 初始化数据库：建表 + 插入三国示例数据。
 用法: PYTHONPATH=. python scripts/init_db.py
+账号密码从环境变量 DEMO_INIT_PASSWORD 或未提交的 .env 读取（不得写入源码）。
 """
 import sys
 import os
+from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 from src.db.database import (
     init_database, create_resource, create_person,
@@ -15,6 +22,11 @@ from src.db.database import (
     query_person, query_party, query_resource, query_organization,
 )
 from src.auth.auth import hash_password
+
+PASSWORD_ENV_KEY = "DEMO_INIT_PASSWORD"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if load_dotenv:
+    load_dotenv(REPO_ROOT / ".env", override=False)
 
 
 def main():
@@ -51,22 +63,27 @@ def main():
         persons[name] = create_person(name=name, puid=puid)
 
     # ── Account (认证凭据, 仅给有密码的角色) ──────
+    # 密码仅从 DEMO_INIT_PASSWORD 读取；未配置则跳过账号创建（DB 中已有账号不受影响）。
+    init_password = os.getenv(PASSWORD_ENV_KEY, "").strip()
     accounts = {}
-    for person_name, login, pwd, system_role in [
-        ("超级用户", "super@system.cn", "demo123", "super"),
-        ("诸葛亮", "zhugeliang@shu.cn", "demo123", "user"),
-        ("刘备", "liubei@shu.cn", "demo123", "user"),
-        ("曹操", "caocao@wei.cn", "demo123", "user"),
-        ("孙权", "sunquan@wu.cn", "demo123", "user"),
-    ]:
-        hashed_password, salt = hash_password(pwd)
-        accounts[person_name] = create_account(
-            person_id=persons[person_name]["id"],
-            login=login,
-            password=hashed_password,
-            salt=salt,
-            system_role=system_role,
-        )
+    if not init_password:
+        print("[warn] 未设置 DEMO_INIT_PASSWORD，跳过演示账号创建")
+    else:
+        for person_name, login, system_role in [
+            ("超级用户", "super@system.cn", "super"),
+            ("诸葛亮", "zhugeliang@shu.cn", "user"),
+            ("刘备", "liubei@shu.cn", "user"),
+            ("曹操", "caocao@wei.cn", "user"),
+            ("孙权", "sunquan@wu.cn", "user"),
+        ]:
+            hashed_password, salt = hash_password(init_password)
+            accounts[person_name] = create_account(
+                person_id=persons[person_name]["id"],
+                login=login,
+                password=hashed_password,
+                salt=salt,
+                system_role=system_role,
+            )
 
     # ── Membership (person ↔ org, 带 role) ──────────────────
     links = [

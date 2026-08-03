@@ -28,9 +28,10 @@ def family_ctx():
     assert resp.status_code == 201, resp.text
     data["ouid"] = ouid
 
-    login = f"fam_{s}@{ouid}"
+    login = f"fam_{s}"
     resp = client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"家长_{s}",
+        "initial_ouid": ouid,
     })
     assert resp.status_code == 201, resp.text
 
@@ -67,9 +68,10 @@ def test_resources_grouped(family_ctx):
 def test_resources_physical_locations(family_ctx):
     s = _SUFFIX
     # seed a physical resource with stock via warehouse + resource_warehouse
-    login = f"fam2_{s}@{family_ctx['ouid']}"
+    login = f"fam2_{s}"
     assert client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"家长2_{s}",
+        "initial_ouid": family_ctx["ouid"],
     }).status_code == 201
     resp = client.post("/auth/seller-login", json={"login": login, "password": "pass123"})
     assert resp.status_code == 200

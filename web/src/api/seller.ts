@@ -1,12 +1,21 @@
 import { request, setToken } from './client'
 
+export interface SellerOrgRef {
+  ouid: string
+  name: string
+  type: string
+  role: string
+}
+
 export interface SellerLoginResult {
-  access_token: string
+  access_token: string | null
   token_type: string
   person: { puid: string; name: string }
-  organization: { ouid: string; name: string; type: string }
-  membership: { role: string }
+  organization: { ouid: string; name: string; type: string } | null
+  membership: { role: string } | null
   system_role: string
+  organizations: SellerOrgRef[]
+  requires_organization: boolean
 }
 
 export interface SellerSummary {
@@ -44,7 +53,7 @@ export async function sellerLogin(
     method: 'POST',
     body: JSON.stringify({ login, password }),
   })
-  setToken(result.access_token)
+  if (result.access_token) setToken(result.access_token)
   return result
 }
 

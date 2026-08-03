@@ -28,6 +28,10 @@ const LOGIN_BODY = {
   organization: { ouid: 'shop_demo', name: '示例店铺', type: 'ecommerce' },
   membership: { role: 'owner' },
   system_role: 'user',
+  organizations: [
+    { ouid: 'shop_demo', name: '示例店铺', type: 'ecommerce', role: 'owner' },
+  ],
+  requires_organization: false,
 }
 
 const SUMMARY_BODY = {
@@ -74,19 +78,19 @@ describe('sellerLogin', () => {
   it('posts credentials to /auth/seller-login and stores the access token', async () => {
     fetchMock.mockResolvedValue(jsonResponse(LOGIN_BODY))
 
-    const result = await sellerLogin('shopkeeper@shop_demo', 'pass123')
+    const result = await sellerLogin('shopkeeper', 'pass123')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, options] = fetchMock.mock.calls[0]
     expect(url).toContain('/auth/seller-login')
     expect(options.method).toBe('POST')
     expect(JSON.parse(options.body)).toEqual({
-      login: 'shopkeeper@shop_demo',
+      login: 'shopkeeper',
       password: 'pass123',
     })
     expect(localStorage.getItem('unires_token')).toBe('token-123')
     expect(result.access_token).toBe('token-123')
-    expect(result.organization.ouid).toBe('shop_demo')
+    expect(result.organization?.ouid).toBe('shop_demo')
   })
 })
 

@@ -137,15 +137,18 @@ class SellerProductStatus(BaseModel):
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
-    login: str  # {puid}@{ouid}.cn
+    login: str  # account login credential; not parsed as puid/ouid
     password: str
     name: str
-    role: Optional[str] = "member"
+    puid: Optional[str] = None  # business person id; defaults to login when safe
+    initial_ouid: Optional[str] = None  # initial organization membership (role=member)
+    model_config = {"extra": "forbid"}
 
 
 class LoginRequest(BaseModel):
-    login: str  # {puid}@{ouid}.cn
+    login: str  # account login credential; not parsed as puid/ouid
     password: str
+    model_config = {"extra": "forbid"}
 
 
 class SwitchOrganizationRequest(BaseModel):

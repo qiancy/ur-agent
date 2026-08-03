@@ -41,9 +41,10 @@ def shops():
     assert resp.status_code in (200, 201), resp.text
     data["shop_a_ouid"] = shop_a_ouid
 
-    login_a = f"seller_a_{s}@{shop_a_ouid}"
+    login_a = f"seller_a_{s}"
     resp = client.post("/auth/register", json={
         "login": login_a, "password": "pass123", "name": f"小A_{s}",
+        "initial_ouid": shop_a_ouid,
     })
     assert resp.status_code == 201, resp.text
 
@@ -89,9 +90,10 @@ def shops():
     assert resp.status_code in (200, 201), resp.text
     data["shop_b_ouid"] = shop_b_ouid
 
-    login_b = f"seller_b_{s}@{shop_b_ouid}"
+    login_b = f"seller_b_{s}"
     resp = client.post("/auth/register", json={
         "login": login_b, "password": "pass123", "name": f"小B_{s}",
+        "initial_ouid": shop_b_ouid,
     })
     assert resp.status_code == 201, resp.text
 
@@ -240,9 +242,10 @@ class TestThreeKingdomsPublicOuidContext:
         })
         assert resp.status_code in (200, 201), resp.text
 
-        login = f"test_user_{s}@{org_ouid}"
+        login = f"test_user_{s}"
         resp = client.post("/auth/register", json={
             "login": login, "password": "pass123", "name": f"测试用户_{s}",
+            "initial_ouid": org_ouid,
         })
         assert resp.status_code == 201, resp.text
 

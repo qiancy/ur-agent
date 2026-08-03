@@ -13,7 +13,7 @@
   - 组织 zhansan_shop 已存在 → 不重建。
   - 商品（resource.type='physical' + name）已存在 → 跳过入库/出货。
   - zhansan->zhansan_shop membership 已存在 → 跳过。
-  - 账号 zhansan@zhansan_shop 已存在 → 跳过；密码同 DEMO_ZHANSAN_PASSWORD。
+  - 账号 zhansan 已存在 → 跳过；密码同 DEMO_ZHANSAN_PASSWORD。
 
 用法：
   PYTHONPATH=. DEMO_ZHANSAN_PASSWORD=<pw> python scripts/seed_demo_shop.py
@@ -123,7 +123,7 @@ def main() -> int:
         print(f"[skip] membership 已存在: {OPERATOR_PUID} -> {SHOP_OUID}")
 
     if password:
-        login = f"{OPERATOR_PUID}@{SHOP_OUID}"
+        login = OPERATOR_PUID
         if db.query_account_by_login(login):
             print(f"[skip] account: {login} 已存在")
         else:

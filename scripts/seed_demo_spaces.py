@@ -45,7 +45,6 @@ DEMO_NAME = "张三"
 
 # (ouid 或 ouid 前缀, 角色)；前缀以 '*' 结尾表示模糊匹配
 DEMO_SPACES = [
-    ("fe06_spike_*", "owner"),
     ("zhansan_shop", "owner"),
     ("fire_xinye_shu", "owner"),
     ("zhangsan_family", "owner"),
@@ -268,13 +267,16 @@ def import_campaign_pack(campaign_code: str) -> dict:
 
 
 def ensure_demo_user(password: str) -> dict:
-    """创建/复用演示用户 zhansan，并建立 4 空间 membership 与账号。"""
+    """创建/复用演示用户 zhansan，并建立 4 空间 membership 与单账号。
+
+    AUTH-02: 只创建一个 account.login=zhansan；person.puid=zhansan。
+    空间切换靠 membership + JWT，不再使用 zhansan@<ouid> 多账号。
+    """
     rows = db.query_person_by_puid(DEMO_PUID)
     person = rows[0] if rows else db.create_person(name=DEMO_NAME, puid=DEMO_PUID)
     created_person = not rows
 
     created_memberships = 0
-    created_accounts = 0
     for target, role in DEMO_SPACES:
         org = _find_org(target)
         if not org:
@@ -285,17 +287,16 @@ def ensure_demo_user(password: str) -> dict:
             created_memberships += 1
             print(f"[ok] membership: {DEMO_PUID} -> {org['ouid']} (role={role})")
 
-        login = f"{DEMO_PUID}@{org['ouid']}"
-        if not password:
-            continue
-        if db.query_account_by_login(login):
-            print(f"[skip] account: {login} 已存在")
-            continue
-        hashed, salt = hash_password(password)
-        db.create_account(person_id=person["id"], login=login,
-                          password=hashed, salt=salt, system_role="user")
-        created_accounts += 1
-        print(f"[ok] account: {login}")
+    created_accounts = 0
+    if password:
+        if db.query_account_by_login(DEMO_PUID):
+            print(f"[skip] account: {DEMO_PUID} 已存在")
+        else:
+            hashed, salt = hash_password(password)
+            db.create_account(person_id=person["id"], login=DEMO_PUID,
+                              password=hashed, salt=salt, system_role="user")
+            created_accounts += 1
+            print(f"[ok] account: {DEMO_PUID}")
 
     return {
         "person_created": created_person,

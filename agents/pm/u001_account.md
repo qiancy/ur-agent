@@ -1,34 +1,36 @@
 # U001 Account 认证模型变更
 
-> 角色：项目经理  
-> 状态：待开发实现  
-> 目标：将认证凭据从 `person` 分离到 `account` 表，完成用户注册和登录。
+> 角色：项目经理
+> 状态：已按单账号多空间模型修订，待开发实现
+> 目标：将认证凭据从 `person` 分离到 `account` 表，并支持用户注册、登录、组织空间切换。
 
 ---
 
 ## 1. 变更原则
 
-- `person` 是业务人员身份，不保存密码。
-- `account` 是登录凭据，保存 login、password、salt、status。
-- `organization` 是组织空间。
-- `membership` 负责人员和组织的授权关系。
-- 登录和注册必须通过 `membership` 校验组织权限。
+1. `account` 是认证实体，负责 `login`、密码哈希、账号状态、系统级角色。
+2. `person` 是业务人员身份，负责 `puid`、展示名、个人资料。
+3. `membership` 是授权关系，负责一个 person 能进入哪些 organization，以及在组织内的角色。
+4. `organization` 是业务空间和数据隔离边界；MVP 暂不新增 `workspace` 表，继续用 `organization.type` 表示业务形态。
+5. `account.login` 与 `person.puid` 不做物理归并，但 MVP 演示账号允许二者相同，例如 `login=zhansan`、`puid=zhansan`。
+6. 登录名不再携带 `ouid`，不得继续使用 `zhansan@zhansan_shop`、`zhansan@fire_xinye_shu` 这类多账号模拟空间切换。
 
 ---
 
-## 2. 数据库修改
+## 2. 数据库基线
 
 ### person
 
 ```sql
 CREATE TABLE person (
   id SERIAL PRIMARY KEY,
-  puid VARCHAR(100) UNIQUE NOT NULL
+  puid VARCHAR(100) UNIQUE NOT NULL CHECK (puid ~ '^[A-Za-z0-9_-]+$'),
+  name VARCHAR(255) NOT NULL,
+  birth_date DATE,
+  health_reminders JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_person_puid
-ON person(puid)
-;
 ```
 
 ### organization
@@ -36,79 +38,80 @@ ON person(puid)
 ```sql
 CREATE TABLE organization (
   id SERIAL PRIMARY KEY,
-  ouid VARCHAR(100) UNIQUE NOT NULL
+  ouid VARCHAR(100) UNIQUE NOT NULL CHECK (ouid ~ '^[A-Za-z0-9_-]+$'),
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(100) NOT NULL,
+  description TEXT,
+  funds DECIMAL(15,2) DEFAULT 0,
+  reputation INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_organization_ouid
-ON organization(ouid)
-;
 ```
 
 ### account
 
 ```sql
-CREATE TABLE IF NOT EXISTS account (
-    id SERIAL PRIMARY KEY,
-    person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
-    login VARCHAR(150) NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    salt TEXT,
-    status VARCHAR(30) NOT NULL DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE account (
+  id SERIAL PRIMARY KEY,
+  person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+  login VARCHAR(150) UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  salt TEXT,
+  status VARCHAR(30) NOT NULL DEFAULT 'active',
+  system_role VARCHAR(30) NOT NULL DEFAULT 'user',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
+
+### membership
+
+```sql
+CREATE TABLE membership (
+  id SERIAL PRIMARY KEY,
+  person_id INTEGER NOT NULL REFERENCES person(id) ON DELETE CASCADE,
+  organization_id INTEGER NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+  role VARCHAR(100),
+  joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(person_id, organization_id)
+);
+```
+
+说明：以上数字主键和外键仅允许服务端/数据库内部使用，业务 API、JWT、前端状态不得返回。
 
 ---
 
 ## 3. 字段命名约定
 
-- `person.id`：人员数字主键。
-- `person.puid`：人员业务标识，英文非特殊字符，例如 `caocao`。
-- `organization.id`：组织数字主键。
-- `organization.ouid`：组织业务标识，规则同 `puid`，例如 `wei`。
-- 除 `person` / `organization` 两张主表外，其他表的外键统一使用 `person_id` / `organization_id`，不得再使用 `puid` / `ouid` 表示数字外键。
-
-需要调整的表包括但不限于：
-
-| 表 | 旧字段 | 新字段 |
-|----|--------|--------|
-| `membership` | `puid`, `ouid` | `person_id`, `organization_id` |
-| `resource` | `ouid`, `puid` | `organization_id`, `person_id` |
-| `warehouse` | `ouid` | `organization_id` |
-| `transaction` | `ouid` | `organization_id` |
-| `party` | `puid`, `ouid` | `person_id`, `organization_id` |
+- `account.login`：登录凭据，唯一，不解析组织上下文。
+- `person.puid`：业务人员标识，字符串，英文安全字符。
+- `organization.ouid`：业务空间标识，字符串，英文安全字符。
+- 其他表外键统一使用 `person_id` / `organization_id`。
+- 对外身份字段只允许 `puid` / `ouid`；禁止旧字段 `pid` / `oid`。
 
 ---
 
 ## 4. 登录名规则
 
-只支持 `.cn` 登录名：
+新规则：
 
 ```text
-{person.puid}@{organization.ouid}.cn
+login = account.login
 ```
 
 示例：
 
 ```text
-caocao@wei.cn
-```
-
-解析为：
-
-```json
-{
-  "puid": "caocao",
-  "ouid": "wei"
-}
+zhansan
 ```
 
 约束：
 
-- `person.puid` 只允许英文、数字、下划线、短横线。
-- `organization.ouid` 只允许英文、数字、下划线、短横线。
-- 不支持 `.com`、`.org` 或中文登录名。
+1. `login` 是账号凭据，不是 `puid/ouid` 上下文。
+2. 登录接口不得解析 `login` 中的 `@`、`.` 或其他字符来选择组织。
+3. 未来如支持邮箱/手机号登录，也只能用于定位 account。
+4. 组织选择来自 `membership` 与 `/auth/switch-organization`。
+5. 测试必须覆盖旧形式不会触发组织切换：`zhansan@fire_xinye_shu` 不得被解释为 `puid=zhansan, ouid=fire_xinye_shu`。
 
 ---
 
@@ -124,61 +127,26 @@ POST /auth/register
 
 ```json
 {
-  "login": "caocao@wei.cn",
-  "password": "demo123",
-  "name": "曹操",
-  "role": "主公"
+  "login": "zhansan",
+  "password": "demo-password",
+  "name": "张三",
+  "puid": "zhansan",
+  "initial_ouid": "zhansan_shop"
 }
 ```
 
 ### 实现流程
 
-1. 校验 `login` 格式。
-2. 解析 `puid=caocao`、`ouid=wei`。
-3. 查询 `organization.ouid = ouid`，不存在返回 404。
-4. 查询 `person.puid = puid`。
-5. 如果 person 不存在，创建：
-   - `puid = puid`
-   - `name = request.name`
-6. 查询 `account.login = request.login`。
-7. 如果 account 不存在，创建：
-   - `person_id = person.id`
-   - `login = request.login`
-   - `password = hash(password)`
-   - `salt` 按哈希方案处理
-   - `status = active`
-8. 如果 account 已存在：
-   - 必须属于同一个 `person_id`
-   - 密码必须校验通过，否则返回 409
-9. 查询 `membership(person_id=person.id, organization_id=organization.id)`。
-10. 如果 membership 不存在，创建 membership，role 默认 `member`。
-11. 返回 person、organization、account、membership。
-
-### Response
-
-```json
-{
-  "person": {
-    "id": 8,
-    "puid": "caocao",
-    "name": "曹操"
-  },
-  "organization": {
-    "id": 2,
-    "ouid": "wei",
-    "name": "魏国",
-    "type": "company"
-  },
-  "account": {
-    "id": 1,
-    "login": "caocao@wei.cn",
-    "status": "active"
-  },
-  "membership": {
-    "role": "主公"
-  }
-}
-```
+1. 校验 `login` 非空且唯一。
+2. 决定 `puid`：
+   - 请求带 `puid` 时使用请求值并校验。
+   - 请求不带 `puid` 且 `login` 满足 `^[A-Za-z0-9_-]+$` 时，默认 `puid = login`。
+   - 其他情况返回 422，要求补充合法 `puid`。
+3. 创建或绑定 `person`。公共注册不得抢占已被其他 account 绑定的 `person.puid`。
+4. 创建 `account`，密码只保存哈希。
+5. 如传 `initial_ouid`，查询组织并创建 `membership`，公共注册角色固定为 `member`。
+6. 如未传 `initial_ouid`，返回 `requires_organization=true`。
+7. 所有响应剥离 DB 数字 ID。
 
 ---
 
@@ -194,74 +162,33 @@ POST /auth/login
 
 ```json
 {
-  "login": "caocao@wei.cn",
-  "password": "demo123"
+  "login": "zhansan",
+  "password": "demo-password"
 }
 ```
 
 ### 实现流程
 
-1. 校验 `login` 格式。
-2. 解析 `puid` 和 `ouid`。
-3. 查询 `account.login = request.login`，不存在返回 401。
-4. 校验 `account.status = active`，否则返回 403。
-5. 通过 `account.person_id` 查询 person。
-6. 校验 `person.puid` 与登录名中的 `puid` 一致。
-7. 查询 `organization.ouid = ouid`。
-8. 查询 membership：
-
-```sql
-SELECT role
-FROM membership
-WHERE person_id = :person_id
-  AND organization_id = :organization_id;
-```
-
-9. membership 不存在返回 401 或 403。
-10. 校验 `account.password`。
-11. 签发 JWT。
-12. 返回 token 和登录上下文。
+1. 按 `account.login` 查询账号；不存在返回 401。
+2. 校验账号 active；非 active 返回 403。
+3. 校验密码；错误返回 401。
+4. 通过 `account.person_id` 查询 person。
+5. 查询 person 的 membership 列表。
+6. 无 membership 时返回 `requires_organization=true`，前端展示加入/创建空间占位。
+7. 有 membership 时选择默认空间，签发带 `puid/ouid` 的 JWT，并返回可切换组织列表。
+8. 切换组织必须走 `/auth/switch-organization`，只提交目标 `ouid`。
 
 ### JWT payload
 
-JWT 只放业务字段，不夹杂数据库数字主键。
-
 ```json
 {
-  "puid": "caocao",
-  "person_name": "曹操",
-  "ouid": "wei",
-  "organization_name": "魏国",
-  "organization_type": "company",
-  "role": "主公"
-}
-```
-
-### Response
-
-```json
-{
-  "access_token": "...",
-  "token_type": "bearer",
-  "person": {
-    "id": 8,
-    "puid": "caocao",
-    "name": "曹操"
-  },
-  "organization": {
-    "id": 2,
-    "ouid": "wei",
-    "name": "魏国",
-    "type": "company"
-  },
-  "account": {
-    "id": 1,
-    "login": "caocao@wei.cn",
-    "status": "active"
-  },
-  "membership": {
-    "role": "主公"
-  }
+  "puid": "zhansan",
+  "person_name": "张三",
+  "ouid": "zhansan_shop",
+  "organization_name": "张三小店",
+  "organization_type": "ecommerce",
+  "system_role": "user",
+  "role": "owner"
 }
 ```
 
@@ -269,76 +196,68 @@ JWT 只放业务字段，不夹杂数据库数字主键。
 
 ## 7. 代码修改点
 
-### `src/db/database.py`
+### `src/models/schemas.py`
 
-- schema 增加 `person.puid`
-- schema 增加 `organization.ouid`
-- schema 新增 `account`
-- 增加按 `person.puid` 查询 person 的函数
-- 增加按 `organization.ouid` 查询 organization 的函数
-- 增加 account 查询和创建函数
-- 增加 membership 校验函数
-- 将除 `person` / `organization` 外所有表的 `puid` / `ouid` 数字外键重命名为 `person_id` / `organization_id`
+- `RegisterRequest` 增加 `puid: Optional[str]`、`initial_ouid: Optional[str]`。
+- `LoginRequest.login` 注释改为账号凭据。
+- Auth 请求模型启用 `extra = "forbid"`。
 
 ### `src/auth/auth.py`
 
-- 实现密码 hash
-- 实现密码 verify
-- 实现 JWT 创建
-- 实现 JWT 解析
-- 密码算法优先 Argon2；如果依赖接入成本高，允许先用 bcrypt。
+- 移除认证链路对 `parse_login_name()` 的依赖。
+- 保留 `validate_puid()` / `validate_ouid()`。
+- 新增安全的 `derive_puid_from_login(login)`，仅用于注册缺省值。
 
-### `src/app.py`
+### `src/routers/auth.py`
 
-新增接口：
-
-```http
-POST /auth/register
-POST /auth/login
-```
+- `_authenticate_login()` 按 `account.login` 认证。
+- 注册不解析 login；可选 `initial_ouid` 创建 membership。
+- 登录响应返回 organizations 列表。
+- `/seller-login` 如继续保留，应复用同一认证逻辑。
 
 ### `scripts/init_db.py`
 
-初始化样例数据：
+旧三国样例可保留历史超级账号，但新增示例登录不得再使用 `puid@ouid` 表示空间。
+
+### `scripts/seed_demo_spaces.py`
+
+- 只创建一个演示账号：
 
 ```text
-liubei@shu.cn / demo123
-caocao@wei.cn / demo123
-sunquan@wu.cn / demo123
-zhugeliang@shu.cn / demo123
+account.login = zhansan
+person.puid = zhansan
 ```
 
-### `agents/tdd/test_auth_api.py`
+- 建立 `zhansan` 到 4 个演示空间的 membership。
+- 密码继续从 `DEMO_ZHANSAN_PASSWORD` 或未提交 `.env` 读取，不得写入源码。
 
-新增黑盒测试：
+### Frontend
 
-- `test_register_success`
-- `test_register_invalid_login_format`
-- `test_register_unknown_org`
-- `test_login_success`
-- `test_login_wrong_password`
-- `test_login_wrong_org_membership`
-- `test_login_unknown_org`
-- `test_login_inactive_account`
+- 登录页 placeholder 改为 `zhansan`。
+- 登录成功后使用返回的 `organizations` 驱动 Header 空间切换。
+- 注册页支持 `login/password/name/puid/initial_ouid`。
 
 ---
 
 ## 8. 禁止事项
 
-- 禁止在 `person` 表保存密码。
-- 禁止明文密码入库。
-- 禁止绕过 `membership` 判断组织权限。
-- 禁止用 `person.name` 或 `organization.name` 登录。
-- 禁止支持 `.com`，当前只支持 `.cn`。
+1. 禁止在 `person` 表保存密码。
+2. 禁止明文密码入库。
+3. 禁止绕过 membership 判断组织权限。
+4. 禁止用 `person.name` 或 `organization.name` 登录。
+5. 禁止把 `account.login` 解析为 `puid/ouid`。
+6. 禁止恢复旧 `pid/oid` 兼容。
+7. 禁止对外返回 DB 数字 ID。
 
 ---
 
 ## 9. 验收标准
 
-- `caocao@wei.cn / demo123` 登录成功，返回 `ouid=home`、`ouid=wei`。
-- `caocao@shu.cn / demo123` 登录失败，因为 membership 不存在。
-- `caocao@wei.cn / wrong` 登录失败，返回 401。
-- `caocao@unknown.cn / demo123` 登录失败。
-- `曹操@魏国.cn / demo123` 登录失败。
-- `account.status != active` 登录失败，返回 403。
-- 登录成功后，前端和 `/chat` 使用 token 或登录态中的 `ouid`。
+- `zhansan / 正确密码` 登录成功，返回默认空间和可切换组织列表。
+- `zhansan / wrong` 返回 401。
+- `account.status != active` 返回 403。
+- 注册新用户成功创建 `account + person`。
+- 注册不带 `initial_ouid` 时返回 `requires_organization=true`。
+- 切换非 membership 组织返回 403。
+- 认证响应和 JWT 无 DB 数字 ID。
+- 旧登录形式不再作为空间上下文解析。

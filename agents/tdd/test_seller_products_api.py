@@ -29,9 +29,10 @@ def shop():
     assert resp.status_code == 201, resp.text
     data["ouid"] = ouid
 
-    login = f"seller_{s}@{ouid}"
+    login = f"seller_{s}"
     resp = client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"店主_{s}",
+        "initial_ouid": ouid,
     })
     assert resp.status_code == 201, resp.text
 
@@ -116,9 +117,10 @@ def test_products_isolated_between_shops():
     assert client.post("/organizations", json={
         "name": f"BE09店铺B_{s}", "org_type": "ecommerce", "ouid": ouid,
     }).status_code == 201
-    login = f"seller_b_{s}@{ouid}"
+    login = f"seller_b_{s}"
     assert client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"店主B_{s}",
+        "initial_ouid": ouid,
     }).status_code == 201
     resp = client.post("/auth/seller-login", json={"login": login, "password": "pass123"})
     assert resp.status_code == 200
@@ -142,9 +144,10 @@ def test_products_requires_ecommerce():
         "name": f"BE09非电商_{s}", "org_type": "family", "ouid": ouid,
     })
     assert resp.status_code == 201, resp.text
-    login = f"fam_{s}@{ouid}"
+    login = f"fam_{s}"
     assert client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"家人_{s}",
+        "initial_ouid": ouid,
     }).status_code == 201
     resp = client.post("/auth/seller-login", json={"login": login, "password": "pass123"})
     assert resp.status_code == 200

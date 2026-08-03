@@ -23,7 +23,7 @@ load_dotenv(REPO_ROOT / ".env", override=False)
 from playwright.sync_api import sync_playwright
 
 FRONTEND = os.getenv("FE_URL", "http://localhost:5174")
-LOGIN = os.getenv("DEMO_LOGIN", "zhansan@zhansan_shop")
+LOGIN = os.getenv("DEMO_LOGIN", "zhansan")
 PASSWORD = os.getenv("DEMO_ZHANSAN_PASSWORD", "").strip()
 if not PASSWORD:
     raise RuntimeError("DEMO_ZHANSAN_PASSWORD is required for QA screenshots")

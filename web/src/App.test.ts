@@ -71,6 +71,11 @@ const LOGIN_RESULT = {
   organization: { ouid: 'shop_demo', name: '示例店铺', type: 'ecommerce' },
   membership: { role: 'owner' },
   system_role: 'user',
+  organizations: [
+    { ouid: 'shop_demo', name: '示例店铺', type: 'ecommerce', role: 'owner' },
+    { ouid: 'family', name: '我的家庭', type: 'family', role: 'member' },
+  ],
+  requires_organization: false,
 }
 
 const ORG_LIST = [
@@ -85,6 +90,8 @@ const FAMILY_RESULT = {
   organization: { ouid: 'family', name: '我的家庭', type: 'family' },
   membership: { role: 'member' },
   system_role: 'user',
+  organizations: ORG_LIST,
+  requires_organization: false,
 }
 
 const ECOMMERCE_CTX = {
@@ -120,7 +127,7 @@ afterEach(() => {
 })
 
 async function login(wrapper: ReturnType<typeof mount>) {
-  await wrapper.find('input[data-test="login"]').setValue('shopkeeper@shop_demo')
+  await wrapper.find('input[data-test="login"]').setValue('shopkeeper')
   await wrapper.find('input[data-test="password"]').setValue('pass123')
   await wrapper.find('form').trigger('submit')
   await flushPromises()

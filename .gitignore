@@ -54,3 +54,4 @@ output/
 .opencode/
 opencode.json
 docs/superpowers/
+.codegraph/

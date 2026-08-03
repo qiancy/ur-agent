@@ -6,6 +6,7 @@ once and switches between organizations through membership + JWT re-issue.
 login is NEVER parsed as puid/ouid context.
 """
 from fastapi import APIRouter, HTTPException, Request
+from psycopg2.errors import UniqueViolation
 
 from src.models.schemas import RegisterRequest, LoginRequest, SwitchOrganizationRequest
 from src.db.database import (
@@ -130,6 +131,8 @@ async def register(body: RegisterRequest):
     """
     if not body.login.strip():
         raise HTTPException(422, "login is required")
+    if not body.name.strip():
+        raise HTTPException(422, "name is required")
 
     if body.puid is not None and body.puid.strip():
         puid = body.puid.strip()
@@ -154,9 +157,12 @@ async def register(body: RegisterRequest):
     hashed_password, salt = hash_password(body.password)
 
     from src.db.database import register_personal_space
-    person, account, org, membership = register_personal_space(
-        puid=puid, name=body.name, login=body.login,
-        password_hash=hashed_password, salt=salt)
+    try:
+        person, account, org, membership = register_personal_space(
+            puid=puid, name=body.name, login=body.login,
+            password_hash=hashed_password, salt=salt)
+    except UniqueViolation:
+        raise HTTPException(409, "puid or login already registered")
 
     return _context_dto(person, org, account, membership)
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { sellerPurchaseIn, sellerSalesOut } from '../api/seller'
+import { listProducts, type SellerProduct } from '../api/products'
 
 const props = defineProps<{
   mode: 'purchase_in' | 'sales_out'
@@ -24,9 +25,51 @@ const form = reactive({
   counterparty_name: '',
 })
 
+const activeProducts = ref<SellerProduct[]>([])
+const showOptions = ref(false)
+const unknownConfirm = ref(false)
+
 const title = computed(() =>
   props.mode === 'purchase_in' ? '入库' : '出库',
 )
+
+const productMatches = computed(() => {
+  const query = form.product_uid.trim().toLowerCase()
+  if (!query) return []
+  return activeProducts.value.filter((p) =>
+    p.product_uid.toLowerCase().includes(query),
+  )
+})
+
+const needsUnknownConfirm = computed(
+  () =>
+    activeProducts.value.length > 0 &&
+    !activeProducts.value.some(
+      (p) => p.product_uid === form.product_uid.trim(),
+    ) &&
+    !unknownConfirm.value,
+)
+
+onMounted(async () => {
+  try {
+    activeProducts.value = (await listProducts()).filter(
+      (p) => p.status === 'active',
+    )
+  } catch {
+    activeProducts.value = []
+  }
+})
+
+function onProductInput() {
+  unknownConfirm.value = false
+  showOptions.value = true
+}
+
+function pickProduct(uid: string) {
+  form.product_uid = uid
+  unknownConfirm.value = false
+  showOptions.value = false
+}
 
 function validate(): string[] {
   const errors: string[] = []
@@ -52,6 +95,19 @@ async function onSubmit() {
     error.value = errors.join('；')
     return
   }
+  if (needsUnknownConfirm.value) {
+    unknownConfirm.value = true
+    return
+  }
+  await doSubmit()
+}
+
+async function confirmUnknownSubmit() {
+  unknownConfirm.value = false
+  await doSubmit()
+}
+
+async function doSubmit() {
   loading.value = true
   try {
     const body = {
@@ -87,7 +143,28 @@ async function onSubmit() {
       <form class="modal-body" @submit.prevent="onSubmit">
         <label class="field">
           <span class="field-label">商品编号</span>
-          <input v-model="form.product_uid" data-test="product_uid" type="text" placeholder="usb_cable_1m" />
+          <input
+            v-model="form.product_uid"
+            data-test="product_uid"
+            type="text"
+            placeholder="搜索选择或手动输入"
+            autocomplete="off"
+            @focus="showOptions = true"
+            @input="onProductInput"
+          />
+          <ul v-if="showOptions && productMatches.length" class="product-options" data-test="product-options">
+            <li v-for="p in productMatches" :key="p.product_uid">
+              <button
+                type="button"
+                class="option"
+                :data-test="`option-${p.product_uid}`"
+                @mousedown.prevent="pickProduct(p.product_uid)"
+                @click="pickProduct(p.product_uid)"
+              >
+                {{ p.product_uid }} · {{ p.unit }}
+              </button>
+            </li>
+          </ul>
         </label>
         <label class="field">
           <span class="field-label">仓库编码</span>
@@ -123,6 +200,21 @@ async function onSubmit() {
           </button>
         </div>
       </form>
+
+      <div v-if="unknownConfirm" class="confirm-mask" data-test="unknown-confirm" @click.self="unknownConfirm = false">
+        <div class="confirm-box" role="dialog" aria-label="确认新增商品">
+          <div class="confirm-head">
+            <div class="confirm-title">确认新增商品</div>
+          </div>
+          <div class="confirm-body">
+            <p class="confirm-text">该商品不存在，确认新增？</p>
+            <div class="modal-actions">
+              <button class="btn" type="button" data-test="cancel-unknown" @click="unknownConfirm = false">取消</button>
+              <button class="btn primary" type="button" data-test="confirm-unknown" @click="confirmUnknownSubmit">确认</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -182,6 +274,65 @@ async function onSubmit() {
 .field-label {
   font-size: 12px;
   color: var(--muted, #637083);
+}
+.product-options {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--line, #d8dee8);
+  border-radius: 7px;
+  background: #ffffff;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.product-options .option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 5px;
+}
+.product-options .option:hover {
+  background: #f0f4f8;
+}
+.confirm-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 32, 46, 0.35);
+  display: grid;
+  place-items: center;
+  z-index: 120;
+}
+.confirm-box {
+  width: 340px;
+  max-width: 90vw;
+  background: var(--panel, #ffffff);
+  border-radius: 10px;
+  border: 1px solid var(--line, #d8dee8);
+  box-shadow: 0 12px 40px rgba(22, 32, 46, 0.2);
+}
+.confirm-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line, #d8dee8);
+}
+.confirm-title {
+  font-size: 15px;
+  font-weight: 750;
+}
+.confirm-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.confirm-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink, #17202a);
 }
 input {
   padding: 9px 11px;

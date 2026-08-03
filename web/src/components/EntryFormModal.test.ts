@@ -4,10 +4,15 @@ import EntryFormModal from './EntryFormModal.vue'
 
 const purchaseMock = vi.fn()
 const salesMock = vi.fn()
+const productsMock = vi.fn()
 
 vi.mock('../api/seller', () => ({
   sellerPurchaseIn: (...args: unknown[]) => purchaseMock(...args),
   sellerSalesOut: (...args: unknown[]) => salesMock(...args),
+}))
+
+vi.mock('../api/products', () => ({
+  listProducts: (...args: unknown[]) => productsMock(...args),
 }))
 
 function fillForm(wrapper: ReturnType<typeof mount>) {
@@ -37,6 +42,8 @@ describe('EntryFormModal', () => {
   beforeEach(() => {
     purchaseMock.mockReset()
     salesMock.mockReset()
+    productsMock.mockReset()
+    productsMock.mockResolvedValue([])
   })
 
   it('renders purchase-in form with all business fields when mode is purchase_in', () => {
@@ -140,5 +147,79 @@ describe('EntryFormModal', () => {
       expect(key).not.toBe('oid')
       expect(key.endsWith('_id')).toBe(false)
     }
+  })
+
+  it('filters searchable product options from active products', async () => {
+    productsMock.mockResolvedValue([
+      { product_uid: 'SKU-001', unit: '个', status: 'active', stock_total: 5, stock_location_count: 1, description: null },
+      { product_uid: 'SKU-002', unit: '盒', status: 'active', stock_total: 3, stock_location_count: 1, description: null },
+      { product_uid: 'SKU-OLD', unit: '个', status: 'inactive', stock_total: 0, stock_location_count: 0, description: null },
+    ])
+    const wrapper = mount(EntryFormModal, { props: { mode: 'purchase_in' } })
+    await flushPromises()
+
+    const input = wrapper.find('[data-test="product_uid"]')
+    await input.trigger('focus')
+    await input.setValue('SKU-00')
+
+    const options = wrapper.findAll('[data-test^="option-"]')
+    expect(options).toHaveLength(2)
+    expect(wrapper.find('[data-test="option-SKU-001"]').text()).toContain('SKU-001')
+    expect(wrapper.find('[data-test="option-SKU-OLD"]').exists()).toBe(false)
+  })
+
+  it('picks a product from the options and uses its uid', async () => {
+    productsMock.mockResolvedValue([
+      { product_uid: 'SKU-001', unit: '个', status: 'active', stock_total: 5, stock_location_count: 1, description: null },
+      { product_uid: 'SKU-002', unit: '盒', status: 'active', stock_total: 3, stock_location_count: 1, description: null },
+    ])
+    const wrapper = mount(EntryFormModal, { props: { mode: 'purchase_in' } })
+    await flushPromises()
+
+    const input = wrapper.find('[data-test="product_uid"]')
+    await input.trigger('focus')
+    await input.setValue('SKU-00')
+    await wrapper.find('[data-test="option-SKU-002"]').trigger('click')
+
+    expect((input.element as HTMLInputElement).value).toBe('SKU-002')
+    expect(wrapper.find('[data-test="product-options"]').exists()).toBe(false)
+  })
+
+  it('asks for a second confirmation when the product does not exist', async () => {
+    productsMock.mockResolvedValue([
+      { product_uid: 'SKU-001', unit: '个', status: 'active', stock_total: 5, stock_location_count: 1, description: null },
+    ])
+    purchaseMock.mockResolvedValue({ status: 'ok', new_quantity: 20 })
+    const wrapper = mount(EntryFormModal, { props: { mode: 'purchase_in' } })
+    await flushPromises()
+
+    await fillAll(wrapper, 'purchase_in')
+    await wrapper.find('form').trigger('submit')
+
+    expect(purchaseMock).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="unknown-confirm"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('该商品不存在，确认新增？')
+
+    await wrapper.find('[data-test="confirm-unknown"]').trigger('click')
+    await flushPromises()
+
+    expect(purchaseMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('submitted')).toBeTruthy()
+  })
+
+  it('does not submit when the unknown-product confirmation is cancelled', async () => {
+    productsMock.mockResolvedValue([
+      { product_uid: 'SKU-001', unit: '个', status: 'active', stock_total: 5, stock_location_count: 1, description: null },
+    ])
+    const wrapper = mount(EntryFormModal, { props: { mode: 'purchase_in' } })
+    await flushPromises()
+
+    await fillAll(wrapper, 'purchase_in')
+    await wrapper.find('form').trigger('submit')
+
+    await wrapper.find('[data-test="cancel-unknown"]').trigger('click')
+
+    expect(purchaseMock).not.toHaveBeenCalled()
+    expect(wrapper.emitted('submitted')).toBeUndefined()
   })
 })

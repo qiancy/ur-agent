@@ -232,4 +232,26 @@ describe('GenericSpaceView', () => {
 
     expect(wrapper.emitted('logged-out')).toBeTruthy()
   })
+
+  it('reloads all data when the ouid prop changes', async () => {
+    mockAll()
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    await flushPromises()
+    expect(overviewMock).toHaveBeenCalledTimes(1)
+
+    overviewMock.mockClear()
+    resourcesMock.mockClear()
+    personsMock.mockClear()
+    transactionsMock.mockClear()
+    timelineMock.mockClear()
+
+    await wrapper.setProps({ ouid: 'deep_space_fleet' })
+    await flushPromises()
+
+    expect(overviewMock).toHaveBeenCalledTimes(1)
+    expect(resourcesMock).toHaveBeenCalledTimes(1)
+    expect(personsMock).toHaveBeenCalledTimes(1)
+    expect(transactionsMock).toHaveBeenCalledTimes(1)
+    expect(timelineMock).toHaveBeenCalledTimes(1)
+  })
 })

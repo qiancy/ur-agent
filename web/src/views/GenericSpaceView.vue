@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '../api/client'
 import {
   getSpaceOverview,
@@ -70,7 +70,7 @@ async function load() {
   }
 }
 
-onMounted(load)
+watch(() => props.ouid, load, { immediate: true })
 
 function toggleLocations(name: string) {
   openLocations.value[name] = !openLocations.value[name]

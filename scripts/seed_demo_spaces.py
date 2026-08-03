@@ -46,6 +46,7 @@ DEMO_NAME = "张三"
 # (ouid 或 ouid 前缀, 角色)；前缀以 '*' 结尾表示模糊匹配
 DEMO_SPACES = [
     ("fe06_spike_*", "owner"),
+    ("zhansan_shop", "owner"),
     ("fire_xinye_shu", "owner"),
     ("zhangsan_family", "owner"),
     ("deep_space_fleet", "owner"),

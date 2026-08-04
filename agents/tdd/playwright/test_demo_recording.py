@@ -1,19 +1,24 @@
 import json
 import os
 import re
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import pytest
+from dotenv import load_dotenv
 from playwright.sync_api import Page, expect
 
 from conftest import API_BASE, BASE_URL
 
+load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=False)
 
-LOGIN = os.getenv("DEMO_ZHANSAN_LOGIN", "zhansan")
-PASSWORD = os.getenv("DEMO_ZHANSAN_PASSWORD", "demo123")
-SHOP_OUID = "taobao_shop_a"
-XINYE_OUID = "xinye_campaign"
+
+LOGIN = os.getenv("DEMO_RECORDING_LOGIN", "liuming")
+PASSWORD = os.getenv("DEMO_LIUMING_PASSWORD", "").strip()
+PERSONAL_OUID = os.getenv("DEMO_RECORDING_PERSONAL_OUID", "liuming_personal")
+SHOP_OUID = os.getenv("DEMO_RECORDING_SHOP_OUID", "liuming_mingdeng_shop")
+CAMPAIGN_OUID = os.getenv("DEMO_RECORDING_CAMPAIGN_OUID", "liuming_xinye_review")
 
 INTERNAL_KEYS = {
     "id",
@@ -27,6 +32,12 @@ INTERNAL_KEYS = {
     "warehouse" + "_id",
     "transaction" + "_id",
 }
+
+if not PASSWORD:
+    pytest.exit(
+        "DEMO_LIUMING_PASSWORD 未设置（从仓库 .env 或环境变量读取）。"
+        "密码不允许写死在测试/源码/文档中。",
+    )
 
 
 def _path(url: str) -> str:
@@ -51,14 +62,21 @@ def _goto_clean_login(page: Page) -> None:
     page.locator('[data-test="login-form"]').wait_for(state="visible", timeout=10_000)
 
 
+def _wait_for_space_view(page: Page, ctx: dict) -> None:
+    if ctx.get("orgType") == "ecommerce":
+        page.locator('[data-test="workbench"]').wait_for(state="visible", timeout=10_000)
+    else:
+        page.locator('[data-test="generic-space"]').wait_for(state="visible", timeout=10_000)
+
+
 def _login(page: Page) -> dict:
     _goto_clean_login(page)
     page.locator('[data-test="login"]').fill(LOGIN)
     page.locator('[data-test="password"]').fill(PASSWORD)
     page.get_by_role("button", name=re.compile("登录")).click()
     page.locator('[data-test="app-header"]').wait_for(state="visible", timeout=10_000)
-    page.locator('[data-test="workbench"]').wait_for(state="visible", timeout=10_000)
     ctx = page.evaluate("JSON.parse(localStorage.getItem('unires_ctx') || '{}')")
+    _wait_for_space_view(page, ctx)
     return ctx
 
 
@@ -76,7 +94,7 @@ def _mock_seller_chat_if_requested(page: Page) -> None:
             content_type="application/json",
             body=json.dumps(
                 {
-                    "response": "库存最低的商品是草船借箭桌游卡牌，当前库存 4盒。",
+                    "response": "库存最低的商品是草船借箭纪念徽章，当前库存 3枚。",
                     "ouid": SHOP_OUID,
                 },
                 ensure_ascii=False,
@@ -91,12 +109,13 @@ def test_01_login_and_context_storage(page: Page):
     ctx = _login(page)
 
     assert ctx["puid"] == LOGIN
-    assert ctx["ouid"] == SHOP_OUID
-    assert ctx["orgType"] == "ecommerce"
+    assert ctx["ouid"] == PERSONAL_OUID
+    assert ctx["orgType"] == "personal"
     _assert_no_internal_keys(ctx)
 
-    expect(page.locator('[data-test="workbench"]')).to_be_visible()
-    expect(page.get_by_role("heading", name="经营工作台")).to_be_visible()
+    expect(page.locator('[data-test="generic-space"]')).to_be_visible()
+    expect(page.locator('[data-test="ov-name"]')).to_contain_text("刘明的个人空间")
+    expect(page.locator('[data-test="ov-type"]')).to_contain_text("personal")
 
 
 @pytest.mark.recording
@@ -109,8 +128,8 @@ def test_02_header_no_ai_input_and_org_display(page: Page):
     expect(header.locator('[data-test*="ai" i]')).to_have_count(0)
     expect(header.get_by_text(re.compile("问\\s*AI|Seller AI", re.I))).to_have_count(0)
 
-    expect(header).to_contain_text("淘宝小店 A")
-    expect(header).to_contain_text("ecommerce")
+    expect(header).to_contain_text("刘明的个人空间")
+    expect(header).to_contain_text("personal")
     expect(header).to_contain_text(LOGIN)
 
 
@@ -121,18 +140,32 @@ def test_03_switch_organization_jwt_refresh(page: Page):
     with page.expect_request(
         lambda req: req.method == "POST" and _path(req.url) == "/auth/switch-organization"
     ) as request_info:
-        _switch_org(page, XINYE_OUID)
+        _switch_org(page, SHOP_OUID)
 
     request_body = json.loads(request_info.value.post_data or "{}")
-    assert request_body == {"ouid": XINYE_OUID}
+    assert request_body == {"ouid": SHOP_OUID}
     _assert_no_internal_keys(request_body)
 
+    page.locator('[data-test="workbench"]').wait_for(state="visible", timeout=10_000)
+    expect(page.get_by_role("heading", name="经营工作台")).to_be_visible()
+
+    ctx = page.evaluate("JSON.parse(localStorage.getItem('unires_ctx') || '{}')")
+    assert ctx["ouid"] == SHOP_OUID
+    assert ctx["orgType"] == "ecommerce"
+    _assert_no_internal_keys(ctx)
+
+    with page.expect_request(
+        lambda req: req.method == "POST" and _path(req.url) == "/auth/switch-organization"
+    ) as request_info:
+        _switch_org(page, CAMPAIGN_OUID)
+    assert json.loads(request_info.value.post_data or "{}") == {"ouid": CAMPAIGN_OUID}
+
     page.locator('[data-test="generic-space"]').wait_for(state="visible", timeout=10_000)
-    expect(page.locator('[data-test="ov-name"]')).to_contain_text("火烧新野战役")
+    expect(page.locator('[data-test="ov-name"]')).to_contain_text("新野火攻复盘空间")
     expect(page.locator('[data-test="ov-type"]')).to_contain_text("campaign")
 
     ctx = page.evaluate("JSON.parse(localStorage.getItem('unires_ctx') || '{}')")
-    assert ctx["ouid"] == XINYE_OUID
+    assert ctx["ouid"] == CAMPAIGN_OUID
     assert ctx["orgType"] == "campaign"
     _assert_no_internal_keys(ctx)
 
@@ -140,7 +173,7 @@ def test_03_switch_organization_jwt_refresh(page: Page):
 @pytest.mark.recording
 def test_04_non_ecommerce_api_isolation(page: Page):
     _login(page)
-    _switch_org(page, XINYE_OUID)
+    _switch_org(page, CAMPAIGN_OUID)
     page.locator('[data-test="generic-space"]').wait_for(state="visible", timeout=10_000)
     page.locator('[data-test="block-overview"]').wait_for(state="visible", timeout=10_000)
 
@@ -157,12 +190,12 @@ def test_04_non_ecommerce_api_isolation(page: Page):
     ]
     assert leaks == [], f"non-ecommerce space leaked seller API calls: {leaks}"
 
-    expect(page.locator('[data-test="ov-name"]')).to_contain_text("火烧新野战役")
+    expect(page.locator('[data-test="ov-name"]')).to_contain_text("新野火攻复盘空间")
     expect(page.locator('[data-test="ov-type"]')).to_contain_text("campaign")
     events_text = page.locator('[data-test="ov-events"]').inner_text()
-    assert int(events_text) >= 6, f"ov-events={events_text} expected >= 6"
+    assert int(events_text) >= 8, f"ov-events={events_text} expected >= 8"
 
-    expect(page.get_by_text("侦察曹军南下")).to_be_visible()
+    expect(page.get_by_text("斥候确认曹军路线")).to_be_visible()
     expect(page.get_by_text("新野点火")).to_be_visible()
     expect(page.locator('[data-test="dim-info"]').first).to_be_visible()
     expect(page.locator('[data-test="dim-logistics"]').first).to_be_visible()
@@ -170,8 +203,8 @@ def test_04_non_ecommerce_api_isolation(page: Page):
     expect(page.locator('[data-test="flow-info"]')).to_contain_text("信息流")
     expect(page.locator('[data-test="flow-logistics"]')).to_contain_text("物流")
     expect(page.locator('[data-test="flow-people"]')).to_contain_text("人流")
-    expect(page.locator('[data-test="group-knowledge"]')).to_contain_text("斥候情报")
-    expect(page.locator('[data-test="group-physical"]')).to_contain_text("火油")
+    expect(page.locator('[data-test="group-knowledge"]')).to_contain_text("斥候简报")
+    expect(page.locator('[data-test="group-physical"]')).to_contain_text("火油桶")
 
 
 @pytest.mark.recording
@@ -179,16 +212,14 @@ def test_05_ecommerce_workbench_and_seller_ai(page: Page):
     _mock_seller_chat_if_requested(page)
     _login(page)
 
-    _switch_org(page, XINYE_OUID)
-    page.locator('[data-test="generic-space"]').wait_for(state="visible", timeout=10_000)
     _switch_org(page, SHOP_OUID)
     page.locator('[data-test="workbench"]').wait_for(state="visible", timeout=10_000)
 
     page.locator('button[data-view="stock"]').click()
     page.locator('[data-test="stock-view"]').wait_for(state="visible", timeout=10_000)
-    page.get_by_text("诸葛亮联名羽扇").wait_for(state="visible", timeout=10_000)
-    expect(page.locator('[data-test="stock-view"]')).to_contain_text("50")
-    expect(page.locator('[data-test="stock-view"]')).to_contain_text("草船借箭桌游卡牌")
+    page.get_by_text("星火羽扇礼盒").wait_for(state="visible", timeout=10_000)
+    expect(page.locator('[data-test="stock-view"]')).to_contain_text("64")
+    expect(page.locator('[data-test="stock-view"]')).to_contain_text("草船借箭纪念徽章")
     expect(page.locator('[data-test="stock-view"]')).to_contain_text("低库存")
     expect(page.locator('[data-test="stock-view"]')).to_contain_text("临界")
 
@@ -207,5 +238,4 @@ def test_05_ecommerce_workbench_and_seller_ai(page: Page):
         page.locator('[data-test="chat-send"]').click()
 
     reply = page.locator('[data-test="messages"] .msg-ai').last
-    expect(reply).to_contain_text(re.compile("草船借箭桌游卡牌|4\\s*盒?"), timeout=30_000)
-
+    expect(reply).to_contain_text(re.compile("草船借箭纪念徽章|3\\s*枚?"), timeout=30_000)

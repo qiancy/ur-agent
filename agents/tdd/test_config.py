@@ -19,7 +19,10 @@ from src.config import (
     get_database_config, get_llm_config,
 )
 
-_ENV_DB = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+_ENV_DB = [
+    "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD",
+    "DB_POOL_MIN", "DB_POOL_MAX",
+]
 _ENV_LLM = ["LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL", "LLM_TEMPERATURE"]
 
 
@@ -49,6 +52,7 @@ def test_defaults_when_profile_missing(tmp_path):
     assert cfg["database"] == {
         "host": "localhost", "port": 5432, "name": "unires",
         "user": "unires", "password": "demo123",
+        "pool_min": 1, "pool_max": 10,
     }
     assert cfg["llm"]["base_url"] == "http://127.0.0.1:8080/v1"
     assert cfg["llm"]["api_key"] == "fake-key"
@@ -59,12 +63,14 @@ def test_defaults_when_profile_missing(tmp_path):
 def test_profile_yaml_merges_over_defaults(tmp_path):
     profile = tmp_path / "p.yaml"
     profile.write_text(yaml.safe_dump({
-        "database": {"host": "db.example", "port": 5435},
+        "database": {"host": "db.example", "port": 5435, "pool_min": 2},
         "llm": {"model": "test-model"},
     }), encoding="utf-8")
     cfg = config_module._load(profile_file=profile)
     assert cfg["database"]["host"] == "db.example"
     assert cfg["database"]["port"] == 5435
+    assert cfg["database"]["pool_min"] == 2
+    assert cfg["database"]["pool_max"] == 10
     assert cfg["database"]["name"] == "unires"          # untouched key
     assert cfg["llm"]["model"] == "test-model"
     assert cfg["llm"]["base_url"] == "http://127.0.0.1:8080/v1"  # untouched
@@ -79,12 +85,16 @@ def test_env_overrides_profile_yaml(tmp_path, monkeypatch):
     monkeypatch.setenv("DB_HOST", "db.from-env")
     monkeypatch.setenv("DB_PORT", "6543")
     monkeypatch.setenv("DB_PASSWORD", "secret-from-env")
+    monkeypatch.setenv("DB_POOL_MIN", "3")
+    monkeypatch.setenv("DB_POOL_MAX", "12")
     monkeypatch.setenv("LLM_BASE_URL", "http://from-env")
     monkeypatch.setenv("LLM_API_KEY", "key-from-env")
     cfg = config_module._load(profile_file=profile)
     assert cfg["database"]["host"] == "db.from-env"
     assert cfg["database"]["port"] == 6543
     assert cfg["database"]["password"] == "secret-from-env"
+    assert cfg["database"]["pool_min"] == 3
+    assert cfg["database"]["pool_max"] == 12
     assert cfg["llm"]["base_url"] == "http://from-env"
     assert cfg["llm"]["api_key"] == "key-from-env"
 
@@ -122,6 +132,20 @@ def test_invalid_port_raises_runtime_error(tmp_path, monkeypatch):
         config_module._load(profile_file=tmp_path / "nope.yaml")
 
 
+@pytest.mark.parametrize("env_name,value,expected", [
+    ("DB_POOL_MIN", "not-int", "DB_POOL_MIN must be an integer"),
+    ("DB_POOL_MAX", "not-int", "DB_POOL_MAX must be an integer"),
+    ("DB_POOL_MIN", "0", "DB_POOL_MIN must be >= 1"),
+    ("DB_POOL_MAX", "0", "DB_POOL_MAX must be >= pool_min"),
+    ("DB_POOL_MAX", "51", "DB_POOL_MAX must be <= 50"),
+])
+def test_invalid_pool_config_raises_runtime_error(tmp_path, monkeypatch,
+                                                 env_name, value, expected):
+    monkeypatch.setenv(env_name, value)
+    with pytest.raises(RuntimeError, match=expected):
+        config_module._load(profile_file=tmp_path / "nope.yaml")
+
+
 def test_invalid_temperature_raises_runtime_error(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_TEMPERATURE", "hot")
     with pytest.raises(RuntimeError, match="LLM_TEMPERATURE must be a number"):
@@ -130,7 +154,9 @@ def test_invalid_temperature_raises_runtime_error(tmp_path, monkeypatch):
 
 def test_get_database_config_shape():
     cfg = get_database_config()
-    assert set(cfg) == {"host", "port", "name", "user", "password"}
+    assert set(cfg) == {
+        "host", "port", "name", "user", "password", "pool_min", "pool_max",
+    }
 
 
 def test_get_llm_config_shape():

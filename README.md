@@ -44,8 +44,8 @@ Uni-Resource Agent 的第一目标组织是：**数据敏感、资源分散、�
 │                    UNI-RESOURCE AGENT                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│   Frontend (Gradio)    Backend (FastAPI)    Database (PostgreSQL)│
-│       port 7860           port 8000            port 5432        │
+│   Frontend (Vue+Vite)  Backend (FastAPI)    Database (PostgreSQL)│
+│       port 5173           port 8000            port 5432        │
 │           │                   │                    │            │
 │           └──── HTTP ────────►│                    │            │
 │                               │  SQL Queries ─────►│            │
@@ -255,7 +255,7 @@ Base URL: `http://localhost:8000`
 | Embedding | BAAI/bge-large-zh-v1.5 |
 | Vector DB | pgvector (PostgreSQL) |
 | Backend | FastAPI |
-| Frontend | Gradio |
+| Frontend | Vue + Vite |
 | Database | PostgreSQL 16 |
 
 ---
@@ -263,15 +263,21 @@ Base URL: `http://localhost:8000`
 ## 🚀 Quick Start
 
 ```bash
-# 1. 初始化数据库
+# 1. 安装依赖
+pip3 install --break-system-packages -r requirements.txt
+cd web && npm install
+
+# 2. 初始化数据库
 PYTHONPATH=. python scripts/init_db.py
 
-# 2. 启动后端
+# 3. 启动后端
 PYTHONPATH=. python -m uvicorn src.app:app --host 0.0.0.0 --port 8000
 
-# 3. 启动前端
-PYTHONPATH=. python src/frontend.py
+# 4. 启动前端 (另开终端)
+cd web && npm run dev -- --host 0.0.0.0 --port 5173
 ```
+
+访问 `http://localhost:5173`
 
 ---
 
@@ -283,30 +289,38 @@ uni-resource-agent/
 ├── AGENTS.md                 # Agent instructions
 ├── src/
 │   ├── app.py                # FastAPI backend (REST API)
-│   ├── frontend.py           # Gradio frontend
 │   ├── agents/
 │   │   └── agent.py          # LangChain Agent
 │   ├── tools/
 │   │   ├── __init__.py       # ALL_TOOLS export
-│   │   ├── asset_tools.py    # query_asset, transfer_asset
-│   │   ├── finance_tools.py  # record_transaction, get_summary
-│   │   ├── human_tools.py    # manage_reminder, check_wellness
-│   │   └── knowledge_tools.py# rag_search, store_knowledge
+│   │   ├── resource_tools.py # 资源查询/创建
+│   │   ├── finance_tools.py  # 交易/摘要
+│   │   ├── human_tools.py    # 人员/提醒
+│   │   └── knowledge_tools.py# RAG搜索
 │   ├── db/
-│   │   └── database.py       # PostgreSQL schema + CRUD
+│   │   ├── __init__.py
+│   │   ├── database.py       # PostgreSQL操作
+│   │   └── chroma_client.py  # ChromaDB向量搜索
 │   ├── auth/
-│   │   └── auth.py           # JWT auth
+│   │   ├── __init__.py
+│   │   └── auth.py           # JWT认证
 │   └── models/
-│       └── llm_client.py     # LLM wrapper
+│       ├── __init__.py
+│       └── llm_client.py     # LLM客户端
+├── web/                      # Vue + Vite 前端 (port 5173)
+│   ├── src/
+│   │   ├── api/              # API 调用层
+│   │   ├── views/            # 页面视图
+│   │   └── ...
+│   └── package.json
 ├── scripts/
 │   └── init_db.py            # DB init + demo data
 ├── docs/
 │   ├── DBA.md                # PostgreSQL DBA guide
 │   └── ARCHITECTURE.md       # Architecture documentation
-└── _pm/                      # Project management
-    ├── 团队分工.md
-    ├── 进度跟踪.md
-    └── 质量检查.md
+└── agents/                   # Project management & TDD
+    ├── pm/
+    └── tdd/
 ```
 
 ---
@@ -344,8 +358,8 @@ See [DBA.md](docs/DBA.md) for PostgreSQL management, pgvector setup, and service
 │                    UNI-RESOURCE AGENT                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│   Frontend (Gradio)    Backend (FastAPI)    Database (PostgreSQL)│
-│       port 7860           port 8000            port 5432        │
+│   Frontend (Vue+Vite)  Backend (FastAPI)    Database (PostgreSQL)│
+│       port 5173           port 8000            port 5432        │
 │           │                   │                    │            │
 │           └──── HTTP ────────►│                    │            │
 │                               │  SQL Queries ─────►│            │

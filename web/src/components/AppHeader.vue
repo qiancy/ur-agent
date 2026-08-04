@@ -15,7 +15,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'switch-organization', ouid: string): void
   (e: 'logout'): void
-  (e: 'navigate-ai'): void
   (e: 'navigate-space-menu', action: string): void
 }>()
 
@@ -55,14 +54,6 @@ function onSwitch(event: Event) {
     </div>
 
     <div class="quick">
-      <button
-        type="button"
-        class="btn"
-        data-test="header-ai-entry"
-        @click="emit('navigate-ai')"
-      >
-        AI
-      </button>
       <SpaceMenu :role="role" @select="(action) => emit('navigate-space-menu', action)" />
     </div>
 
@@ -157,25 +148,6 @@ function onSwitch(event: Event) {
   align-items: center;
   gap: 8px;
   margin-left: auto;
-}
-.btn {
-  border: 1px solid var(--line, #d8dee8);
-  background: var(--panel, #ffffff);
-  color: var(--ink, #17202a);
-  border-radius: 6px;
-  padding: 9px 14px;
-  font-weight: 650;
-  font-size: 13px;
-  cursor: pointer;
-}
-.btn.primary {
-  background: var(--teal, #0f766e);
-  color: #ffffff;
-  border-color: var(--teal, #0f766e);
-}
-.btn:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 .user {
   text-align: right;

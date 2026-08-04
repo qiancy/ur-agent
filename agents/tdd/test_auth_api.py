@@ -195,6 +195,20 @@ def test_register_rejects_puid_taken_by_other_login():
     assert resp.status_code == 409, resp.text
 
 
+def test_register_failure_leaves_no_half_created_account():
+    u = _uid()
+    login = f"half_{u}"
+    # 非法 puid 使注册失败（422），不得留下半创建 account/person/空间
+    resp = _register(login, name=f"半{u}", puid="中文非法")
+    assert resp.status_code == 422, resp.text
+    # 失败后该 login 不可登录（无 account）
+    assert _login(login).status_code == 401
+    # 同一 login 随后可正常注册成功，且 personal 空间正确
+    resp2 = _register(login, name=f"半{u}", puid=login)
+    assert resp2.status_code == 201, resp2.text
+    assert resp2.json()["organization"]["ouid"] == f"{login}_personal"
+
+
 # ============================================================================
 # 7. 登录单账号返回 personal + 自建组织
 # ============================================================================
@@ -452,6 +466,36 @@ def test_cannot_leave_personal_space():
     token = _register_token(login, puid=login)
     resp = client.post("/spaces/leave", headers=_auth(token),
                        json={"ouid": f"{login}_personal"})
+    assert resp.status_code == 422, resp.text
+
+
+def test_cannot_invite_to_personal_space():
+    u = _uid()
+    login = f"pinv_{u}"
+    token = _register_token(login, puid=login)
+    resp = client.post(f"/spaces/{login}_personal/invites",
+                       headers=_auth(token),
+                       json={"invitee_puid": f"guest_{u}"})
+    assert resp.status_code == 422, resp.text
+
+
+def test_cannot_join_request_personal_space():
+    u = _uid()
+    owner_login = f"pj_{u}"
+    _register_token(owner_login, puid=owner_login)
+    outsider = f"pjx_{u}"
+    outsider_token = _register_token(outsider, puid=outsider)
+    resp = client.post(f"/spaces/{owner_login}_personal/join-requests",
+                       headers=_auth(outsider_token), json={})
+    assert resp.status_code == 422, resp.text
+
+
+def test_cannot_kick_personal_member():
+    u = _uid()
+    login = f"pk_{u}"
+    token = _register_token(login, puid=login)
+    resp = client.post("/spaces/kick", headers=_auth(token),
+                       json={"ouid": f"{login}_personal", "member_puid": login})
     assert resp.status_code == 422, resp.text
 
 

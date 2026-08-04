@@ -319,30 +319,7 @@ describe('organization switching', () => {
   })
 })
 
-describe('header AI entry and space menu navigation', () => {
-  it('routes the AI entry to the chat view in ecommerce spaces', async () => {
-    const wrapper = mount(App)
-    await login(wrapper)
-
-    await wrapper.find('[data-test="header-ai-entry"]').trigger('click')
-    expect(wrapper.find('.view-chat').exists()).toBe(true)
-    expect(sellerChatMock).not.toHaveBeenCalled()
-  })
-
-  it('routes the AI entry to a placeholder in non-ecommerce spaces', async () => {
-    const wrapper = mount(App)
-    await login(wrapper)
-    await wrapper.find('select[data-test="org-switch"]').setValue('family')
-    await flushPromises()
-
-    await wrapper.find('[data-test="header-ai-entry"]').trigger('click')
-    expect(wrapper.find('[data-test="placeholder-view"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="placeholder-message"]').text()).toBe(
-      '该业务空间暂未接入 AI',
-    )
-    expect(sellerChatMock).not.toHaveBeenCalled()
-  })
-
+describe('space menu navigation', () => {
   it('routes a space menu action to the placeholder with 功能即将开放', async () => {
     const wrapper = mount(App)
     await login(wrapper)

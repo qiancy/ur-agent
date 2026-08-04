@@ -135,15 +135,6 @@ function onNavigate(view: string) {
   currentView.value = view
 }
 
-function onNavigateAi() {
-  if (isEcommerce.value) {
-    currentView.value = 'chat'
-    return
-  }
-  placeholderMessage.value = '该业务空间暂未接入 AI'
-  currentView.value = 'placeholder'
-}
-
 function onSpaceMenuAction(_action: string) {
   placeholderMessage.value = '功能即将开放'
   currentView.value = 'placeholder'
@@ -190,7 +181,6 @@ onMounted(() => {
       :organizations="organizations"
       @switch-organization="onSwitchOrganization"
       @logout="onLoggedOut"
-      @navigate-ai="onNavigateAi"
       @navigate-space-menu="onSpaceMenuAction"
     />
     <div class="body-grid">

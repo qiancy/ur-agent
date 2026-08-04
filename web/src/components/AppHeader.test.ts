@@ -55,18 +55,12 @@ describe('AppHeader', () => {
     expect(wrapper.emitted('logout')).toHaveLength(1)
   })
 
-  it('renders an AI entry that only emits navigate-ai (never sends a request)', async () => {
+  it('removed the header AI button and never emits navigate-ai', async () => {
     const wrapper = mountHeader()
-    const entry = wrapper.find('button[data-test="header-ai-entry"]')
-    expect(entry.exists()).toBe(true)
-    await entry.trigger('click')
-    expect(wrapper.emitted('navigate-ai')).toHaveLength(1)
-  })
-
-  it('removed the header AI input and 问 AI button', () => {
-    const wrapper = mountHeader()
+    expect(wrapper.find('button[data-test="header-ai-entry"]').exists()).toBe(false)
     expect(wrapper.find('input[data-test="header-ai"]').exists()).toBe(false)
     expect(wrapper.find('button[data-test="header-ai-send"]').exists()).toBe(false)
+    expect(wrapper.emitted('navigate-ai')).toBeUndefined()
   })
 
   it('exposes the space menu and re-emits its action as navigate-space-menu', async () => {

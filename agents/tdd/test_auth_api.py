@@ -594,3 +594,170 @@ def test_create_space_rejects_invalid_org_type():
     resp = client.post("/spaces", headers=_auth(token),
                        json={"name": f"X{u}", "org_type": "evil"})
     assert resp.status_code == 422, resp.text
+
+
+# ============================================================================
+# 18. FE-10 列表接口：members / join-requests / invites-mine / join-requests-mine
+# ============================================================================
+def _setup_space_with_member(prefix):
+    """Register owner+member, create a company space, add member. Returns dict."""
+    u = _uid()
+    owner = f"{prefix}o_{u}"
+    member = f"{prefix}m_{u}"
+    owner_token = _register_token(owner, puid=owner)
+    space = _create_space(owner_token, f"治理{u}", "company", ouid=f"{prefix}co_{u}")
+    ouid = space["organization"]["ouid"]
+    org_owner_token = space["access_token"]
+    member_token = _register_token(member, puid=member)
+    _add_membership(org_owner_token, member, ouid)
+    return {"u": u, "ouid": ouid, "owner": owner, "member": member,
+            "org_owner_token": org_owner_token, "member_token": member_token}
+
+
+def test_space_members_list():
+    s = _setup_space_with_member("ml_")
+    resp = client.get("/spaces/current/members", headers=_auth(s["org_owner_token"]))
+    assert resp.status_code == 200, resp.text
+    members = resp.json()["members"]
+    assert len(members) == 2, members
+    roles = {m["puid"]: m["role"] for m in members}
+    assert roles[s["owner"]] == "owner"
+    assert roles[s["member"]] == "member"
+    assert all({"puid", "name", "role", "joined_at"} <= set(m) for m in members)
+    _assert_no_db_ids(members)
+
+
+def test_space_members_requires_auth():
+    resp = client.get("/spaces/current/members")
+    assert resp.status_code in (401, 403), resp.text
+
+
+def test_join_request_reject_flow():
+    u = _uid()
+    owner = f"rj_o_{u}"
+    requester = f"rj_r_{u}"
+    owner_token = _register_token(owner, puid=owner)
+    space = _create_space(owner_token, f"审{u}", "company", ouid=f"rj_{u}")
+    ouid = space["organization"]["ouid"]
+    org_owner_token = space["access_token"]
+    req_token = _register_token(requester, puid=requester)
+
+    req = client.post(f"/spaces/{ouid}/join-requests", headers=_auth(req_token),
+                      json={"message": f"申请加入 {u}"})
+    assert req.status_code == 201, req.text
+    request_uid = req.json()["request_uid"]
+    assert req.json()["message"] == f"申请加入 {u}"
+
+    pending = client.get("/spaces/current/join-requests",
+                         headers=_auth(org_owner_token))
+    assert pending.status_code == 200, pending.text
+    assert any(r["request_uid"] == request_uid
+               and r["requester_puid"] == requester
+               and r["message"] == f"申请加入 {u}"
+               for r in pending.json()["requests"])
+    _assert_no_db_ids(pending.json())
+
+    rej = client.post("/spaces/join-requests/reject", headers=_auth(org_owner_token),
+                      json={"request_uid": request_uid})
+    assert rej.status_code == 200, rej.text
+    assert rej.json()["status"] == "rejected"
+
+    mine = client.get("/spaces/join-requests/mine?status=rejected", headers=_auth(req_token))
+    assert mine.status_code == 200, mine.text
+    assert any(r["request_uid"] == request_uid and r["status"] == "rejected"
+               and r["ouid"] == ouid and r["organization_name"]
+               for r in mine.json()["requests"])
+    _assert_no_db_ids(mine.json())
+
+    sw = client.post("/auth/switch-organization", headers=_auth(req_token),
+                     json={"ouid": ouid})
+    assert sw.status_code == 403, sw.text
+
+
+def test_join_request_reject_forbidden_for_member():
+    s = _setup_space_with_member("rjf_")
+    u = s["u"]
+    requester = f"rjf_q_{u}"
+    requester_token = _register_token(requester, puid=requester)
+    req = client.post(f"/spaces/{s['ouid']}/join-requests",
+                      headers=_auth(requester_token), json={})
+    assert req.status_code == 201, req.text
+    request_uid = req.json()["request_uid"]
+
+    rej = client.post("/spaces/join-requests/reject", headers=_auth(s["member_token"]),
+                      json={"request_uid": request_uid})
+    assert rej.status_code == 403, rej.text
+
+
+def test_join_request_reject_personal_space_member_forbidden():
+    u = _uid()
+    outsider = f"rjps_{u}"
+    outsider_token = _register_token(outsider, puid=outsider)
+    resp = client.post("/spaces/join-requests/reject", headers=_auth(outsider_token),
+                       json={"request_uid": f"req_bogus_{u}"})
+    assert resp.status_code == 404, resp.text
+
+
+def test_invites_mine_list():
+    u = _uid()
+    owner = f"imo_{u}"
+    invitee = f"imi_{u}"
+    owner_token = _register_token(owner, puid=owner)
+    space = _create_space(owner_token, f"邀{u}", "company", ouid=f"imco_{u}")
+    ouid = space["organization"]["ouid"]
+    org_owner_token = space["access_token"]
+    invitee_token = _register_token(invitee, puid=invitee)
+
+    inv = client.post(f"/spaces/{ouid}/invites", headers=_auth(org_owner_token),
+                      json={"invitee_puid": invitee, "role": "viewer"})
+    assert inv.status_code == 201, inv.text
+    invite_uid = inv.json()["invite_uid"]
+
+    mine = client.get("/spaces/invites/mine", headers=_auth(invitee_token))
+    assert mine.status_code == 200, mine.text
+    invites = mine.json()["invites"]
+    assert any(i["invite_uid"] == invite_uid and i["ouid"] == ouid
+               and i["organization_name"] and i["role"] == "viewer"
+               and i["status"] == "pending"
+               for i in invites), invites
+    _assert_no_db_ids(mine.json())
+
+    acc = client.post("/spaces/invites/accept", headers=_auth(invitee_token),
+                      json={"invite_uid": invite_uid})
+    assert acc.status_code == 200, acc.text
+
+    after = client.get("/spaces/invites/mine?status=accepted",
+                       headers=_auth(invitee_token))
+    assert after.status_code == 200, after.text
+    assert any(i["invite_uid"] == invite_uid and i["status"] == "accepted"
+               for i in after.json()["invites"]), after.json()
+
+
+def test_join_requests_mine_requires_auth():
+    resp = client.get("/spaces/join-requests/mine")
+    assert resp.status_code in (401, 403), resp.text
+
+
+def test_invites_mine_requires_auth():
+    resp = client.get("/spaces/invites/mine")
+    assert resp.status_code in (401, 403), resp.text
+
+
+def test_join_requests_list_rejects_bad_status():
+    u = _uid()
+    token = _register_token(f"jrs_{u}", puid=f"jrs_{u}")
+    resp = client.get("/spaces/current/join-requests?status=weird",
+                      headers=_auth(token))
+    assert resp.status_code == 422, resp.text
+
+
+def test_join_requests_list_forbidden_for_member():
+    s = _setup_space_with_member("jrl_")
+    sw = client.post("/auth/switch-organization", headers=_auth(s["member_token"]),
+                     json={"ouid": s["ouid"]})
+    assert sw.status_code == 200, sw.text
+    member_org_token = sw.json()["access_token"]
+    assert member_org_token, sw.text
+    resp = client.get("/spaces/current/join-requests",
+                      headers=_auth(member_org_token))
+    assert resp.status_code == 403, resp.text

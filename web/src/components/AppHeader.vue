@@ -54,7 +54,7 @@ function onSwitch(event: Event) {
     </div>
 
     <div class="quick">
-      <SpaceMenu :role="role" @select="(action) => emit('navigate-space-menu', action)" />
+      <SpaceMenu :role="role" :org-type="orgType" @select="(action) => emit('navigate-space-menu', action)" />
     </div>
 
     <div class="user">

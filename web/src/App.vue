@@ -17,10 +17,23 @@ import ChatView from './views/ChatView.vue'
 import ProductsView from './views/ProductsView.vue'
 import GenericSpaceView from './views/GenericSpaceView.vue'
 import PlaceholderView from './views/PlaceholderView.vue'
+import SpaceManageView from './views/SpaceManageView.vue'
+import SpaceCreateView from './views/SpaceCreateView.vue'
+import JoinSpaceView from './views/JoinSpaceView.vue'
+import ReviewRequestsView from './views/ReviewRequestsView.vue'
+import LeaveSpaceView from './views/LeaveSpaceView.vue'
 import SidebarNav from './components/SidebarNav.vue'
 import AppHeader from './components/AppHeader.vue'
 
 const CTX_KEY = 'unires_ctx'
+
+const GOVERNANCE_VIEWS = [
+  'space-manage',
+  'space-create',
+  'space-join',
+  'space-review',
+  'space-leave',
+]
 
 interface AppContext {
   personName: string
@@ -135,14 +148,66 @@ function onNavigate(view: string) {
   currentView.value = view
 }
 
-function onSpaceMenuAction(_action: string) {
+function onSpaceMenuAction(action: string) {
+  const viewMap: Record<string, string> = {
+    manage: 'space-manage',
+    create: 'space-create',
+    join: 'space-join',
+    review: 'space-review',
+    leave: 'space-leave',
+  }
+  currentView.value = viewMap[action] ?? currentView.value
+}
+
+const isGovernanceView = computed(() =>
+  GOVERNANCE_VIEWS.includes(currentView.value),
+)
+
+function onContextUpdated(result: SellerLoginResult) {
+  if (!result.organization || !result.access_token) return
+  applyContext(result)
+  currentView.value = defaultViewFor(result.organization.type)
+  headerExchange.value = null
   placeholderMessage.value = '功能即将开放'
-  currentView.value = 'placeholder'
+  setAuthenticated(true)
+  refreshOrganizations()
+}
+
+async function onLeaveConfirmed() {
+  await refreshOrganizations()
+  const personal = organizations.value.find((o) => o.type === 'personal')
+  if (!personal) {
+    onLoggedOut()
+    return
+  }
+  try {
+    const result = await switchOrganization(personal.ouid)
+    onContextUpdated(result)
+  } catch {
+    onLoggedOut()
+  }
+}
+
+function onNavigateSpace(action: string) {
+  onSpaceMenuAction(action)
 }
 
 const currentComponent = computed(() => {
   const view = currentView.value
-  if (view === 'placeholder') return PlaceholderView
+  switch (view) {
+    case 'space-manage':
+      return SpaceManageView
+    case 'space-create':
+      return SpaceCreateView
+    case 'space-join':
+      return JoinSpaceView
+    case 'space-review':
+      return ReviewRequestsView
+    case 'space-leave':
+      return LeaveSpaceView
+    case 'placeholder':
+      return PlaceholderView
+  }
   if (isEcommerce.value) {
     switch (view) {
       case 'stock':
@@ -195,6 +260,20 @@ onMounted(() => {
             <PlaceholderView
               v-if="currentView === 'placeholder'"
               :message="placeholderMessage"
+            />
+            <component
+              v-else-if="isGovernanceView"
+              :is="currentComponent"
+              :ouid="ctx.ouid"
+              :org-type="ctx.orgType"
+              :role="ctx.role"
+              :puid="ctx.puid"
+              :person-name="ctx.personName"
+              :organization-name="ctx.organizationName"
+              @navigate-space="onNavigateSpace"
+              @context-updated="onContextUpdated"
+              @leave-confirmed="onLeaveConfirmed"
+              @logged-out="onLoggedOut"
             />
             <component
               v-else-if="isEcommerce"

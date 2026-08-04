@@ -306,6 +306,9 @@ def init_database(drop_all: bool = False):
             ALTER TABLE transaction ALTER COLUMN transaction_uid SET NOT NULL;
         """)
         cur.execute("""
+            ALTER TABLE space_join_request ADD COLUMN IF NOT EXISTS message VARCHAR(500);
+        """)
+        cur.execute("""
             DO $m$
             BEGIN
                 IF NOT EXISTS (
@@ -583,6 +586,20 @@ def get_org_members(organization_id: int) -> List[Dict]:
     return _fetch(sql, (organization_id,))
 
 
+def list_org_members_dto(organization_id: int) -> List[Dict]:
+    """Business DTO for org members: puid/name/role/joined_at, never DB ids."""
+    sql = """
+        SELECT p.puid, p.name, m.role, m.joined_at
+        FROM membership m
+        JOIN person p ON p.id = m.person_id
+        WHERE m.organization_id = %s
+        ORDER BY CASE WHEN m.role = 'owner' THEN 0
+                      WHEN m.role = 'admin' THEN 1
+                      ELSE 2 END, p.name
+    """
+    return _fetch(sql, (organization_id,))
+
+
 def get_person_memberships(person_id: int) -> List[Dict]:
     sql = """
         SELECT m.id, m.role, o.name, o.ouid, o.type AS org_type
@@ -656,22 +673,87 @@ def accept_invite(invite_uid: str, person_id: int) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
-def create_join_request(organization_id: int, requester_puid: str) -> Dict[str, Any]:
+def create_join_request(organization_id: int, requester_puid: str,
+                        message: str = None) -> Dict[str, Any]:
     import secrets as _secrets
     request_uid = f"req_{_secrets.token_hex(4)}"
     sql = """
         INSERT INTO space_join_request
-            (request_uid, organization_id, requester_puid, status)
-        VALUES (%s, %s, %s, 'pending')
+            (request_uid, organization_id, requester_puid, message, status)
+        VALUES (%s, %s, %s, %s, 'pending')
         RETURNING *
     """
-    return dict(_execute(sql, (request_uid, organization_id, requester_puid),
-                         fetch_returning=True)[0])
+    return dict(_execute(sql, (request_uid, organization_id, requester_puid,
+                               message), fetch_returning=True)[0])
 
 
 def query_join_request_by_uid(request_uid: str) -> List[Dict]:
     return _fetch("SELECT * FROM space_join_request WHERE request_uid = %s",
                   (request_uid,))
+
+
+def list_org_join_requests_dto(organization_id: int,
+                               status: str = None) -> List[Dict]:
+    """Pending/any join requests for an org, business DTO only (no DB ids)."""
+    sql = """
+        SELECT r.request_uid, r.requester_puid, r.message, r.status,
+               r.created_at, p.name AS requester_name
+        FROM space_join_request r
+        LEFT JOIN person p ON p.puid = r.requester_puid
+        WHERE r.organization_id = %s
+    """
+    params: list = [organization_id]
+    if status:
+        sql += " AND r.status = %s"
+        params.append(status)
+    sql += " ORDER BY r.created_at DESC"
+    return _fetch(sql, tuple(params))
+
+
+def list_person_join_requests_dto(person_puid: str,
+                                  status: str = None) -> List[Dict]:
+    """Join requests submitted by a person, with target-org info. No DB ids."""
+    sql = """
+        SELECT r.request_uid, r.requester_puid, r.message, r.status,
+               r.created_at, o.ouid, o.name AS organization_name,
+               o.type AS organization_type
+        FROM space_join_request r
+        JOIN organization o ON o.id = r.organization_id
+        WHERE r.requester_puid = %s
+    """
+    params: list = [person_puid]
+    if status:
+        sql += " AND r.status = %s"
+        params.append(status)
+    sql += " ORDER BY r.created_at DESC"
+    return _fetch(sql, tuple(params))
+
+
+def list_person_invites_dto(person_puid: str, status: str = None) -> List[Dict]:
+    """Invites addressed to a person, with sender + org info. No DB ids."""
+    sql = """
+        SELECT i.invite_uid, i.invitee_puid, i.role, i.status, i.created_at,
+               i.created_by_puid, o.ouid, o.name AS organization_name,
+               o.type AS organization_type
+        FROM space_invite i
+        JOIN organization o ON o.id = i.organization_id
+        WHERE i.invitee_puid = %s
+    """
+    params: list = [person_puid]
+    if status:
+        sql += " AND i.status = %s"
+        params.append(status)
+    sql += " ORDER BY i.created_at DESC"
+    return _fetch(sql, tuple(params))
+
+
+def reject_join_request(request_uid: str) -> bool:
+    """Mark a pending join request as rejected. Returns True if a row updated."""
+    n = _execute(
+        "UPDATE space_join_request SET status = 'rejected'"
+        " WHERE request_uid = %s AND status = 'pending'",
+        (request_uid,))
+    return n > 0
 
 
 def approve_join_request(request_uid: str, person_id: int,

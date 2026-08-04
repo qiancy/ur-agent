@@ -17,10 +17,14 @@ from src.db.database import (
     query_join_request_by_uid,
     approve_join_request as db_approve_join_request,
     remove_membership, count_org_owners, transfer_ownership,
+    list_org_members_dto, list_org_join_requests_dto,
+    list_person_invites_dto, list_person_join_requests_dto,
+    reject_join_request as db_reject_join_request,
 )
 from src.models.schemas import (
     SpaceCreate, InviteCreate, AcceptInviteRequest, JoinRequestCreate,
-    ApproveJoinRequestRequest, LeaveSpaceRequest, KickMemberRequest,
+    ApproveJoinRequestRequest, RejectJoinRequestRequest,
+    LeaveSpaceRequest, KickMemberRequest,
     TransferOwnerRequest,
 )
 
@@ -218,11 +222,12 @@ async def create_join_request(ouid: str, body: JoinRequestCreate, request: Reque
         raise HTTPException(401, "Invalid person in token")
     if query_membership(persons[0]["id"], orgs[0]["id"]):
         raise HTTPException(409, "Already a member")
-    req = db_create_join_request(orgs[0]["id"], puid)
+    req = db_create_join_request(orgs[0]["id"], puid, message=body.message)
     return _gov_dto({
         "request_uid": req["request_uid"],
         "ouid": ouid,
         "requester_puid": puid,
+        "message": req.get("message"),
         "status": req["status"],
     })
 
@@ -326,3 +331,78 @@ async def transfer_owner(body: TransferOwnerRequest, request: Request):
         raise HTTPException(404, "New owner must be an existing member")
     transfer_ownership(orgs[0]["id"], target["id"])
     return {"ouid": body.ouid, "new_owner_puid": body.new_owner_puid, "status": "transferred"}
+
+
+@router.get("/current/members")
+async def space_current_members(request: Request):
+    """Members of the current space context (business DTO, no DB ids)."""
+    _reject_identity_params(request)
+    ctx = require_strict_org_context(request)
+    return {"members": list_org_members_dto(ctx["organization_id"])}
+
+
+@router.get("/current/join-requests")
+async def space_current_join_requests(request: Request,
+                                      status: str = Query(default="pending")):
+    """Pending join requests for the current space (owner/admin only)."""
+    _reject_identity_params(request)
+    ctx = require_strict_org_context(request)
+    if ctx.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Only owner or admin can view join requests")
+    if status not in ("pending", "approved", "rejected"):
+        raise HTTPException(422, "status must be pending, approved or rejected")
+    return {"requests": list_org_join_requests_dto(ctx["organization_id"], status=status)}
+
+
+@router.get("/invites/mine")
+async def space_invites_mine(request: Request,
+                             status: str = Query(default="pending")):
+    """Invites addressed to the authenticated person (pending by default)."""
+    _reject_identity_params(request)
+    payload = require_authenticated(request)
+    puid = payload.get("puid")
+    if not puid:
+        raise HTTPException(401, "JWT must include puid")
+    if status not in ("pending", "accepted", "declined"):
+        raise HTTPException(422, "status must be pending, accepted or declined")
+    return {"invites": list_person_invites_dto(puid, status=status)}
+
+
+@router.get("/join-requests/mine")
+async def space_join_requests_mine(request: Request,
+                                   status: str = Query(default="pending")):
+    """Join requests submitted by the authenticated person."""
+    _reject_identity_params(request)
+    payload = require_authenticated(request)
+    puid = payload.get("puid")
+    if not puid:
+        raise HTTPException(401, "JWT must include puid")
+    if status not in ("pending", "approved", "rejected"):
+        raise HTTPException(422, "status must be pending, approved or rejected")
+    return {"requests": list_person_join_requests_dto(puid, status=status)}
+
+
+@router.post("/join-requests/reject")
+async def reject_join_request(body: RejectJoinRequestRequest, request: Request):
+    """owner/admin of the target org rejects a pending join request."""
+    reqs = query_join_request_by_uid(body.request_uid)
+    if not reqs:
+        raise HTTPException(404, "Join request not found")
+    req = reqs[0]
+    if req["status"] != "pending":
+        raise HTTPException(409, "Join request already processed")
+    orgs = query_organization_by_id(req["organization_id"])
+    if not orgs:
+        raise HTTPException(404, "Organization not found")
+    payload = require_authenticated(request)
+    puid = payload.get("puid")
+    persons = query_person_by_puid(puid)
+    if not persons:
+        raise HTTPException(401, "Invalid person in token")
+    memberships = query_membership(persons[0]["id"], req["organization_id"])
+    if not memberships or memberships[0]["role"] not in ("owner", "admin"):
+        raise HTTPException(403, "Only owner or admin can reject join requests")
+    if not db_reject_join_request(body.request_uid):
+        raise HTTPException(409, "Join request already processed")
+    return {"request_uid": req["request_uid"], "ouid": orgs[0]["ouid"],
+            "requester_puid": req["requester_puid"], "status": "rejected"}

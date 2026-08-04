@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 
 const props = defineProps<{
   role: string
+  orgType: string
 }>()
 
 const emit = defineEmits<{
@@ -15,17 +16,23 @@ const isOwnerOrAdmin = computed(
   () => props.role === 'owner' || props.role === 'admin',
 )
 
+const isPersonal = computed(() => props.orgType === 'personal')
+
 interface MenuItem {
   key: string
   label: string
 }
 
 const items = computed<MenuItem[]>(() => {
-  const list: MenuItem[] = [{ key: 'manage', label: '管理空间' }]
+  const list: MenuItem[] = [
+    { key: 'manage', label: '管理空间' },
+    { key: 'create', label: '创建空间' },
+    { key: 'join', label: '加入空间' },
+  ]
   if (isOwnerOrAdmin.value) {
     list.push({ key: 'review', label: '审核申请' })
-  } else {
-    list.push({ key: 'join', label: '加入空间' })
+  }
+  if (!isPersonal.value) {
     list.push({ key: 'leave', label: '退出空间' })
   }
   return list

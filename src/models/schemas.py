@@ -186,6 +186,11 @@ class ApproveJoinRequestRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class RejectJoinRequestRequest(BaseModel):
+    request_uid: str
+    model_config = {"extra": "forbid"}
+
+
 class LeaveSpaceRequest(BaseModel):
     ouid: str
     model_config = {"extra": "forbid"}

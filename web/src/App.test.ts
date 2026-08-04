@@ -64,6 +64,36 @@ vi.mock('./views/GenericSpaceView.vue', () => ({
       '<div class="view-generic" data-test="generic-space">空间观察({{ ouid }})</div>',
   },
 }))
+vi.mock('./views/SpaceManageView.vue', () => ({
+  default: {
+    name: 'SpaceManageView',
+    template: '<div class="view-space-manage" data-test="space-manage">管理空间</div>',
+  },
+}))
+vi.mock('./views/SpaceCreateView.vue', () => ({
+  default: {
+    name: 'SpaceCreateView',
+    template: '<div class="view-space-create" data-test="space-create">创建空间</div>',
+  },
+}))
+vi.mock('./views/JoinSpaceView.vue', () => ({
+  default: {
+    name: 'JoinSpaceView',
+    template: '<div class="view-space-join" data-test="space-join">加入空间</div>',
+  },
+}))
+vi.mock('./views/ReviewRequestsView.vue', () => ({
+  default: {
+    name: 'ReviewRequestsView',
+    template: '<div class="view-space-review" data-test="space-review">审核申请</div>',
+  },
+}))
+vi.mock('./views/LeaveSpaceView.vue', () => ({
+  default: {
+    name: 'LeaveSpaceView',
+    template: '<div class="view-space-leave" data-test="space-leave">退出空间</div>',
+  },
+}))
 
 const LOGIN_RESULT = {
   access_token: 'token-1',
@@ -320,7 +350,7 @@ describe('organization switching', () => {
 })
 
 describe('space menu navigation', () => {
-  it('routes a space menu action to the placeholder with 功能即将开放', async () => {
+  it('routes 管理空间 to the real SpaceManageView (no placeholder)', async () => {
     const wrapper = mount(App)
     await login(wrapper)
 
@@ -328,9 +358,51 @@ describe('space menu navigation', () => {
     await wrapper.find('[data-test="space-menu-item-manage"]').trigger('click')
     await nextTick()
 
-    expect(wrapper.find('[data-test="placeholder-view"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="placeholder-message"]').text()).toBe(
-      '功能即将开放',
-    )
+    expect(wrapper.find('[data-test="placeholder-view"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="space-manage"]').exists()).toBe(true)
+  })
+
+  it('routes 创建空间 to SpaceCreateView', async () => {
+    const wrapper = mount(App)
+    await login(wrapper)
+
+    await wrapper.find('[data-test="space-menu-toggle"]').trigger('click')
+    await wrapper.find('[data-test="space-menu-item-create"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-test="space-create"]').exists()).toBe(true)
+  })
+
+  it('routes 加入空间 to JoinSpaceView', async () => {
+    const wrapper = mount(App)
+    await login(wrapper)
+
+    await wrapper.find('[data-test="space-menu-toggle"]').trigger('click')
+    await wrapper.find('[data-test="space-menu-item-join"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-test="space-join"]').exists()).toBe(true)
+  })
+
+  it('routes 审核申请 to ReviewRequestsView', async () => {
+    const wrapper = mount(App)
+    await login(wrapper)
+
+    await wrapper.find('[data-test="space-menu-toggle"]').trigger('click')
+    await wrapper.find('[data-test="space-menu-item-review"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-test="space-review"]').exists()).toBe(true)
+  })
+
+  it('routes 退出空间 to LeaveSpaceView', async () => {
+    const wrapper = mount(App)
+    await login(wrapper)
+
+    await wrapper.find('[data-test="space-menu-toggle"]').trigger('click')
+    await wrapper.find('[data-test="space-menu-item-leave"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-test="space-leave"]').exists()).toBe(true)
   })
 })

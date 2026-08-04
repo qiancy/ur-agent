@@ -101,16 +101,16 @@ describe('switchOrganization', () => {
 })
 
 describe('registerAccount', () => {
-  it('posts login/password/name and optional puid/initial_ouid to /auth/register', async () => {
+  it('posts login/password/name and optional puid to /auth/register', async () => {
     const body = {
       access_token: 'token-r',
       token_type: 'bearer',
       person: { puid: 'newbie', name: '新手' },
-      organization: { ouid: 'shop_a', name: '新店铺', type: 'ecommerce' },
-      membership: { role: 'member' },
+      organization: { ouid: 'newbie_personal', name: '新手的个人空间', type: 'personal' },
+      membership: { role: 'owner' },
       system_role: 'user',
       organizations: [
-        { ouid: 'shop_a', name: '新店铺', type: 'ecommerce', role: 'member' },
+        { ouid: 'newbie_personal', name: '新手的个人空间', type: 'personal', role: 'owner' },
       ],
       requires_organization: false,
     }
@@ -121,7 +121,6 @@ describe('registerAccount', () => {
       password: 'pass123',
       name: '新手',
       puid: 'newbie',
-      initialOuid: 'shop_a',
     })
 
     const [url, options] = fetchMock.mock.calls[0]
@@ -132,7 +131,6 @@ describe('registerAccount', () => {
       password: 'pass123',
       name: '新手',
       puid: 'newbie',
-      initial_ouid: 'shop_a',
     })
     expect(localStorage.getItem('unires_token')).toBe('token-r')
     assertNoDbIdKeys(Object.keys(result.person))
@@ -142,16 +140,18 @@ describe('registerAccount', () => {
     }
   })
 
-  it('omits optional puid/initial_ouid and does not store a token when no space yet', async () => {
+  it('registration always yields a personal space with a usable JWT', async () => {
     const body = {
-      access_token: null,
+      access_token: 'token-r',
       token_type: 'bearer',
       person: { puid: 'newbie', name: '新手' },
-      organization: null,
-      membership: null,
+      organization: { ouid: 'newbie_personal', name: '新手的个人空间', type: 'personal' },
+      membership: { role: 'owner' },
       system_role: 'user',
-      organizations: [],
-      requires_organization: true,
+      organizations: [
+        { ouid: 'newbie_personal', name: '新手的个人空间', type: 'personal', role: 'owner' },
+      ],
+      requires_organization: false,
     }
     fetchMock.mockResolvedValue(jsonResponse(body))
 
@@ -167,8 +167,10 @@ describe('registerAccount', () => {
       password: 'pass123',
       name: '新手',
     })
-    expect(localStorage.getItem('unires_token')).toBeNull()
-    expect(result.requires_organization).toBe(true)
+    expect(localStorage.getItem('unires_token')).toBe('token-r')
+    expect(result.requires_organization).toBe(false)
+    expect(result.organization?.type).toBe('personal')
+    expect(result.membership?.role).toBe('owner')
   })
 })
 

@@ -12,7 +12,6 @@ export interface RegisterParams {
   password: string
   name: string
   puid?: string
-  initialOuid?: string
 }
 
 export async function registerAccount(
@@ -24,7 +23,6 @@ export async function registerAccount(
     name: params.name,
   }
   if (params.puid) body.puid = params.puid
-  if (params.initialOuid) body.initial_ouid = params.initialOuid
   const result = await request<SellerLoginResult>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(body),

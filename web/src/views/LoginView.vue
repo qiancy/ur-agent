@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { sellerLogin, type SellerLoginResult } from '../api/seller'
-import { registerAccount } from '../api/auth'
+import { loginAccount, registerAccount } from '../api/auth'
+import type { SellerLoginResult } from '../api/seller'
 
 const emit = defineEmits<{
   (e: 'authenticated', result: SellerLoginResult): void
@@ -12,24 +12,20 @@ const login = ref('')
 const password = ref('')
 const name = ref('')
 const puid = ref('')
-const initialOuid = ref('')
 const error = ref('')
-const noSpace = ref('')
 const loading = ref(false)
 
 function switchMode(next: 'login' | 'register') {
   mode.value = next
   error.value = ''
-  noSpace.value = ''
 }
 
 async function onSubmit() {
   error.value = ''
-  noSpace.value = ''
   loading.value = true
   try {
     if (mode.value === 'login') {
-      const result = await sellerLogin(login.value.trim(), password.value)
+      const result = await loginAccount(login.value.trim(), password.value)
       emit('authenticated', result)
     } else {
       const result = await registerAccount({
@@ -37,12 +33,7 @@ async function onSubmit() {
         password: password.value,
         name: name.value.trim(),
         puid: puid.value.trim() || undefined,
-        initialOuid: initialOuid.value.trim() || undefined,
       })
-      if (result.requires_organization || !result.access_token) {
-        noSpace.value = '注册成功，暂无业务空间。请联系管理员将你加入一个空间后再登录。'
-        return
-      }
       emit('authenticated', result)
     }
   } catch (e) {
@@ -92,18 +83,8 @@ async function onSubmit() {
             placeholder="不填则默认取账号"
           />
         </label>
-        <label class="field">
-          <span class="field-label">初始空间 ouid（可选）</span>
-          <input
-            v-model="initialOuid"
-            data-test="register-initial-ouid"
-            type="text"
-            placeholder="不填则注册后暂无空间"
-          />
-        </label>
       </template>
       <p v-if="error" class="form-error" data-test="login-error">{{ error }}</p>
-      <p v-if="noSpace" class="form-notice" data-test="no-space">{{ noSpace }}</p>
       <button class="btn btn-primary" type="submit" :disabled="loading">
         {{ loading ? '处理中…' : mode === 'login' ? '登录' : '注册' }}
       </button>

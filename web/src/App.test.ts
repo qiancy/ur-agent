@@ -21,6 +21,7 @@ vi.mock('./api/seller', () => ({
 }))
 
 vi.mock('./api/auth', () => ({
+  loginAccount: (...args: unknown[]) => sellerLoginMock(...args),
   myOrganizations: (...args: unknown[]) => myOrganizationsMock(...args),
   switchOrganization: (...args: unknown[]) => switchOrganizationMock(...args),
 }))

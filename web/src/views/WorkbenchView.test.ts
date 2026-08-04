@@ -2,16 +2,14 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import WorkbenchView from './WorkbenchView.vue'
 
-const summaryMock = vi.fn()
-const stockMock = vi.fn()
-const movementsMock = vi.fn()
+const workbenchMock = vi.fn()
 const purchaseMock = vi.fn()
 
 vi.mock('../api/seller', () => ({
-  sellerSummary: (...args: unknown[]) => summaryMock(...args),
-  sellerStock: (...args: unknown[]) => stockMock(...args),
-  sellerInventoryMovements: (...args: unknown[]) => movementsMock(...args),
+  sellerWorkbench: (...args: unknown[]) => workbenchMock(...args),
   sellerPurchaseIn: (...args: unknown[]) => purchaseMock(...args),
+  sellerSalesOut: vi.fn(),
+  sellerChat: vi.fn(),
 }))
 
 const SUMMARY = {
@@ -45,28 +43,33 @@ const STOCK = [
 
 describe('WorkbenchView', () => {
   beforeEach(() => {
-    summaryMock.mockReset()
-    stockMock.mockReset()
-    movementsMock.mockReset()
+    workbenchMock.mockReset()
+    purchaseMock.mockReset()
   })
 
-  it('loads summary and stock on mount and renders metrics + stock', async () => {
-    summaryMock.mockResolvedValue(SUMMARY)
-    stockMock.mockResolvedValue(STOCK)
-    movementsMock.mockResolvedValue([])
+  it('loads aggregate workbench data on mount and renders metrics + stock', async () => {
+    workbenchMock.mockResolvedValue({
+      status: 'ok',
+      summary: SUMMARY,
+      stock: STOCK,
+      movements: [],
+    })
     const wrapper = mount(WorkbenchView)
     await flushPromises()
 
-    expect(summaryMock).toHaveBeenCalledTimes(1)
-    expect(stockMock).toHaveBeenCalledTimes(1)
+    expect(workbenchMock).toHaveBeenCalledTimes(1)
+    expect(workbenchMock).toHaveBeenCalledWith({ movementsLimit: 10 })
     expect(wrapper.text()).toContain('12840')
     expect(wrapper.text()).toContain('usb_cable_1m')
   })
 
   it('opens the entry modal when the purchase button is clicked', async () => {
-    summaryMock.mockResolvedValue(SUMMARY)
-    stockMock.mockResolvedValue(STOCK)
-    movementsMock.mockResolvedValue([])
+    workbenchMock.mockResolvedValue({
+      status: 'ok',
+      summary: SUMMARY,
+      stock: STOCK,
+      movements: [],
+    })
     const wrapper = mount(WorkbenchView)
     await flushPromises()
 
@@ -75,9 +78,12 @@ describe('WorkbenchView', () => {
   })
 
   it('closes the modal without submitting when cancel is clicked', async () => {
-    summaryMock.mockResolvedValue(SUMMARY)
-    stockMock.mockResolvedValue(STOCK)
-    movementsMock.mockResolvedValue([])
+    workbenchMock.mockResolvedValue({
+      status: 'ok',
+      summary: SUMMARY,
+      stock: STOCK,
+      movements: [],
+    })
     const wrapper = mount(WorkbenchView)
     await flushPromises()
 
@@ -86,15 +92,17 @@ describe('WorkbenchView', () => {
     expect(wrapper.find('[data-test="product_uid"]').exists()).toBe(false)
   })
 
-  it('reloads summary and stock after a successful entry submit', async () => {
-    summaryMock.mockResolvedValue(SUMMARY)
-    stockMock.mockResolvedValue(STOCK)
-    movementsMock.mockResolvedValue([])
+  it('reloads aggregate workbench data after a successful entry submit', async () => {
+    workbenchMock.mockResolvedValue({
+      status: 'ok',
+      summary: SUMMARY,
+      stock: STOCK,
+      movements: [],
+    })
     const wrapper = mount(WorkbenchView)
     await flushPromises()
 
-    summaryMock.mockClear()
-    stockMock.mockClear()
+    workbenchMock.mockClear()
     purchaseMock.mockResolvedValue({ status: 'ok', new_quantity: 24 })
 
     await wrapper.find('button[data-test="btn-purchase"]').trigger('click')
@@ -109,8 +117,7 @@ describe('WorkbenchView', () => {
     await flushPromises()
 
     expect(purchaseMock).toHaveBeenCalledTimes(1)
-    expect(summaryMock).toHaveBeenCalled()
-    expect(stockMock).toHaveBeenCalled()
+    expect(workbenchMock).toHaveBeenCalledWith({ movementsLimit: 10 })
     expect(wrapper.find('[data-test="product_uid"]').exists()).toBe(false)
   })
 })

@@ -3,18 +3,10 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { ApiError } from '../api/client'
 import GenericSpaceView from './GenericSpaceView.vue'
 
-const overviewMock = vi.fn()
-const resourcesMock = vi.fn()
-const personsMock = vi.fn()
-const transactionsMock = vi.fn()
-const timelineMock = vi.fn()
+const dashboardMock = vi.fn()
 
 vi.mock('../api/spaces', () => ({
-  getSpaceOverview: (...args: unknown[]) => overviewMock(...args),
-  getSpaceResources: (...args: unknown[]) => resourcesMock(...args),
-  getSpacePersons: (...args: unknown[]) => personsMock(...args),
-  getSpaceTransactions: (...args: unknown[]) => transactionsMock(...args),
-  getSpaceTimeline: (...args: unknown[]) => timelineMock(...args),
+  getSpaceDashboard: (...args: unknown[]) => dashboardMock(...args),
 }))
 
 const OVERVIEW = {
@@ -84,32 +76,27 @@ const TIMELINE = {
 const EMPTY_TIMELINE = { events: [] }
 
 function mockAll() {
-  overviewMock.mockResolvedValue(OVERVIEW)
-  resourcesMock.mockResolvedValue(RESOURCES)
-  personsMock.mockResolvedValue(PERSONS)
-  transactionsMock.mockResolvedValue(TRANSACTIONS)
-  timelineMock.mockResolvedValue(TIMELINE)
+  dashboardMock.mockResolvedValue({
+    status: 'ok',
+    overview: OVERVIEW,
+    resources: RESOURCES,
+    persons: PERSONS,
+    transactions: TRANSACTIONS,
+    timeline: TIMELINE,
+  })
 }
 
 describe('GenericSpaceView', () => {
   beforeEach(() => {
-    overviewMock.mockReset()
-    resourcesMock.mockReset()
-    personsMock.mockReset()
-    transactionsMock.mockReset()
-    timelineMock.mockReset()
+    dashboardMock.mockReset()
   })
 
-  it('loads all five data sources on mount and renders the overview block', async () => {
+  it('loads dashboard data on mount and renders the overview block', async () => {
     mockAll()
     const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
     await flushPromises()
 
-    expect(overviewMock).toHaveBeenCalledTimes(1)
-    expect(resourcesMock).toHaveBeenCalledTimes(1)
-    expect(personsMock).toHaveBeenCalledTimes(1)
-    expect(transactionsMock).toHaveBeenCalledTimes(1)
-    expect(timelineMock).toHaveBeenCalledTimes(1)
+    expect(dashboardMock).toHaveBeenCalledTimes(1)
 
     expect(wrapper.find('[data-test="ov-name"]').text()).toContain('张三家庭')
     expect(wrapper.find('[data-test="ov-type"]').text()).toContain('family')
@@ -168,11 +155,14 @@ describe('GenericSpaceView', () => {
   })
 
   it('shows an empty state when there are no timeline events', async () => {
-    overviewMock.mockResolvedValue(OVERVIEW)
-    resourcesMock.mockResolvedValue(RESOURCES)
-    personsMock.mockResolvedValue(PERSONS)
-    transactionsMock.mockResolvedValue(TRANSACTIONS)
-    timelineMock.mockResolvedValue(EMPTY_TIMELINE)
+    dashboardMock.mockResolvedValue({
+      status: 'ok',
+      overview: OVERVIEW,
+      resources: RESOURCES,
+      persons: PERSONS,
+      transactions: TRANSACTIONS,
+      timeline: EMPTY_TIMELINE,
+    })
     const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
     await flushPromises()
 
@@ -201,11 +191,14 @@ describe('GenericSpaceView', () => {
   })
 
   it('shows an empty funds state when there are no transactions', async () => {
-    overviewMock.mockResolvedValue(OVERVIEW)
-    resourcesMock.mockResolvedValue(RESOURCES)
-    personsMock.mockResolvedValue(PERSONS)
-    transactionsMock.mockResolvedValue([])
-    timelineMock.mockResolvedValue(TIMELINE)
+    dashboardMock.mockResolvedValue({
+      status: 'ok',
+      overview: OVERVIEW,
+      resources: RESOURCES,
+      persons: PERSONS,
+      transactions: [],
+      timeline: TIMELINE,
+    })
     const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
     await flushPromises()
 
@@ -218,15 +211,15 @@ describe('GenericSpaceView', () => {
     const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
     await flushPromises()
 
-    overviewMock.mockClear()
+    dashboardMock.mockClear()
     await wrapper.find('[data-test="btn-refresh"]').trigger('click')
     await flushPromises()
 
-    expect(overviewMock).toHaveBeenCalledTimes(1)
+    expect(dashboardMock).toHaveBeenCalledTimes(1)
   })
 
   it('emits logged-out when the backend rejects with 401', async () => {
-    overviewMock.mockRejectedValue(new ApiError(401, 'unauthorized'))
+    dashboardMock.mockRejectedValue(new ApiError(401, 'unauthorized'))
     const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
     await flushPromises()
 
@@ -237,21 +230,13 @@ describe('GenericSpaceView', () => {
     mockAll()
     const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
     await flushPromises()
-    expect(overviewMock).toHaveBeenCalledTimes(1)
+    expect(dashboardMock).toHaveBeenCalledTimes(1)
 
-    overviewMock.mockClear()
-    resourcesMock.mockClear()
-    personsMock.mockClear()
-    transactionsMock.mockClear()
-    timelineMock.mockClear()
+    dashboardMock.mockClear()
 
     await wrapper.setProps({ ouid: 'deep_space_fleet' })
     await flushPromises()
 
-    expect(overviewMock).toHaveBeenCalledTimes(1)
-    expect(resourcesMock).toHaveBeenCalledTimes(1)
-    expect(personsMock).toHaveBeenCalledTimes(1)
-    expect(transactionsMock).toHaveBeenCalledTimes(1)
-    expect(timelineMock).toHaveBeenCalledTimes(1)
+    expect(dashboardMock).toHaveBeenCalledTimes(1)
   })
 })

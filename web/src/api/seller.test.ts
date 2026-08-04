@@ -3,6 +3,7 @@ import { setToken } from './client'
 import {
   sellerLogin,
   sellerSummary,
+  sellerWorkbench,
   sellerStock,
   sellerInventoryMovements,
   sellerPurchaseIn,
@@ -162,6 +163,13 @@ const MOVEMENTS = [
   },
 ]
 
+const WORKBENCH_BODY = {
+  status: 'ok',
+  summary: SUMMARY_BODY,
+  stock: STOCK_ROWS,
+  movements: MOVEMENTS,
+}
+
 describe('sellerStock', () => {
   it('fetches /seller/stock and returns stock rows', async () => {
     setToken('token-123')
@@ -215,6 +223,40 @@ describe('sellerInventoryMovements', () => {
     expect(url).toContain('date_from=2026-08-01')
     expect(url).toContain('date_to=2026-08-02')
     expect(url).toContain('limit=20')
+  })
+})
+
+describe('sellerWorkbench', () => {
+  it('fetches /seller/workbench with aggregate params and business fields only', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(jsonResponse(WORKBENCH_BODY))
+
+    const data = await sellerWorkbench({
+      movementsLimit: 10,
+      lowStockThreshold: 5,
+      topN: 6,
+    })
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toContain('/seller/workbench')
+    expect(url).toContain('movements_limit=10')
+    expect(url).toContain('low_stock_threshold=5')
+    expect(url).toContain('top_n=6')
+    expect(options.headers['Authorization']).toBe('Bearer token-123')
+    expect(data.summary.sales_amount).toBe(1280)
+    expect(data.stock[0].product_uid).toBe('usb_cable_1m')
+    expect(data.movements[0].movement_uid).toBe('mv_000000000001')
+    assertNoDbIdKeys(Object.keys(data.summary))
+    assertNoDbIdKeys(Object.keys(data.stock[0]))
+    assertNoDbIdKeys(Object.keys(data.movements[0]))
+  })
+
+  it('clears the token when the aggregate endpoint returns 401', async () => {
+    setToken('expired')
+    fetchMock.mockResolvedValue(jsonResponse(null, false, 401))
+
+    await expect(sellerWorkbench()).rejects.toThrow(/unauthorized/)
+    expect(localStorage.getItem('unires_token')).toBeNull()
   })
 })
 

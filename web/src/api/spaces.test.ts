@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { setToken } from './client'
 import {
+  getSpaceDashboard,
   getSpaceOverview,
   getSpaceResources,
   getSpacePersons,
@@ -72,6 +73,15 @@ const TIMELINE = {
   ],
 }
 
+const DASHBOARD = {
+  status: 'ok',
+  overview: OVERVIEW,
+  resources: RESOURCES,
+  persons: PERSONS,
+  transactions: TRANSACTIONS,
+  timeline: TIMELINE,
+}
+
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return {
     ok,
@@ -92,6 +102,26 @@ afterEach(() => {
 })
 
 describe('spaces API', () => {
+  it('getSpaceDashboard fetches aggregate data with business fields only', async () => {
+    setToken('token-123')
+    fetchMock.mockResolvedValue(jsonResponse(DASHBOARD))
+
+    const result = await getSpaceDashboard({ transactionLimit: 10 })
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toContain('/spaces/current/dashboard?transaction_limit=10')
+    expect(options.headers['Authorization']).toBe('Bearer token-123')
+    expect(result.overview.space.ouid).toBe('zhangsan_family')
+    expect(result.resources.grouped.physical[0].locations?.[0].warehouse_code).toBe('WH1')
+    expect(result.persons[0].puid).toBe('zhangsan')
+    expect(result.transactions[0].transaction_uid).toBe('txn-0001')
+    expect(result.timeline.events[0].campaign_code).toBe('family_learning')
+    assertNoDbIdKeys(Object.keys(result.overview.space))
+    assertNoDbIdKeys(Object.keys(result.resources.grouped.physical[0]))
+    assertNoDbIdKeys(Object.keys(result.persons[0]))
+    assertNoDbIdKeys(Object.keys(result.transactions[0]))
+  })
+
   it('getSpaceOverview fetches /spaces/current/overview with Bearer token', async () => {
     setToken('token-123')
     fetchMock.mockResolvedValue(jsonResponse(OVERVIEW))
@@ -177,7 +207,7 @@ describe('spaces API', () => {
     setToken('expired')
     fetchMock.mockResolvedValue(jsonResponse(null, false, 401))
 
-    await expect(getSpaceOverview()).rejects.toThrow(/unauthorized/)
+    await expect(getSpaceDashboard()).rejects.toThrow(/unauthorized/)
     expect(localStorage.getItem('unires_token')).toBeNull()
   })
 })

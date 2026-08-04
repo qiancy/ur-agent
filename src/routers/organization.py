@@ -3,6 +3,7 @@ Organization and membership endpoints.
 """
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
+from psycopg2.errors import UniqueViolation
 
 from src.models.schemas import OrgCreate, MembershipAdd
 from src.routers.deps import require_strict_org_context
@@ -55,7 +56,12 @@ async def add_org_member(body: MembershipAdd, request: Request):
     persons = query_person_by_puid(body.puid)
     if not persons:
         raise HTTPException(404, "Person not found")
-    return add_membership(persons[0]["id"], orgs[0]["id"], body.role)
+    try:
+        add_membership(persons[0]["id"], orgs[0]["id"], body.role)
+    except UniqueViolation:
+        raise HTTPException(409, "Already a member")
+    return {"puid": body.puid, "ouid": body.ouid, "role": body.role,
+            "status": "added"}
 
 
 @router.get("/persons/{puid}/organizations")

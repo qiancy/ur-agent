@@ -415,6 +415,39 @@ def create_organization(name: str, org_type: str,
                          fetch_returning=True)[0])
 
 
+def create_org_with_owner(name: str, org_type: str, person_id: int,
+                          description: str = None, ouid: str = None) -> Dict[str, Any]:
+    """Atomically create an organization plus its first owner membership.
+
+    Returns the org row. Any failure rolls back (no orphan org without owner).
+    """
+    import secrets as _secrets
+    import re as _re
+    if ouid is None:
+        safe_name = _re.sub(r'[^a-zA-Z0-9]', '_', name).strip('_').lower()
+        ouid = f"org_{safe_name}_{_secrets.token_hex(4)}"
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "INSERT INTO organization (ouid, name, type, description)"
+            " VALUES (%s, %s, %s, %s) RETURNING *",
+            (ouid, name, org_type, description))
+        org = dict(cur.fetchone())
+        cur.execute(
+            "INSERT INTO membership (person_id, organization_id, role)"
+            " VALUES (%s, %s, 'owner') RETURNING *",
+            (person_id, org["id"]))
+        cur.fetchone()
+        conn.commit()
+        return org
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def query_organization(org_id: int = None, name: str = None,
                        org_type: str = None) -> List[Dict]:
     sql = "SELECT * FROM organization WHERE 1=1"

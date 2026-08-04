@@ -4,13 +4,14 @@ Strict JWT only (`require_strict_org_context`) — never accepts ouid/puid query
 params. Business-facing DTOs only, no DB numeric ids.
 """
 from fastapi import APIRouter, HTTPException, Query, Request
+from psycopg2.errors import UniqueViolation
 
 from src.routers.deps import require_authenticated, require_strict_org_context
 from src.db.database import (
     get_space_overview, get_space_resources, get_space_persons,
     get_space_transactions, get_space_timeline,
     query_organization_by_ouid, query_person_by_puid, query_membership,
-    create_organization, add_membership, create_org_invite,
+    create_org_with_owner, create_org_invite,
     query_invite_by_uid, accept_invite, create_join_request,
     query_join_request_by_uid, approve_join_request,
     remove_membership, count_org_owners, transfer_ownership,
@@ -117,6 +118,8 @@ async def space_timeline(request: Request):
 async def create_space(body: SpaceCreate, request: Request):
     """Create an organization; caller becomes its owner. JWT required."""
     payload = require_authenticated(request)
+    if not body.name.strip():
+        raise HTTPException(422, "name is required")
     if body.org_type not in _VALID_ORG_TYPES:
         raise HTTPException(422, f"org_type must be one of {sorted(_VALID_ORG_TYPES)}")
     if body.org_type == "personal":
@@ -128,9 +131,13 @@ async def create_space(body: SpaceCreate, request: Request):
     if not persons:
         raise HTTPException(401, "Invalid person in token")
     person = persons[0]
-    org = create_organization(body.name, body.org_type, body.description,
-                              ouid=body.ouid)
-    membership = add_membership(person["id"], org["id"], "owner")
+    try:
+        org = create_org_with_owner(body.name, body.org_type, person["id"],
+                                    description=body.description, ouid=body.ouid)
+    except UniqueViolation:
+        raise HTTPException(409, "ouid already taken")
+    from src.db.database import query_membership as _qm
+    membership = _qm(person["id"], org["id"])[0]
     from src.routers.auth import _context_dto
     account = _fetch_account_for_person(person["id"], payload)[0]
     return _context_dto(person, org, account, membership)
@@ -149,7 +156,10 @@ async def create_invite(ouid: str, body: InviteCreate, request: Request):
         raise HTTPException(404, "Organization not found")
     if orgs[0]["type"] == "personal":
         raise HTTPException(422, "Personal spaces do not accept invites (MVP)")
-    invite = create_org_invite(orgs[0]["id"], body.invitee_puid, body.role or "member",
+    role = body.role or "member"
+    if role not in ("member", "viewer"):
+        raise HTTPException(422, "invite role must be 'member' or 'viewer'")
+    invite = create_org_invite(orgs[0]["id"], body.invitee_puid, role,
                                ctx["puid"])
     return _gov_dto({
         "invite_uid": invite["invite_uid"],

@@ -1,0 +1,533 @@
+# Demo 双场景回归测试计划
+
+> 角色：资深 DevOps + QA 工程师
+> 目标日期：2026-08-06 比赛提交前
+> 目标耗时：1 小时内完成环境重置、双场景种子、冒烟回归、录屏提词器输出
+> 适用范围：测试 Demo 环境。禁止在生产库执行 Destroy & Rebuild。
+
+---
+
+## 0. 核心目标
+
+将 Uni-Resource Agent 重置为“火烧新野 + 淘宝卖家”双上下文完美状态，并输出可录屏的无 Bug 操作清单。
+
+演示必须证明三件事：
+
+1. 一个账号 `zhansan` 可进入多个业务空间。
+2. 淘宝卖家空间有真实库存、流水、摘要、Seller AI 查询闭环。
+3. 火烧新野空间与淘宝卖家空间数据隔离，绝不泄漏淘宝销售收入或商品库存。
+
+发现任何异常必须立即终止，先修复再继续。不得带着疑问进入下一阶段。
+
+---
+
+## 1. 执行前门禁
+
+### 1.1 必须确认
+
+- 当前连接的是测试数据库，不是生产数据库。
+- `.env` 或终端环境变量已配置测试 DB 和 JWT secret。
+- 本地没有未保存的重要数据库数据。
+- 后端和前端进程可被重启。
+- 当前代码分支是准备录屏的冻结分支。
+
+### 1.2 推荐环境变量
+
+不要把真实密码写入文档、脚本或提交文件。执行前在终端或未提交的 `.env` 中设置：
+
+```bash
+export DB_HOST=1.117.223.223
+export DB_PORT=5435
+export DB_USER=unires
+export DB_PASSWORD='<测试数据库密码>'
+export DB_NAME=unires
+export JWT_SECRET='<测试 JWT secret>'
+export DEMO_ZHANSAN_PASSWORD='<演示账号密码>'
+```
+
+### 1.3 立即停止条件
+
+出现以下任一情况，立即停止：
+
+- `DB_HOST/DB_PORT` 不是测试库。
+- `DROP DATABASE` 操作目标不是 `unires` 测试库。
+- 初始化后发现 `test_org/demo_org/tmp_*` 等开发脏组织。
+- 登录响应或 JWT 出现 `id/person_id/organization_id/membership_id/pid/oid`。
+- 切换空间后数据串库。
+- 前端出现白屏、`NaN/null`、表格列暴露 DB ID。
+- 默认测试触发真 LLM。
+
+---
+
+## 2. 第一阶段：数据库核爆式清理
+
+目标：确保 Demo 环境从干净数据库开始，不受开发调试残留影响。
+
+### 2.1 停止所有服务
+
+```bash
+pkill -f uvicorn || true
+pkill -f vite || true
+```
+
+验证：
+
+```bash
+ps -ax | rg 'uvicorn|vite|npm run dev' || true
+```
+
+预期：无正在运行的后端或 Vite dev server。
+
+### 2.2 硬重置 PostgreSQL
+
+仅测试库执行：
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres
+```
+
+进入 psql 后执行：
+
+```sql
+DROP DATABASE IF EXISTS unires WITH (FORCE);
+CREATE DATABASE unires OWNER unires;
+\q
+```
+
+### 2.3 初始化表结构
+
+```bash
+PYTHONPATH=. python scripts/init_db.py
+```
+
+### 2.4 标准预置验证
+
+执行：
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d unires \
+  -c "SELECT ouid, name, type FROM organization ORDER BY ouid;"
+```
+
+验收：
+
+- 允许存在的标准空间：
+  - `shu` / 蜀
+  - `wei` / 魏
+  - `wu` / 吴
+  - `taobao_shop_a` / 淘宝小店 A
+- 不允许出现：
+  - `test_org`
+  - `demo_org`
+  - `tmp_*`
+  - 任何开发调试残留组织
+
+---
+
+## 3. 第二阶段：双场景种子数据
+
+目标：录屏数据必须有故事感，不使用随机假数据。
+
+建议新增独立脚本：
+
+```text
+scripts/seed_demo_data.py
+```
+
+不要把 Demo 数据强行塞进 `scripts/init_db.py`，除非开发团队确认 init 脚本本身就是 Demo 初始化入口。推荐流程是：
+
+```bash
+PYTHONPATH=. python scripts/init_db.py
+PYTHONPATH=. python scripts/seed_demo_data.py
+```
+
+### 3.1 上下文 A：淘宝卖家
+
+组织：
+
+```text
+ouid = taobao_shop_a
+type = ecommerce
+name = 淘宝小店 A
+```
+
+人员：
+
+| puid | 姓名 | 角色 |
+| :--- | :--- | :--- |
+| zhansan | 张三 | owner |
+| lisi | 李四 | member/仓管 |
+
+商品与库存：
+
+| product_uid | 商品名 | 库存 | 单位 | 录屏用途 |
+| :--- | :--- | ---: | :--- | :--- |
+| SKU-001 | 诸葛亮联名羽扇 | 50 | 件 | 正常库存 |
+| SKU-002 | 木牛流马模型 | 12 | 件 | 低库存预警 |
+
+最近交易：
+
+| 类型 | 金额 | 说明 |
+| :--- | ---: | :--- |
+| sales_out | 正数收入 | 销售诸葛亮联名羽扇 |
+| sales_out | 正数收入 | 销售木牛流马模型 |
+| purchase_in | 正数支出 | 补货木牛流马模型 |
+
+验收：
+
+- `/seller/stock` 能看到两个 SKU。
+- `SKU-002 木牛流马模型` 是库存最低商品。
+- `/seller/summary` 能汇总销售收入、采购支出、库存金额概览。
+- `/seller/chat` 回答“库存最低的商品是什么？”时指向 `木牛流马模型（12件）`。
+
+### 3.2 上下文 B：火烧新野
+
+组织：
+
+```text
+ouid = xinye_campaign
+type = campaign
+name = 火烧新野战役
+```
+
+人员：
+
+| puid | 姓名 | 角色 |
+| :--- | :--- | :--- |
+| liubei | 刘备 | 指挥官 |
+| zhugeliang | 诸葛亮 | 军师 |
+| zhansan | 张三 | viewer/member，用于录屏切换 |
+
+资源：
+
+| resource | 库存 | 单位 | 录屏用途 |
+| :--- | ---: | :--- | :--- |
+| 军粮 | 1000 | 石 | 物流 |
+| 箭矢 | 5000 | 支 | 物资 |
+
+验收：
+
+- `zhansan` 登录后 Header 下拉同时看到：
+  - 淘宝小店 A
+  - 火烧新野战役
+- 切换到 `xinye_campaign` 后，空间数据不包含淘宝 SKU。
+- 火烧新野 `/summary` 财务数据为 `0` 或明确军费口径，绝不能显示淘宝销售收入。
+
+### 3.3 种子脚本红线
+
+`scripts/seed_demo_data.py` 必须满足：
+
+- 幂等：重复执行不会创建重复组织、重复人员、重复库存。
+- 不写真实密码；`zhansan` 密码从 `DEMO_ZHANSAN_PASSWORD` 读取。
+- 只创建一个账号 `account.login=zhansan`，不得创建 `zhansan@taobao_shop_a` 或 `zhansan@xinye_campaign`。
+- membership 绑定到 `person.puid=zhansan`。
+- 对外数据使用 `puid/ouid/product_uid/warehouse_code`，不得使用 DB 数字 ID。
+
+---
+
+## 4. 第三阶段：全链路冒烟测试
+
+目标：用录屏前最小用例证明认证、切换、隔离、Seller AI 全链路可用。
+
+测试文件：
+
+```text
+agents/tdd/test_demo_smoke.py
+```
+
+旧测试如包含 `pid/oid`，本次必须重构为 `puid/ouid`。
+
+### 4.1 用例 1：登录鉴权
+
+请求：
+
+```http
+POST /auth/seller-login
+```
+
+Body：
+
+```json
+{
+  "login": "zhansan",
+  "password": "<DEMO_ZHANSAN_PASSWORD>"
+}
+```
+
+断言：
+
+- HTTP 200。
+- 返回 `access_token`。
+- JWT payload 只含业务身份字段：
+  - `puid`
+  - `ouid`
+  - `organization_type`
+  - `role`
+  - 其他非 DB 身份字段
+- JWT payload 不得含：
+  - `id`
+  - `person_id`
+  - `organization_id`
+  - `membership_id`
+  - `pid`
+  - `oid`
+
+### 4.2 用例 2：组织列表
+
+请求：
+
+```http
+GET /auth/me/organizations
+Authorization: Bearer <token>
+```
+
+断言：
+
+- 返回当前用户两个核心组织：
+  - `taobao_shop_a`
+  - `xinye_campaign`
+- 每项显示 `ouid/name/type/role`。
+- 不返回 DB 数字 ID。
+
+### 4.3 用例 3：上下文切换
+
+请求：
+
+```http
+POST /auth/switch-organization
+Authorization: Bearer <token>
+
+{ "ouid": "xinye_campaign" }
+```
+
+断言：
+
+- HTTP 200。
+- 返回新 JWT。
+- 新 JWT 中 `ouid=xinye_campaign`。
+- 再切回：
+
+```json
+{ "ouid": "taobao_shop_a" }
+```
+
+新 JWT 中 `ouid=taobao_shop_a`。
+
+### 4.4 用例 4：资产隔离
+
+在 `taobao_shop_a` 上下文：
+
+```text
+query_asset("羽扇")
+```
+
+断言：返回 `诸葛亮联名羽扇`，库存 `50`。
+
+切换至 `xinye_campaign` 后：
+
+```text
+query_asset("羽扇")
+```
+
+断言：返回“未找到”或数量 `0`。
+
+这是致命红线：任何淘宝库存出现在火烧新野空间，都视为 Demo 阻断。
+
+### 4.5 用例 5：Seller AI 查询
+
+请求：
+
+```http
+POST /seller/chat
+Authorization: Bearer <taobao_shop_a token>
+
+{ "message": "库存最低的商品是什么？" }
+```
+
+断言：
+
+- HTTP 200。
+- 回答必须包含：
+  - `木牛流马模型`
+  - `12`
+- 不调用通用 `/chat`。
+- 响应不包含 DB 数字 ID。
+
+### 4.6 执行命令
+
+```bash
+python3 -m pytest agents/tdd/test_demo_smoke.py -v
+```
+
+验收：5 个核心场景全部通过。
+
+---
+
+## 5. 第四阶段：录屏操作提词器
+
+目标：PM 按固定流程录屏，边演示边做 Bug 自查。
+
+| 时间 | 操作 | 预期效果 | 检查点 |
+| :--- | :--- | :--- | :--- |
+| 0:00 | 启动后端和前端 | 终端无 Error，Vite 编译成功 | 若报 `ModuleNotFoundError`，立即执行 `pip install -r requirements.txt` |
+| 0:30 | 访问 `http://localhost:5173` | 跳转登录页 | 登录页不提示 `puid@ouid`，只提示输入账号 `zhansan` |
+| 1:00 | 输入 `zhansan` 和演示密码登录 | 进入工作台，Header 显示 `淘宝小店 A (ecommerce)` | 若 Header 显示火烧新野或空白，立即检查 JWT 默认空间选择和前端 `unires_ctx` |
+| 1:30 | 点击 Header 组织下拉 | 下拉列表含 `火烧新野战役` | 选择后必须调用 `/auth/switch-organization`，不能前端假切换 |
+| 2:00 | 切换到火烧新野 | Main 显示非 ecommerce 空间页面 | 当前若 FE-10/CR-01 已启用，应显示通用空间观察页；若仍是 FE-08 基线，可接受业务形态占位，但不得白屏 |
+| 2:30 | 切回淘宝，点左侧 `Seller AI` | 进入 Seller AI 页面 | Network 面板只允许调用 `/seller/chat`，不得调用通用 `/chat` |
+| 2:45 | 输入“算一下这个月卖了多少钱” | AI 返回销售收入/采购支出口径 | 不得回答“我不知道”；不得泄漏 DB ID |
+| 3:15 | 点 `库存` 菜单 | 库存列表显示 SKU 数据 | 表格列显示 `product_uid`，绝不能显示 `asset_id/resource_id` |
+| 3:45 | 点 `经营摘要` | 卡片显示收入、支出、库存概览 | 不得出现 `NaN/null`；金额必须与种子交易一致 |
+| 4:15 | 切换回火烧新野 | 看不到淘宝 SKU 和销售收入 | 证明多空间隔离 |
+| 4:45 | 总结 | “同一账号，多个空间，数据和 AI 能力随空间切换” | Header、Sidebar、Main 三者上下文一致 |
+
+---
+
+## 6. 即时 Bug 修复策略
+
+录屏前发现以下高频问题，按优先级立即处理。
+
+### 6.1 切换组织后页面白屏，后端返回 422
+
+可能原因：
+
+- `/auth/switch-organization` 仍校验旧字段 `organization_id`。
+- 前端请求体混入 DB ID。
+
+修复：
+
+- 检查 `src/routers/auth.py` 和 `src/models/schemas.py`。
+- `SwitchOrganizationRequest` 必须只接收 `ouid: str`。
+- 删除所有对 `int(id)` 或 `organization_id` 的切换逻辑。
+- 前端 `web/src/api/auth.ts` 只提交 `{ ouid }`。
+
+复测：
+
+```bash
+python3 -m pytest agents/tdd/test_auth_api.py::test_switch_organization_success_issues_new_token -q
+```
+
+### 6.2 Seller AI 回答“我不知道”
+
+可能原因：
+
+- Seller 工具没有拿到当前组织上下文。
+- Agent 暴露了错误工具集。
+
+修复：
+
+- 检查 `src/routers/seller.py` 的 `/seller/chat`。
+- 检查 `src/agents/agent.py` 和 Seller tools。
+- 工具必须由后端从 JWT 解析后的当前组织上下文注入，不能从用户提问中推断。
+- Seller AI 只允许只读安全工具，不允许暴露写工具。
+
+复测：
+
+```bash
+python3 -m pytest agents/tdd/test_seller_chat_api.py agents/tdd/test_seller_ai_tools.py -q
+```
+
+### 6.3 前端编译 TypeError
+
+修复：
+
+```bash
+cd web
+npm run type-check
+```
+
+重点检查：
+
+- `web/src/api/seller.ts`
+- `web/src/api/auth.ts`
+- `web/src/api/spaces.ts`
+- `web/src/api/spaceGovernance.ts`
+
+禁止用 `any` 逃避类型错误。API 类型必须与后端 JSON 契约一致。
+
+### 6.4 摘要出现 `NaN/null`
+
+可能原因：
+
+- 交易金额为 `null`。
+- 采购/销售统计口径不一致。
+- 种子数据未生成 inventory movement。
+
+修复：
+
+- 检查 `transaction`、`inventory_movement`。
+- Demo 交易金额必须为正数。
+- 采购支出、销售收入、库存金额按 BE-03 已验收口径计算。
+
+复测：
+
+```bash
+python3 -m pytest agents/tdd/test_seller_summary_api.py -q
+```
+
+---
+
+## 7. 最终收尾命令
+
+### 7.1 Demo 冒烟测试
+
+```bash
+python3 -m pytest agents/tdd/test_demo_smoke.py -v
+```
+
+### 7.2 安全扫描
+
+```bash
+rg -n "sk-|AKIA|password" web/src src --type py --type ts
+```
+
+说明：
+
+- `password` 字段名可能在登录表单和认证代码中出现，允许作为字段名存在。
+- 不允许出现真实密码、API key、token、secret。
+
+进一步扫描：
+
+```bash
+rg -n 'person_id|organization_id|membership_id|account_id|resource_id|asset_id|warehouse_id|transaction_id' web/src src/routers
+rg -n '"pid"|"oid"|\bpid\b|\boid\b' web/src src/routers agents/tdd
+rg -n 'header-ai-entry|navigate-ai' web/src
+```
+
+### 7.3 前端构建
+
+```bash
+cd web
+npm run build
+```
+
+### 7.4 录屏前状态确认
+
+全部通过后，输出：
+
+```text
+Demo 环境已就绪，可以开始录屏
+```
+
+任一环节失败时，必须输出：
+
+```text
+Demo 环境未就绪，禁止录屏
+失败阶段：
+失败命令：
+关键报错：
+建议修复：
+```
+
+---
+
+## 8. 最终交付物
+
+| 交付物 | 路径/命令 | 验收 |
+| :--- | :--- | :--- |
+| 双场景种子脚本 | `scripts/seed_demo_data.py` | 可幂等重建淘宝 + 火烧新野 Demo 数据 |
+| Demo 冒烟测试 | `agents/tdd/test_demo_smoke.py` | 5 个核心场景全绿 |
+| 录屏操作提词器 | 本文第 5 节 | PM 可按表逐步录屏 |
+| 安全扫描结果 | 第 7.2 节命令输出 | 无真实密钥、无 DB ID 对外泄漏 |
+| 前端构建结果 | `cd web && npm run build` | 构建成功 |
+

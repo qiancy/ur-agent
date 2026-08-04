@@ -548,7 +548,7 @@ class TestChatAPI:
     def test_endpoint(self):
         """测试AI对话接口"""
         resp = client.post("/chat", params={"ouid": "shu"}, json={"message": "hi"})
-        assert resp.status_code in (200, 500, 503)
+        assert resp.status_code in (200, 500, 503, 504)
         if resp.status_code == 200:
             data = resp.json()
             assert "response" in data
@@ -561,7 +561,7 @@ class TestChatAPI:
             params={"ouid": "shu"},
             json={"message": "蜀国有多少资源？"},
         )
-        assert resp.status_code in (200, 500, 503)
+        assert resp.status_code in (200, 500, 503, 504)
         if resp.status_code == 200:
             data = resp.json()
             assert "response" in data

@@ -12,8 +12,10 @@ from src.db.database import (
     get_space_transactions, get_space_timeline,
     query_organization_by_ouid, query_person_by_puid, query_membership,
     create_org_with_owner, create_org_invite,
-    query_invite_by_uid, accept_invite, create_join_request,
-    query_join_request_by_uid, approve_join_request,
+    query_invite_by_uid, accept_invite,
+    create_join_request as db_create_join_request,
+    query_join_request_by_uid,
+    approve_join_request as db_approve_join_request,
     remove_membership, count_org_owners, transfer_ownership,
 )
 from src.models.schemas import (
@@ -216,7 +218,7 @@ async def create_join_request(ouid: str, body: JoinRequestCreate, request: Reque
         raise HTTPException(401, "Invalid person in token")
     if query_membership(persons[0]["id"], orgs[0]["id"]):
         raise HTTPException(409, "Already a member")
-    req = create_join_request(orgs[0]["id"], puid)
+    req = db_create_join_request(orgs[0]["id"], puid)
     return _gov_dto({
         "request_uid": req["request_uid"],
         "ouid": ouid,
@@ -249,7 +251,7 @@ async def approve_join_request(body: ApproveJoinRequestRequest, request: Request
     requester = query_person_by_puid(req["requester_puid"])
     if not requester:
         raise HTTPException(404, "Requester person not found")
-    membership = approve_join_request(body.request_uid, requester[0]["id"])
+    membership = db_approve_join_request(body.request_uid, requester[0]["id"])
     if not membership:
         raise HTTPException(409, "Join request already processed or already a member")
     return _gov_dto({

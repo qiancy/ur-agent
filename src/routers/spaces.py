@@ -3,8 +3,11 @@
 Strict JWT only (`require_strict_org_context`) — never accepts ouid/puid query
 params. Business-facing DTOs only, no DB numeric ids.
 """
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query, Request
 from psycopg2.errors import UniqueViolation
+from starlette.concurrency import run_in_threadpool
 
 from src.routers.deps import require_authenticated, require_strict_org_context
 from src.db.database import (
@@ -118,6 +121,31 @@ async def space_timeline(request: Request):
     _reject_identity_params(request)
     ctx = require_strict_org_context(request)
     return {"events": get_space_timeline(ctx["organization_id"])}
+
+
+@router.get("/current/dashboard")
+async def space_dashboard(
+    request: Request,
+    transaction_limit: int = Query(default=20, ge=1, le=100),
+):
+    _reject_identity_params(request)
+    ctx = require_strict_org_context(request)
+    organization_id = ctx["organization_id"]
+    overview, resources, persons, transactions, timeline = await asyncio.gather(
+        run_in_threadpool(get_space_overview, organization_id, ctx.get("role")),
+        run_in_threadpool(get_space_resources, organization_id),
+        run_in_threadpool(get_space_persons, organization_id),
+        run_in_threadpool(get_space_transactions, organization_id, transaction_limit),
+        run_in_threadpool(get_space_timeline, organization_id),
+    )
+    return {
+        "status": "ok",
+        "overview": overview,
+        "resources": resources,
+        "persons": persons,
+        "transactions": transactions,
+        "timeline": {"events": timeline},
+    }
 
 
 @router.post("", status_code=201)

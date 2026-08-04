@@ -4,7 +4,7 @@ Seller read-only LangChain tools for POST /seller/chat.
 The shop context (``shop_key`` = internal organization PK) is bound into each
 tool via closure and is passed positionally to DB helpers only. Tool schemas
 exposed to the model contain business query parameters only — no identity
-fields, no bare ``id``, no ``*_id``, no ``pid``/``oid``.
+fields, no bare ``id``, no numeric-PK-style keys, no legacy short aliases.
 
 Outputs are JSON text with ``ensure_ascii=False`` and zero DB numeric PKs.
 Failures return a safe error text without leaking SQL/connection details.

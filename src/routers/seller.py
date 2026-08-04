@@ -1,8 +1,10 @@
 import re
+import asyncio
 from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from starlette.concurrency import run_in_threadpool
 
 from src.models.schemas import (
     SellerPurchaseIn, SellerSalesOut, SellerChatRequest,
@@ -153,6 +155,38 @@ async def seller_summary(
         low_stock_threshold=low_stock_threshold,
         top_n=top_n,
     )
+
+
+@router.get("/workbench")
+async def seller_workbench(
+    request: Request,
+    movements_limit: int = Query(default=10, ge=1, le=50),
+    low_stock_threshold: float = Query(default=5, ge=0),
+    top_n: int = Query(default=5, ge=1, le=20),
+):
+    _reject_identity_params(request)
+    ctx = require_ecommerce_context(request)
+    organization_id = ctx["organization_id"]
+    summary, stock_rows, movements = await asyncio.gather(
+        run_in_threadpool(
+            get_seller_summary,
+            organization_id,
+            low_stock_threshold=low_stock_threshold,
+            top_n=top_n,
+        ),
+        run_in_threadpool(query_stock, organization_id),
+        run_in_threadpool(
+            query_inventory_movements,
+            organization_id,
+            limit=movements_limit,
+        ),
+    )
+    return {
+        "status": "ok",
+        "summary": summary,
+        "stock": stock_rows,
+        "movements": movements,
+    }
 
 
 @router.get("/product-summary")

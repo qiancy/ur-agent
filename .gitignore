@@ -51,6 +51,12 @@ output/
 
 .venv/
 
+# Pytest
+.pytest_cache/
+
+# Process ID files
+*.process_id
+
 .opencode/
 opencode.json
 docs/superpowers/

@@ -257,11 +257,34 @@ class APIClient:
             return self.post("person", data, timeout=30)
     
     def add_membership(self, puid: str, ouid: str, role: str = None, timeout: int = 30) -> Dict[str, Any]:
-        """添加组织成员"""
-        data = {"puid": puid, "ouid": ouid}
-        if role:
-            data["role"] = role
-        return self.post("organizations/members", data, timeout=timeout)
+        """添加组织成员（DB 直插：organizations/members 已收口为 owner/admin 治理端点）"""
+        conn = self._get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM organization WHERE ouid = %s", (ouid,))
+            org_row = cur.fetchone()
+            if not org_row:
+                raise RuntimeError(f"organization not found: {ouid}")
+            cur.execute("SELECT id FROM person WHERE puid = %s", (puid,))
+            person_row = cur.fetchone()
+            if not person_row:
+                raise RuntimeError(f"person not found: {puid}")
+            cur.execute(
+                "INSERT INTO membership (person_id, organization_id, role)"
+                " VALUES (%s, %s, %s) ON CONFLICT (person_id, organization_id) DO NOTHING"
+                " RETURNING person_id, organization_id, role",
+                (person_row[0], org_row[0], role or "member"))
+            row = cur.fetchone()
+            conn.commit()
+            cur.close()
+            conn.close()
+            return {"person_id": person_row[0], "organization_id": org_row[0],
+                    "role": row[2] if row else (role or "member")}
+        except Exception as e:
+            conn.rollback()
+            cur.close()
+            conn.close()
+            raise e
     
     def create_resource(self, ouid: str, name: str, resource_type: str,
                         unit: str = None, amount: float = None,

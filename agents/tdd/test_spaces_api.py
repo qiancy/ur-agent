@@ -22,21 +22,17 @@ def family_ctx():
     s = _SUFFIX
     data = {}
     ouid = f"be10_family_{s}"
-    resp = client.post("/organizations", json={
-        "name": f"BE10家庭_{s}", "org_type": "family", "ouid": ouid, "funds": 5000,
+    login = f"fam_{s}"
+    resp = client.post("/auth/register", json={
+        "login": login, "password": "pass123", "name": f"家长_{s}",
     })
     assert resp.status_code == 201, resp.text
     data["ouid"] = ouid
 
-    login = f"fam_{s}"
-    resp = client.post("/auth/register", json={
-        "login": login, "password": "pass123", "name": f"家长_{s}",
-        "initial_ouid": ouid,
+    resp = client.post("/spaces", headers=_auth_header(resp.json()["access_token"]), json={
+        "name": f"BE10家庭_{s}", "org_type": "family", "ouid": ouid,
     })
     assert resp.status_code == 201, resp.text
-
-    resp = client.post("/auth/seller-login", json={"login": login, "password": "pass123"})
-    assert resp.status_code == 200, resp.text
     data["token"] = resp.json()["access_token"]
     return data
 
@@ -69,13 +65,20 @@ def test_resources_physical_locations(family_ctx):
     s = _SUFFIX
     # seed a physical resource with stock via warehouse + resource_warehouse
     login = f"fam2_{s}"
-    assert client.post("/auth/register", json={
+    reg = client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"家长2_{s}",
-        "initial_ouid": family_ctx["ouid"],
-    }).status_code == 201
-    resp = client.post("/auth/seller-login", json={"login": login, "password": "pass123"})
-    assert resp.status_code == 200
-    token = resp.json()["access_token"]
+    })
+    assert reg.status_code == 201, reg.text
+    # owner (family org context) adds fam2 as a member
+    mem = client.post("/organizations/members",
+                      headers=_auth_header(family_ctx["token"]),
+                      json={"puid": login, "ouid": family_ctx["ouid"], "role": "member"})
+    assert mem.status_code == 201, mem.text
+    # fam2 switches into the family org context
+    sw = client.post("/auth/switch-organization", headers=_auth_header(reg.json()["access_token"]),
+                     json={"ouid": family_ctx["ouid"]})
+    assert sw.status_code == 200, sw.text
+    token = sw.json()["access_token"]
     org = client.get("/spaces/current/overview", headers=_auth_header(token)).json()["space"]
     # create resource via /resource (needs bearer + org context)
     resp = client.post("/resource", headers=_auth_header(token),

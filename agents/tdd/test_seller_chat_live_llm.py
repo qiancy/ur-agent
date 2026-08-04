@@ -53,23 +53,17 @@ def client(live_env):
 
 def _create_shop(client: TestClient, tag: str) -> dict:
     s = uuid.uuid4().hex[:8]
-    ouid = f"be04live_{tag}_{s}"
-    resp = client.post("/organizations", json={
-        "name": f"BE04LIVE_{tag}_{s}", "org_type": "ecommerce", "ouid": ouid,
-    })
-    assert resp.status_code in (200, 201), resp.text
-
     login = f"seller_{tag}_{s}"
     resp = client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"卖家{tag}_{s}",
-        "initial_ouid": ouid,
     })
     assert resp.status_code == 201, resp.text
 
-    resp = client.post("/auth/seller-login", json={
-        "login": login, "password": "pass123",
+    ouid = f"be04live_{tag}_{s}"
+    resp = client.post("/spaces", headers=_auth_header(resp.json()["access_token"]), json={
+        "name": f"BE04LIVE_{tag}_{s}", "org_type": "ecommerce", "ouid": ouid,
     })
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 201, resp.text
     token = resp.json()["access_token"]
 
     product_uid = f"prod_{tag}_{s}"

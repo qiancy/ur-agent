@@ -23,23 +23,17 @@ def shop():
     s = _SUFFIX
     data = {}
     ouid = f"be09_shop_{s}"
-    resp = client.post("/organizations", json={
-        "name": f"BE09店铺_{s}", "org_type": "ecommerce", "ouid": ouid,
+    login = f"seller_{s}"
+    resp = client.post("/auth/register", json={
+        "login": login, "password": "pass123", "name": f"店主_{s}",
     })
     assert resp.status_code == 201, resp.text
     data["ouid"] = ouid
 
-    login = f"seller_{s}"
-    resp = client.post("/auth/register", json={
-        "login": login, "password": "pass123", "name": f"店主_{s}",
-        "initial_ouid": ouid,
+    resp = client.post("/spaces", headers=_auth_header(resp.json()["access_token"]), json={
+        "name": f"BE09店铺_{s}", "org_type": "ecommerce", "ouid": ouid,
     })
     assert resp.status_code == 201, resp.text
-
-    resp = client.post("/auth/seller-login", json={
-        "login": login, "password": "pass123",
-    })
-    assert resp.status_code == 200, resp.text
     data["token"] = resp.json()["access_token"]
     return data
 
@@ -114,17 +108,16 @@ def test_patch_unknown_404(shop):
 def test_products_isolated_between_shops():
     s = uuid.uuid4().hex[:8]
     ouid = f"be09_shop_b_{s}"
-    assert client.post("/organizations", json={
-        "name": f"BE09店铺B_{s}", "org_type": "ecommerce", "ouid": ouid,
-    }).status_code == 201
     login = f"seller_b_{s}"
-    assert client.post("/auth/register", json={
+    reg = client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"店主B_{s}",
-        "initial_ouid": ouid,
-    }).status_code == 201
-    resp = client.post("/auth/seller-login", json={"login": login, "password": "pass123"})
-    assert resp.status_code == 200
-    token = resp.json()["access_token"]
+    })
+    assert reg.status_code == 201, reg.text
+    sp = client.post("/spaces", headers=_auth_header(reg.json()["access_token"]), json={
+        "name": f"BE09店铺B_{s}", "org_type": "ecommerce", "ouid": ouid,
+    })
+    assert sp.status_code == 201, sp.text
+    token = sp.json()["access_token"]
     r2 = _products(token)
     assert r2.status_code == 200, r2.text
     assert all(x["product_uid"] != "SKU-A01" for x in r2.json())
@@ -140,18 +133,16 @@ def test_products_reject_identity_query_params(shop):
 def test_products_requires_ecommerce():
     s = _SUFFIX
     ouid = f"be09_org_{s}"
-    resp = client.post("/organizations", json={
+    login = f"fam_{s}"
+    reg = client.post("/auth/register", json={
+        "login": login, "password": "pass123", "name": f"家人_{s}",
+    })
+    assert reg.status_code == 201, reg.text
+    sp = client.post("/spaces", headers=_auth_header(reg.json()["access_token"]), json={
         "name": f"BE09非电商_{s}", "org_type": "family", "ouid": ouid,
     })
-    assert resp.status_code == 201, resp.text
-    login = f"fam_{s}"
-    assert client.post("/auth/register", json={
-        "login": login, "password": "pass123", "name": f"家人_{s}",
-        "initial_ouid": ouid,
-    }).status_code == 201
-    resp = client.post("/auth/seller-login", json={"login": login, "password": "pass123"})
-    assert resp.status_code == 200
-    token = resp.json()["access_token"]
+    assert sp.status_code == 201, sp.text
+    token = sp.json()["access_token"]
     resp = client.get("/seller/products", headers=_auth_header(token))
     assert resp.status_code == 403, resp.text
 

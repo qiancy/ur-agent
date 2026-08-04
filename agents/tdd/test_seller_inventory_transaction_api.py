@@ -36,23 +36,17 @@ def _create_shop(tag: str, location_path: str = "A-01") -> dict:
     """Create a self-contained ecommerce shop (each call gets a unique suffix)."""
     s = uuid.uuid4().hex[:8]
 
-    ouid = f"be02_{tag}_{s}"
-    resp = client.post("/organizations", json={
-        "name": f"BE02_{tag}_{s}", "org_type": "ecommerce", "ouid": ouid,
-    })
-    assert resp.status_code in (200, 201), resp.text
-
     login = f"seller_{tag}_{s}"
     resp = client.post("/auth/register", json={
         "login": login, "password": "pass123", "name": f"卖家{tag}_{s}",
-        "initial_ouid": ouid,
     })
     assert resp.status_code == 201, resp.text
 
-    resp = client.post("/auth/seller-login", json={
-        "login": login, "password": "pass123",
+    ouid = f"be02_{tag}_{s}"
+    resp = client.post("/spaces", headers=_auth_header(resp.json()["access_token"]), json={
+        "name": f"BE02_{tag}_{s}", "org_type": "ecommerce", "ouid": ouid,
     })
-    assert resp.status_code == 200
+    assert resp.status_code == 201, resp.text
     token = resp.json()["access_token"]
     puid = resp.json().get("person", {}).get("puid")
 

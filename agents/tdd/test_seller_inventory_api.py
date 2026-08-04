@@ -33,25 +33,17 @@ def shops():
 
     # ── 店铺A ──
     shop_a_ouid = f"be01_shop_a_{s}"
-    resp = client.post("/organizations", json={
-        "name": f"BE01店铺A_{s}",
-        "org_type": "ecommerce",
-        "ouid": shop_a_ouid,
-    })
-    assert resp.status_code in (200, 201), resp.text
-    data["shop_a_ouid"] = shop_a_ouid
-
     login_a = f"seller_a_{s}"
     resp = client.post("/auth/register", json={
         "login": login_a, "password": "pass123", "name": f"小A_{s}",
-        "initial_ouid": shop_a_ouid,
     })
     assert resp.status_code == 201, resp.text
+    data["shop_a_ouid"] = shop_a_ouid
 
-    resp = client.post("/auth/seller-login", json={
-        "login": login_a, "password": "pass123",
+    resp = client.post("/spaces", headers=_auth_header(resp.json()["access_token"]), json={
+        "name": f"BE01店铺A_{s}", "org_type": "ecommerce", "ouid": shop_a_ouid,
     })
-    assert resp.status_code == 200
+    assert resp.status_code == 201, resp.text
     data["token_a"] = resp.json()["access_token"]
 
     resp = client.post(
@@ -82,25 +74,17 @@ def shops():
 
     # ── 店铺B ──
     shop_b_ouid = f"be01_shop_b_{s}"
-    resp = client.post("/organizations", json={
-        "name": f"BE01店铺B_{s}",
-        "org_type": "ecommerce",
-        "ouid": shop_b_ouid,
-    })
-    assert resp.status_code in (200, 201), resp.text
-    data["shop_b_ouid"] = shop_b_ouid
-
     login_b = f"seller_b_{s}"
     resp = client.post("/auth/register", json={
         "login": login_b, "password": "pass123", "name": f"小B_{s}",
-        "initial_ouid": shop_b_ouid,
     })
     assert resp.status_code == 201, resp.text
+    data["shop_b_ouid"] = shop_b_ouid
 
-    resp = client.post("/auth/seller-login", json={
-        "login": login_b, "password": "pass123",
+    resp = client.post("/spaces", headers=_auth_header(resp.json()["access_token"]), json={
+        "name": f"BE01店铺B_{s}", "org_type": "ecommerce", "ouid": shop_b_ouid,
     })
-    assert resp.status_code == 200
+    assert resp.status_code == 201, resp.text
     data["token_b"] = resp.json()["access_token"]
 
     resp = client.post(
@@ -235,24 +219,16 @@ class TestThreeKingdomsPublicOuidContext:
     def test_non_ecommerce_jwt_still_works(self):
         s = _SUFFIX
         org_ouid = f"be01_test_org_{s}"
-        resp = client.post("/organizations", json={
-            "name": f"BE01测试组织_{s}",
-            "org_type": "company",
-            "ouid": org_ouid,
-        })
-        assert resp.status_code in (200, 201), resp.text
-
         login = f"test_user_{s}"
         resp = client.post("/auth/register", json={
             "login": login, "password": "pass123", "name": f"测试用户_{s}",
-            "initial_ouid": org_ouid,
         })
         assert resp.status_code == 201, resp.text
 
-        resp = client.post("/auth/login", json={
-            "login": login, "password": "pass123",
+        resp = client.post("/spaces", headers=_auth_header(resp.json()["access_token"]), json={
+            "name": f"BE01测试组织_{s}", "org_type": "company", "ouid": org_ouid,
         })
-        assert resp.status_code == 200
+        assert resp.status_code == 201, resp.text
         token = resp.json()["access_token"]
 
         resp = client.post(

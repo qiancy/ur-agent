@@ -2,11 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '../api/client'
 import {
-  getSpaceOverview,
-  getSpacePersons,
-  getSpaceResources,
-  getSpaceTimeline,
-  getSpaceTransactions,
+  getSpaceDashboard,
   type SpaceOverviewData,
   type SpacePerson,
   type SpaceResourcesData,
@@ -49,18 +45,12 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [ov, rs, ps, tx, tl] = await Promise.all([
-      getSpaceOverview(),
-      getSpaceResources(),
-      getSpacePersons(),
-      getSpaceTransactions(),
-      getSpaceTimeline(),
-    ])
-    overview.value = ov
-    grouped.value = rs
-    persons.value = ps
-    transactions.value = tx
-    events.value = tl.events
+    const dashboard = await getSpaceDashboard()
+    overview.value = dashboard.overview
+    grouped.value = dashboard.resources
+    persons.value = dashboard.persons
+    transactions.value = dashboard.transactions
+    events.value = dashboard.timeline.events
   } catch (e) {
     if (!handleError(e)) {
       error.value = e instanceof Error ? e.message : '空间数据加载失败'

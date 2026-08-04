@@ -72,6 +72,32 @@ export async function sellerSummary(
   return request<SellerSummary>(`/seller/summary${qs ? `?${qs}` : ''}`)
 }
 
+export interface SellerWorkbenchParams {
+  movementsLimit?: number
+  lowStockThreshold?: number
+  topN?: number
+}
+
+export interface SellerWorkbenchData {
+  status: string
+  summary: SellerSummary
+  stock: SellerStockRow[]
+  movements: SellerMovement[]
+}
+
+export async function sellerWorkbench(
+  params: SellerWorkbenchParams = {},
+): Promise<SellerWorkbenchData> {
+  const query = new URLSearchParams()
+  if (params.movementsLimit) query.set('movements_limit', String(params.movementsLimit))
+  if (params.lowStockThreshold !== undefined) query.set('low_stock_threshold', String(params.lowStockThreshold))
+  if (params.topN) query.set('top_n', String(params.topN))
+  const qs = query.toString()
+  return request<SellerWorkbenchData>(
+    `/seller/workbench${qs ? `?${qs}` : ''}`,
+  )
+}
+
 export interface SellerStockRow {
   product_uid: string
   warehouse_code: string

@@ -79,8 +79,32 @@ export interface SpaceTimelineData {
   events: TimelineEvent[]
 }
 
+export interface SpaceDashboardParams {
+  transactionLimit?: number
+}
+
+export interface SpaceDashboardData {
+  status: string
+  overview: SpaceOverviewData
+  resources: SpaceResourcesData
+  persons: SpacePerson[]
+  transactions: SpaceTransaction[]
+  timeline: SpaceTimelineData
+}
+
 export async function getSpaceOverview(): Promise<SpaceOverviewData> {
   return request<SpaceOverviewData>('/spaces/current/overview')
+}
+
+export async function getSpaceDashboard(
+  params: SpaceDashboardParams = {},
+): Promise<SpaceDashboardData> {
+  const query = new URLSearchParams()
+  if (params.transactionLimit) query.set('transaction_limit', String(params.transactionLimit))
+  const qs = query.toString()
+  return request<SpaceDashboardData>(
+    `/spaces/current/dashboard${qs ? `?${qs}` : ''}`,
+  )
 }
 
 export async function getSpaceResources(): Promise<SpaceResourcesData> {

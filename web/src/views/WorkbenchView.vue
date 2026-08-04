@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import {
-  sellerSummary,
-  sellerStock,
-  sellerInventoryMovements,
+  sellerWorkbench,
   type SellerSummary,
   type SellerStockRow,
   type SellerMovement,
@@ -20,14 +18,10 @@ const movements = ref<SellerMovement[]>([])
 const entryMode = ref<'purchase_in' | 'sales_out' | null>(null)
 
 async function loadAll() {
-  const [s, st, mv] = await Promise.all([
-    sellerSummary(),
-    sellerStock(),
-    sellerInventoryMovements({ limit: 10 }),
-  ])
-  summary.value = s
-  stock.value = st
-  movements.value = mv
+  const data = await sellerWorkbench({ movementsLimit: 10 })
+  summary.value = data.summary
+  stock.value = data.stock
+  movements.value = data.movements
 }
 
 onMounted(loadAll)

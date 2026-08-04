@@ -6,7 +6,11 @@ DEMO 双场景回归冒烟测试（DEMO_双场景回归测试计划 §4）。
 2. 组织列表 —— /auth/me/organizations 含 taobao_shop_a 与 xinye_campaign。
 3. 上下文切换 —— switch-organization 往返 taobao_shop_a <-> xinye_campaign。
 4. 资产隔离 —— 淘宝库存不出现在火烧新野空间（致命红线）。
-5. Seller AI 查询 —— /seller/chat 回答“库存最低的商品”指向 木牛流马模型 12 件。
+5. Seller AI 查询 —— /seller/chat 回答“库存最低的商品”指向 草船借箭桌游卡牌（4盒）。
+
+增强口径（DEMO_录屏模拟数据增强开发测试安排 §3）：
+- 淘宝卖家 6 商品、库存流水 12 条、低库存 2 项（草船借箭 4 / 孔明灯香薰 5）。
+- 火烧新野 7 人员、5 实物资源、3 知识资源、6 条时间线事件。
 
 约定：
 - 默认测试使用脚本化 fake LLM（§1.3：默认测试不触发真 LLM），数据仍来自真实
@@ -74,6 +78,16 @@ def _jwt(token: str) -> dict:
     payload = decode_access_token(token)
     assert payload is not None, "token did not decode"
     return payload
+
+
+def _stock_totals(rows: list) -> dict:
+    """Aggregate per-location stock rows into per-product totals (multi-warehouse safe)."""
+    totals: dict[str, dict] = {}
+    for row in rows:
+        uid = row["product_uid"]
+        totals.setdefault(uid, {"quantity": 0.0, "unit": row.get("unit")})
+        totals[uid]["quantity"] += float(row["quantity"])
+    return totals
 
 
 # ============================================================================
@@ -161,10 +175,58 @@ def test_taobao_stock_visible_in_shop_context():
     resp = client.get("/seller/stock", headers=_auth_header(token))
     assert resp.status_code == 200, resp.text
     rows = resp.json()
-    stock = {r["product_uid"]: r for r in rows}
+    assert len(rows) >= 6, f"expected >=6 stock rows, got {len(rows)}"
+    stock = _stock_totals(rows)
     assert stock["诸葛亮联名羽扇"]["quantity"] == 50
     assert stock["木牛流马模型"]["quantity"] == 12
+    assert stock["草船借箭桌游卡牌"]["quantity"] == 4
+    assert stock["草船借箭桌游卡牌"]["unit"] == "盒"
     _assert_no_db_ids(rows)
+
+
+def test_taobao_summary_low_stock_and_movements():
+    token = _login_token()
+
+    resp = client.get("/seller/summary", headers=_auth_header(token))
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()
+    assert summary["product_count"] >= 6
+    low = {item["product_uid"]: item for item in summary["low_stock_items"]}
+    assert "草船借箭桌游卡牌" in low
+    assert "孔明灯香薰套装" in low
+    assert low["草船借箭桌游卡牌"]["quantity"] == 4
+    assert low["孔明灯香薰套装"]["quantity"] == 5
+    _assert_no_db_ids(summary)
+
+    resp = client.get("/seller/inventory-movements",
+                      headers=_auth_header(token))
+    assert resp.status_code == 200, resp.text
+    movements = resp.json()
+    assert len(movements) >= 10, f"expected >=10 movements, got {len(movements)}"
+    assert len(movements) == summary["movement_count"]
+    _assert_no_db_ids(movements)
+
+
+def test_xinye_timeline_has_six_flow_events():
+    token = _login_token()
+    resp = client.post("/auth/switch-organization",
+                       headers=_auth_header(token),
+                       json={"ouid": _XINYE_OUID})
+    assert resp.status_code == 200, resp.text
+    xinye_token = resp.json()["access_token"]
+
+    resp = client.get("/spaces/current/timeline", headers=_auth_header(xinye_token))
+    assert resp.status_code == 200, resp.text
+    events = resp.json()["events"]
+    assert len(events) >= 6, f"expected >=6 timeline events, got {len(events)}"
+    titles = {e["title"] for e in events}
+    assert "侦察曹军南下" in titles
+    assert "新野点火" in titles
+    for event in events:
+        for dim in ("info_flow", "logistics_flow", "people_flow"):
+            assert event["payload"].get(dim), (
+                f"event {event['title']} missing payload.{dim}")
+    _assert_no_db_ids(events)
 
 
 def test_taobao_assets_absent_from_xinye_context():
@@ -178,11 +240,17 @@ def test_taobao_assets_absent_from_xinye_context():
     resp = client.get("/spaces/current/resources", headers=_auth_header(xinye_token))
     assert resp.status_code == 200, resp.text
     resources = resp.json()["grouped"]
-    names = [r["name"] for r in resources.get("physical", [])]
-    assert "军粮" in names
-    assert "箭矢" in names
-    assert "诸葛亮联名羽扇" not in names
-    assert "木牛流马模型" not in names
+    physical_names = [r["name"] for r in resources.get("physical", [])]
+    assert "军粮" in physical_names
+    assert "箭矢" in physical_names
+    assert "火油" in physical_names
+    assert "诸葛亮联名羽扇" not in physical_names
+    assert "木牛流马模型" not in physical_names
+    knowledge_names = [r["name"] for r in resources.get("knowledge", [])]
+    assert "斥候情报" in knowledge_names
+    assert "新野撤退路线图" in knowledge_names
+    assert "火攻布置方案" in knowledge_names
+    assert all(r["name"] != "草船借箭桌游卡牌" for r in resources.get("physical", []))
 
     resp = client.get("/assets", params={"name": "羽扇"},
                       headers=_auth_header(xinye_token))
@@ -230,8 +298,9 @@ class _FakeSellerChatModel(BaseChatModel):
             ))])
         rows = json.loads(tool_msgs[-1].content)
         lowest = min(rows, key=lambda r: float(r["quantity"]))
-        answer = ("库存最低的商品是{name}，当前库存 {qty} 件。".format(
-            name=lowest["product_uid"], qty=int(float(lowest["quantity"]))))
+        answer = ("库存最低的商品是{name}，当前库存 {qty} {unit}。".format(
+            name=lowest["product_uid"], qty=int(float(lowest["quantity"])),
+            unit=lowest.get("unit") or "件"))
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=answer))])
 
 
@@ -256,7 +325,8 @@ def test_seller_chat_answers_lowest_stock_from_real_data(monkeypatch):
         "seller_product_summary", "seller_inventory_movements",
     }
     body = resp.json()
-    assert "木牛流马模型" in body["response"]
-    assert "12" in body["response"]
+    assert "草船借箭桌游卡牌" in body["response"]
+    assert "4" in body["response"]
+    assert "盒" in body["response"]
     assert body["ouid"] == _TAOBAO_OUID
     _assert_no_db_ids(body)

@@ -76,7 +76,7 @@ def _mock_seller_chat_if_requested(page: Page) -> None:
             content_type="application/json",
             body=json.dumps(
                 {
-                    "response": "库存最低的商品是木牛流马模型，当前库存 12件。",
+                    "response": "库存最低的商品是草船借箭桌游卡牌，当前库存 4盒。",
                     "ouid": SHOP_OUID,
                 },
                 ensure_ascii=False,
@@ -157,6 +157,22 @@ def test_04_non_ecommerce_api_isolation(page: Page):
     ]
     assert leaks == [], f"non-ecommerce space leaked seller API calls: {leaks}"
 
+    expect(page.locator('[data-test="ov-name"]')).to_contain_text("火烧新野战役")
+    expect(page.locator('[data-test="ov-type"]')).to_contain_text("campaign")
+    events_text = page.locator('[data-test="ov-events"]').inner_text()
+    assert int(events_text) >= 6, f"ov-events={events_text} expected >= 6"
+
+    expect(page.get_by_text("侦察曹军南下")).to_be_visible()
+    expect(page.get_by_text("新野点火")).to_be_visible()
+    expect(page.locator('[data-test="dim-info"]').first).to_be_visible()
+    expect(page.locator('[data-test="dim-logistics"]').first).to_be_visible()
+    expect(page.locator('[data-test="dim-people"]').first).to_be_visible()
+    expect(page.locator('[data-test="flow-info"]')).to_contain_text("信息流")
+    expect(page.locator('[data-test="flow-logistics"]')).to_contain_text("物流")
+    expect(page.locator('[data-test="flow-people"]')).to_contain_text("人流")
+    expect(page.locator('[data-test="group-knowledge"]')).to_contain_text("斥候情报")
+    expect(page.locator('[data-test="group-physical"]')).to_contain_text("火油")
+
 
 @pytest.mark.recording
 def test_05_ecommerce_workbench_and_seller_ai(page: Page):
@@ -172,6 +188,9 @@ def test_05_ecommerce_workbench_and_seller_ai(page: Page):
     page.locator('[data-test="stock-view"]').wait_for(state="visible", timeout=10_000)
     page.get_by_text("诸葛亮联名羽扇").wait_for(state="visible", timeout=10_000)
     expect(page.locator('[data-test="stock-view"]')).to_contain_text("50")
+    expect(page.locator('[data-test="stock-view"]')).to_contain_text("草船借箭桌游卡牌")
+    expect(page.locator('[data-test="stock-view"]')).to_contain_text("低库存")
+    expect(page.locator('[data-test="stock-view"]')).to_contain_text("临界")
 
     header_text = page.locator('[data-test="stock-view"] thead').inner_text()
     assert "数量" in header_text
@@ -188,5 +207,5 @@ def test_05_ecommerce_workbench_and_seller_ai(page: Page):
         page.locator('[data-test="chat-send"]').click()
 
     reply = page.locator('[data-test="messages"] .msg-ai').last
-    expect(reply).to_contain_text(re.compile("木牛流马模型|12\\s*件?"), timeout=30_000)
+    expect(reply).to_contain_text(re.compile("草船借箭桌游卡牌|4\\s*盒?"), timeout=30_000)
 

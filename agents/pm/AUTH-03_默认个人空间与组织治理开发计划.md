@@ -4,11 +4,11 @@
 > 角色：PM / 产品负责人
 > 状态：下达开发团队，生产参赛前必须完成
 > 前置：AUTH-02（单账号多空间认证与注册）已验收通过
-> 关联文档：`AUTH-02_单账号多空间认证与注册开发计划.md`、`uc001_用户认证用例.md`、`CR-01_多业务空间参赛版开发规格书.md`
+> 关联文档：`AUTH-02_单账号多空间认证与注册开发计划.md`、`ORG-01_Workspace治理与Header收口产品规格书.md`、`uc001_用户认证用例.md`、`CR-01_多业务空间参赛版开发规格书.md`
 
-**Goal:** 注册即拥有默认 personal 空间，删除"凭 initial_ouid 直接加入任意组织"的能力；组织加入/退出全部走治理流程（invite、join request、exit、kick、owner 转让、最后 owner 保护），并补齐用户注册测试文档。
+**Goal:** 注册即拥有默认 personal 空间，删除"凭 initial_ouid 直接加入任意组织"的能力；组织加入/退出全部走治理流程（invite、join request、exit、kick、owner 转让、最后 owner 保护）；Header 删除 AI button，只保留空间上下文与治理入口；并补齐用户注册测试文档。
 
-**Architecture:** 后端 FastAPI + PostgreSQL。新增 `space_invite` / `space_join_request` 两张治理表与对应 DB 函数；`/auth/register` 改为原子创建 person+account+personal 空间(owner)；`POST /spaces` 建组织自动 owner；`/spaces/*` 提供治理端点；`POST /organizations/members` 收口为 owner/admin 治理端点。前端 `LoginView` 登录走 `/auth/login`、删 noSpace 占位与 initialOuid 输入。黑盒 TDD（TestClient）先行，最后全量回归 + 前端构建。
+**Architecture:** 后端 FastAPI + PostgreSQL。新增 `space_invite` / `space_join_request` 两张治理表与对应 DB 函数；`/auth/register` 改为原子创建 person+account+personal 空间(owner)；`POST /spaces` 建组织自动 owner；`/spaces/*` 提供治理端点；`POST /organizations/members` 收口为 owner/admin 治理端点。前端 `LoginView` 登录走 `/auth/login`、删 noSpace 占位与 initialOuid 输入；`AppHeader` 删除 AI button 和 `navigate-ai` emit，AI 只保留在 Sidebar / 业务主区。黑盒 TDD（TestClient）先行，最后全量回归 + 前端构建。
 
 **Tech Stack:** FastAPI、psycopg2、Pydantic v2、Vue 3 + Vite + TS、Vitest、pytest + TestClient。
 
@@ -32,6 +32,7 @@
 - 加入组织只走 invite / join request；`POST /organizations/members` 收口为 owner/admin 治理端点，且不能加 personal 空间成员。
 - 组织治理 API 只暴露 `puid` / `ouid` / `invite_uid` / `request_uid`，无 DB 数字 ID。
 - 补测试：默认 personal、公开注册不能加入任意组织、邀请加入、申请审批、退出、踢出、最后 owner 保护、owner 转让。
+- 删除 Header AI button：`data-test="header-ai-entry"` 不得存在；`AppHeader` 不再 emit `navigate-ai`；`App.vue` 不再监听 Header `@navigate-ai`。
 - **用户注册测试必须写入测试文档。**
 
 ---
@@ -52,8 +53,12 @@
 | `web/src/api/auth.ts` | 改 | `RegisterParams` 移除 `initialOuid` |
 | `web/src/api/seller.ts` | 改 | 保留（`sellerLogin` 后端 alias 保留） |
 | `web/src/views/LoginView.vue` | 改 | 登录用 `loginAccount`；删 initialOuid 输入与 noSpace 态 |
+| `web/src/components/AppHeader.vue` | 改 | 删除 Header AI button、`navigate-ai` emit 与相关样式 |
+| `web/src/App.vue` | 改 | 删除 Header `@navigate-ai` 监听；保留 Sidebar 的 Seller AI 导航 |
 | `web/src/api/auth.test.ts` | 改 | 更新 registerAccount 契约测试 |
 | `web/src/views/LoginView.test.ts` | 改 | 登录 mock 换 `loginAccount`；删 no-space/initialOuid 用例 |
+| `web/src/components/AppHeader.test.ts` | 改 | 删除“AI 入口 emit”用例，新增 Header 无 AI button 断言 |
+| `web/src/App.test.ts` | 改 | 删除 Header AI 路由用例，保留 Sidebar chat 导航用例 |
 | `_pm/进度跟踪.md` | 改 | 标记 AUTH-03 进度 |
 
 **不动**：`src/app.py`、`src/routers/deps.py`、`src/auth/auth.py`、`scripts/setup_fire_newye_campaign.py` 的公开创建路径（其加成员调用不再执行——见 Task 7 说明）、`agents/tdd/test_three_kingdoms_http.py`（4 个既有失败非本次回归，成员创建改由 seed 数据提供）。
@@ -1109,7 +1114,7 @@ Expected: 全部通过。
 ## Task 8: 前端改造（`web/src`）
 
 **Files:**
-- Modify: `web/src/api/auth.ts`、`web/src/views/LoginView.vue`、`web/src/api/auth.test.ts`、`web/src/views/LoginView.test.ts`
+- Modify: `web/src/api/auth.ts`、`web/src/views/LoginView.vue`、`web/src/components/AppHeader.vue`、`web/src/App.vue`、`web/src/api/auth.test.ts`、`web/src/views/LoginView.test.ts`、`web/src/components/AppHeader.test.ts`、`web/src/App.test.ts`
 
 - [ ] **Step 1: `auth.ts` 移除 `initialOuid`**
 
@@ -1206,7 +1211,50 @@ async function onSubmit() {
 - 登录用例：`expect(loginMock).toHaveBeenCalledWith('zhansan', 'pass123')` 不变。
 - 注册用例：删除 initialOuid 输入与 `initialOuid: 'shop_demo'` 断言；删除 no-space 用例；`registerMock` 返回带 personal 空间的 RESULT。
 
-- [ ] **Step 5: 前端全量验证**
+- [ ] **Step 5: `AppHeader.vue` 删除 Header AI button**
+
+修改点：
+
+- 删除 `defineEmits` 中的 `navigate-ai`。
+- 删除模板中 `button[data-test="header-ai-entry"]`。
+- `.quick` 中只保留 `SpaceMenu`。
+- 如 `.btn` 样式仅给 Header AI button 使用，可删除；如其他 Header button 复用则保留。
+
+验收：
+
+```text
+/html/body/div/div/header/div[3]/button
+```
+
+对应的 Header AI button 不应再存在。Header 第 3 区域应只保留空间菜单相关控件。
+
+- [ ] **Step 6: `App.vue` 删除 Header AI 监听**
+
+修改点：
+
+- 删除 `onNavigateAi()`。
+- 删除 `<AppHeader @navigate-ai="onNavigateAi" ...>`。
+- 保留 Sidebar 的 `chat` 导航，ecommerce 下仍可进入 Seller AI。
+- non-ecommerce 不出现 Header AI 占位跳转。
+
+- [ ] **Step 7: Header/App 测试更新**
+
+`web/src/components/AppHeader.test.ts`：
+
+- 删除“AI entry emits navigate-ai”用例。
+- 保留并改写断言：
+
+```ts
+expect(wrapper.find('button[data-test="header-ai-entry"]').exists()).toBe(false)
+expect(wrapper.emitted('navigate-ai')).toBeUndefined()
+```
+
+`web/src/App.test.ts`：
+
+- 删除“header AI entry routes to chat/placeholder”的用例。
+- 保留 Sidebar `chat` 导航相关用例，证明 AI 仍可从业务导航进入。
+
+- [ ] **Step 8: 前端全量验证**
 
 Run: `cd web && npm test`
 Expected: 全部通过。

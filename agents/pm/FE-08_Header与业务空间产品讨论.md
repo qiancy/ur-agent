@@ -12,7 +12,7 @@
 当前 Header 已经解决了「顶部通栏」和「组织切换」的基础结构，但产品重心还需要调整：
 
 1. Header 的主任务是回答：**我是谁、我在哪个业务空间、我还能切到哪里、我对这个空间有什么权限**。
-2. Header 可以提供「进入 AI」快捷入口，但不建议放完整 AI 输入框和「问 AI」按钮。
+2. Header 不再提供 AI 快捷入口；AI 留在 Sidebar / 业务主区，Header 专注多空间上下文与治理。
 3. 组织治理入口应放在 Header 里，但 MVP 先做链接/占位，不一次性实现完整审批后台。
 4. Seller 业务空间必须补「商品管理」。没有商品主数据管理，库存系统是不完整的。
 5. 概念模型建议调整为：`account -> person -> membership -> organization(space) -> workspace(app/capability)`。
@@ -55,19 +55,19 @@
 
 ## 3. Header AI 入口判断
 
-当前 Header 有 AI 输入框和「问 AI」按钮，同时主区工作台右侧和独立 `Seller AI` 页也有 AI 模块。这个重复不合适。
+当前 Header 曾有 AI 输入框、「问 AI」按钮或 AI 小入口，同时主区工作台右侧和独立 `Seller AI` 页也有 AI 模块。这个重复不合适。
 
 PM 建议：
 
-1. MVP 立即调整：移除 Header 的完整 AI 输入框和「问 AI」按钮。
-2. Header 只保留一个小入口：「AI」或「打开 AI」，点击后切换到当前空间对应的 AI 页。
-3. 在 ecommerce 空间下，AI 页继续调用 `/seller/chat`。
-4. 在非 ecommerce 空间下，本阶段显示「该业务空间暂未接入 AI」，不要调用通用 `/chat`。
+1. MVP 立即调整：移除 Header 的完整 AI 输入框、「问 AI」按钮和 AI 小入口。
+2. Header 不再包含 `AI` button，也不再 emit `navigate-ai`。
+3. 在 ecommerce 空间下，AI 入口继续保留在 Sidebar 的 `Seller AI` 与 Seller 工作台主区。
+4. 在非 ecommerce 空间下，本阶段不显示 AI 入口，不调用通用 `/chat`。
 
 原因：
 
 1. Header 是全局上下文层，不应承载具体业务对话。
-2. Seller 工作台已有 AI 侧栏和独立 AI 页，重复输入框会让用户不知道该在哪里问。
+2. Seller 工作台已有 AI 侧栏和独立 AI 页，Header 再放 AI 会让用户不知道该在哪里问。
 3. 未来如果要做 Command Palette，可以再把 Header 中部升级为统一命令栏，但那是下一阶段能力，不应混入当前 MVP。
 
 ## 4. 组织治理功能分期
@@ -198,14 +198,13 @@ PM 决策：
 
 1. Header 保留当前用户、当前空间、空间切换。
 2. Header 去掉完整 AI 输入框和「问 AI」按钮。
-3. Header 增加「AI」小入口，点击切到 `Seller AI` 页。
-4. Header 增加「空间」菜单，包含：
+3. Header 增加「空间」菜单，包含：
    - 管理空间
    - 加入空间
    - 审核申请
    - 退出空间
-5. 对未实现的空间治理能力，先跳转到占位视图，不接后端写操作。
-6. 登录页占位应改为单账号示例 `zhansan`，不再提示 `puid@ouid`。
+4. 对未实现的空间治理能力，先跳转到占位视图，不接后端写操作。
+5. 登录页占位应改为单账号示例 `zhansan`，不再提示 `puid@ouid`。
 
 ### 7.2 后续新增 FE-09
 
@@ -226,7 +225,7 @@ PM 决策：
 1. 登录后 Header 第一眼能看出：用户、当前空间、空间类型、角色。
 2. 用户能从 Header 切换到其他有权限的空间。
 3. Header 不出现重复 AI 输入框。
-4. 点击 Header 的 AI 入口只导航，不直接发起 AI 请求。
+4. Header 不存在 AI button，`data-test="header-ai-entry"` 不存在。
 5. 非 ecommerce 空间不调用 `/seller/*`。
 6. 前端不出现 DB 数字 ID、旧 `pid/oid`。
 7. 空间治理入口存在，但未实现写操作时必须明确是占位状态。

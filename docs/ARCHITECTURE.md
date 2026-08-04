@@ -1,8 +1,8 @@
 # 🏗️ Uni-Resource Agent - 架构文档
 
-> **版本**: 5.2  
-> **更新日期**: 2026-07-21  
-> **说明**: 本文件详细记录系统架构、前后端分离设计及各组件职责
+> **版本**: 5.4  
+> **更新日期**: 2026-08-05  
+> **说明**: 退役 Gradio 前端，产品唯一前端入口为 web/ (Vue + Vite)
 
 ---
 
@@ -30,9 +30,9 @@
 │   ║                    LAYER 3: PRESENTATION                          ║  │
 │   ╠═══════════════════════════════════════════════════════════════════╣  │
 │   ║   ┌────────────────────────────────────────────────────────────┐ ║  │
-│   ║   │                    GRADIO UI (Frontend)                    │ ║  │
-│   ║   │   File: src/frontend.py                                    │ ║  │
-│   ║   │   Port: 7860                                               │ ║  │
+│   ║   │              VUE + VITE (Frontend)                         │ ║  │
+│   ║   │   File: web/src/                                           │ ║  │
+│   ║   │   Port: 5173                                               │ ║  │
 │   ║   │   Role: User Interface Only                                │ ║  │
 │   ║   │   Database: ❌ No direct access                             │ ║  │
 │   ║   └────────────────────────────────────────────────────────────┘ ║  │
@@ -76,49 +76,42 @@
 |------|------|
 | **安全隔离** | 数据库不直接暴露给前端用户 |
 | **独立扩展** | 可以单独扩展前端或后端服务 |
-| **API复用** | Backend可同时服务Gradio UI、移动端、脚本等 |
+| **API复用** | Backend可同时服务Web前端、移动端、脚本等 |
 | **开发效率** | 前端和后端可以并行开发 |
 | **技术栈灵活** | 可以独立选择和升级各层技术 |
 
 ### 前端实现细节
 
-```python
-# src/frontend.py - Gradio UI层
-# 关键特点：
-# 1. 使用 requests 库调用后端API
-# 2. 不包含任何数据库连接代码
-# 3. 仅负责UI渲染和用户输入
+```typescript
+// web/src/api/seller.ts - 前端 API 调用层 (Vue + TypeScript)
+// 关键特点：
+// 1. 使用 fetch 调用后端 API
+// 2. 不包含任何数据库连接代码
+// 3. 仅负责 UI 渲染和用户输入
 
-import requests
-import gradio as gr
+const API_BASE = '/api'
 
-API = "http://localhost:8000"
-
-def _get(path, params=None):
-    """调用后端API，不直接访问数据库"""
-    r = requests.get(f"{API}{path}", params=params, timeout=10)
-    r.raise_for_status()
-    return r.json()
-
-def _post(path, body=None):
-    """调用后端API，不直接访问数据库"""
-    r = requests.post(f"{API}{path}", json=body, timeout=10)
-    r.raise_for_status()
-    return r.json()
+export async function sellerSummary(token: string): Promise<SellerSummary> {
+  const res = await fetch(`${API_BASE}/seller/summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error(res.statusText)
+  return res.json()
+}
 ```
 
 **前端代码示例：**
-```python
-# src/frontend.py:45-52
-def load_personnel(org_label):
-    """从后端API获取人员数据"""
-    rows = _get("/personnel", {"org_id": org_id(org_label)})
-    if not rows:
-        return "暂无人员数据"
-    lines = []
-    for p in rows:
-        lines.append(f"**{p['name']}** — {p['role'] or '-'}")
-    return "\n\n".join(lines)
+```typescript
+// web/src/views/GenericSpaceView.vue
+// 从后端API获取空间数据，通过聚合接口一次加载
+import { getSpaceDashboard } from '../api/spaces'
+
+const load = async () => {
+  const dashboard = await getSpaceDashboard()
+  overview.value = dashboard.overview
+  grouped.value = dashboard.resources
+  persons.value = dashboard.persons
+}
 ```
 
 ### 后端实现细节
@@ -153,7 +146,7 @@ async def list_personnel(org_id: int = Query(...)):
 
 | 组件 | 文件路径 | 端口 | 职责 | 数据库访问 |
 |------|----------|------|------|-----------|
-| **Gradio UI** | `src/frontend.py` | 7860 | 用户界面、表单、交互 | ❌ 仅调用API |
+| **Vue + Vite** | `web/src/` | 5173 | 用户界面、表单、交互 | ❌ 仅调用API |
 | **FastAPI** | `src/app.py` | 8000 | REST API、业务逻辑 | ✅ 直接访问 |
 | **Database** | `src/db/database.py` | 5432 | 数据持久化、ORM | ✅ 原生连接 |
 | **LangChain Agent** | `src/agents/agent.py` | - | AI推理、工具调用 | ✅ 通过数据库 |
@@ -195,7 +188,7 @@ async def list_personnel(org_id: int = Query(...)):
 │      └─► 用户点击按钮、填写表单                                         │
 │                                                                         │
 │   2. Frontend处理                                                      │
-│      └─► src/frontend.py                                               │
+│      └─► web/src/                                                      │
 │          • 验证用户输入                                                │
 │          • 组织请求参数                                                │
 │          • 调用后端API                                                 │
@@ -221,8 +214,8 @@ async def list_personnel(org_id: int = Query(...)):
 │          • JSON序列化                                                  │
 │                                                                         │
 │   7. Frontend接收                                                      │
-│      └─► src/frontend.py                                               │
-│          • requests接收响应                                            │
+│      └─► web/src/                                                      │
+│          • fetch 接收响应                                              │
 │          • JSON解析                                                    │
 │          • UI更新                                                      │
 │                                                                         │
@@ -237,7 +230,7 @@ async def list_personnel(org_id: int = Query(...)):
     │ ① 用户操作 (点击、输入)
     ▼
 ┌─────────────────┐
-│  Gradio UI      │  ← Frontend (port 7860)
+│  Vue + Vite     │  ← Frontend (port 5173)
 │  (无数据库连接) │
 └────────┬────────┘
          │ ② HTTP请求
@@ -269,7 +262,7 @@ async def list_personnel(org_id: int = Query(...)):
 
 | 服务 | 端口 | 协议 | 启动命令 | 说明 |
 |------|------|------|----------|------|
-| **Gradio UI** | 7860 | HTTP | `python src/frontend.py` | 用户界面 |
+| **Vue + Vite** | 5173 | HTTP | `cd web && npm run dev -- --host 0.0.0.0 --port 5173` | 用户界面 |
 | **FastAPI** | 8000 | HTTP | `uvicorn src.app:app --host 0.0.0.0 --port 8000` | API服务 |
 | **PostgreSQL** | 5432 | TCP | `pg_ctl start` | 数据库 |
 | **llama.cpp** | 8000 (default) | HTTP | `./main -m model.gguf` | LLM服务 |
@@ -281,13 +274,15 @@ async def list_personnel(org_id: int = Query(...)):
 cd /workspace/research/unires-agent
 PYTHONPATH=. uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
 
-# 启动前端
-PYTHONPATH=. python src/frontend.py
+# 启动前端 (另开终端)
+cd /workspace/research/unires-agent/web
+npm run dev -- --host 0.0.0.0 --port 5173
 
 # 健康检查
 curl http://localhost:8000/health
-curl http://localhost:7860/health
 ```
+
+> 注意：前端已从 Gradio (port 7860) 迁移到 Vue + Vite (port 5173)。
 
 ---
 
@@ -384,7 +379,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 uni-resource-agent/
 ├── src/
 │   ├── app.py                      # FastAPI Backend (port 8000)
-│   ├── frontend.py                 # Gradio Frontend (port 7860)
 │   ├── agents/
 │   │   └── agent.py                # LangChain Agent
 │   ├── tools/
@@ -403,6 +397,12 @@ uni-resource-agent/
 │   └── models/
 │       ├── __init__.py
 │       └── llm_client.py           # LLM客户端
+├── web/                            # Vue + Vite 前端 (port 5173)
+│   ├── src/
+│   │   ├── api/                    # API 调用层
+│   │   ├── views/                  # 页面视图
+│   │   └── ...
+│   └── package.json
 ├── scripts/
 │   └── init_db.py                  # 数据库初始化
 ├── docs/
@@ -410,7 +410,6 @@ uni-resource-agent/
 ├── agents/
 │   ├── DBA_AGENT.md                # 数据库管理规范
 │   └── tdd/                        # 测试相关
-├── _pm/                            # 项目管理 (待创建)
 ├── README.md                       # 项目说明
 └── AGENTS.md                       # Agent指令
 ```

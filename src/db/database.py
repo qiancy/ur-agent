@@ -23,8 +23,10 @@ from typing import Optional, List, Dict, Any
 from decimal import Decimal, ROUND_HALF_UP
 import uuid as _uuid
 import threading
+from contextlib import contextmanager
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2.pool import ThreadedConnectionPool, PoolError
 from src.logging_config import get_logger
 from src.config import get_database_config
 
@@ -40,15 +42,129 @@ DB_CONFIG = {
     "password": _db_cfg["password"],
     "port": int(_db_cfg["port"]),
 }
+DB_POOL_MIN = int(_db_cfg["pool_min"])
+DB_POOL_MAX = int(_db_cfg["pool_max"])
+
+_PG_CONNECTION_ERRORS = (psycopg2.OperationalError, psycopg2.InterfaceError)
+_pool: Optional[ThreadedConnectionPool] = None
+_pool_lock = threading.Lock()
+
+
+class DatabasePoolExhaustedError(RuntimeError):
+    """Raised when the configured PostgreSQL connection pool is exhausted."""
+
+
+def _connect_kwargs() -> Dict[str, Any]:
+    return {**DB_CONFIG, "options": "-c timezone=Asia/Shanghai"}
 
 
 def get_db_connection():
     try:
         # All business date boundaries are Asia/Shanghai; enforce it at
         # session startup instead of relying on the server default timezone.
-        return psycopg2.connect(**DB_CONFIG, options="-c timezone=Asia/Shanghai")
+        return psycopg2.connect(**_connect_kwargs())
     except Exception as e:
         raise Exception(f"Database connection failed: {e}")
+
+
+def init_connection_pool() -> None:
+    """Initialize the process-wide PostgreSQL connection pool."""
+    global _pool
+    if _pool is not None:
+        return
+    with _pool_lock:
+        if _pool is not None:
+            return
+        _pool = ThreadedConnectionPool(
+            DB_POOL_MIN,
+            DB_POOL_MAX,
+            **_connect_kwargs(),
+        )
+        logger.info("Database connection pool initialized min=%s max=%s",
+                    DB_POOL_MIN, DB_POOL_MAX)
+
+
+def close_connection_pool() -> None:
+    """Close all pooled connections. Safe to call repeatedly."""
+    global _pool
+    with _pool_lock:
+        pool = _pool
+        _pool = None
+    if pool is not None:
+        try:
+            pool.closeall()
+            logger.info("Database connection pool closed")
+        except Exception as exc:
+            logger.warning("Database connection pool close failed: %s", exc)
+
+
+def get_pooled_connection():
+    init_connection_pool()
+    pool = _pool
+    if pool is None:
+        raise DatabasePoolExhaustedError("Database connection pool is not available")
+    try:
+        return pool.getconn()
+    except PoolError as exc:
+        raise DatabasePoolExhaustedError(
+            "Database connection pool exhausted"
+        ) from exc
+
+
+def release_pooled_connection(conn, *, close: bool = False) -> None:
+    if conn is None:
+        return
+    pool = _pool
+    if pool is None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return
+    try:
+        pool.putconn(conn, close=close)
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@contextmanager
+def _transaction_connection():
+    """Yield a pooled connection in explicit transaction mode."""
+    conn = None
+    close = False
+    old_autocommit = None
+    try:
+        conn = get_pooled_connection()
+        old_autocommit = conn.autocommit
+        conn.autocommit = False
+        yield conn
+        conn.commit()
+    except _PG_CONNECTION_ERRORS:
+        close = True
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise
+    except Exception:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                close = True
+        raise
+    finally:
+        if conn is not None:
+            try:
+                if old_autocommit is not None and not conn.closed:
+                    conn.autocommit = old_autocommit
+            except Exception:
+                close = True
+            release_pooled_connection(conn, close=close)
 
 
 # ---------------------------------------------------------------------------
@@ -270,63 +386,61 @@ CREATE INDEX IF NOT EXISTS idx_im_org_op_created_at ON inventory_movement(organi
 
 
 def init_database(drop_all: bool = False):
-    conn = get_db_connection()
+    if drop_all:
+        close_connection_pool()
     try:
-        cur = conn.cursor()
-        if drop_all:
-            cur.execute("""
-                DROP TABLE IF EXISTS campaign_event CASCADE;
-                DROP TABLE IF EXISTS campaign_import_org CASCADE;
-                DROP TABLE IF EXISTS campaign_import CASCADE;
-                DROP TABLE IF EXISTS party CASCADE;
-                DROP TABLE IF EXISTS inventory_movement CASCADE;
-                DROP TABLE IF EXISTS transaction CASCADE;
-                DROP TABLE IF EXISTS resource_warehouse CASCADE;
-                DROP TABLE IF EXISTS warehouse CASCADE;
-                DROP TABLE IF EXISTS resource CASCADE;
-                DROP TABLE IF EXISTS membership CASCADE;
-                DROP TABLE IF EXISTS account CASCADE;
-                DROP TABLE IF EXISTS person CASCADE;
-                DROP TABLE IF EXISTS organization CASCADE;
-                DROP TABLE IF EXISTS virtual_assets CASCADE;
-                DROP TABLE IF EXISTS physical_assets CASCADE;
-                DROP TABLE IF EXISTS assets CASCADE;
-                DROP TABLE IF EXISTS transactions CASCADE;
-                DROP TABLE IF EXISTS personnel CASCADE;
-                DROP TABLE IF EXISTS person_org CASCADE;
-                DROP TABLE IF EXISTS party_member CASCADE;
-                DROP TABLE IF EXISTS space_join_request CASCADE;
-                DROP TABLE IF EXISTS space_invite CASCADE;
-            """)
-        cur.execute(SCHEMA_SQL)
-        cur.execute("""
-            ALTER TABLE transaction ADD COLUMN IF NOT EXISTS transaction_uid VARCHAR(100);
-            UPDATE transaction
-               SET transaction_uid = 'tx_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)
-             WHERE transaction_uid IS NULL;
-            ALTER TABLE transaction ALTER COLUMN transaction_uid SET NOT NULL;
-        """)
-        cur.execute("""
-            ALTER TABLE space_join_request ADD COLUMN IF NOT EXISTS message VARCHAR(500);
-        """)
-        cur.execute("""
-            DO $m$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint WHERE conname = 'uq_transaction_uid'
-                ) THEN
-                    ALTER TABLE transaction ADD CONSTRAINT uq_transaction_uid UNIQUE (transaction_uid);
-                END IF;
-            END $m$;
-        """)
-        conn.commit()
+        with _transaction_connection() as conn:
+            with conn.cursor() as cur:
+                if drop_all:
+                    cur.execute("""
+                        DROP TABLE IF EXISTS campaign_event CASCADE;
+                        DROP TABLE IF EXISTS campaign_import_org CASCADE;
+                        DROP TABLE IF EXISTS campaign_import CASCADE;
+                        DROP TABLE IF EXISTS party CASCADE;
+                        DROP TABLE IF EXISTS inventory_movement CASCADE;
+                        DROP TABLE IF EXISTS transaction CASCADE;
+                        DROP TABLE IF EXISTS resource_warehouse CASCADE;
+                        DROP TABLE IF EXISTS warehouse CASCADE;
+                        DROP TABLE IF EXISTS resource CASCADE;
+                        DROP TABLE IF EXISTS membership CASCADE;
+                        DROP TABLE IF EXISTS account CASCADE;
+                        DROP TABLE IF EXISTS person CASCADE;
+                        DROP TABLE IF EXISTS organization CASCADE;
+                        DROP TABLE IF EXISTS virtual_assets CASCADE;
+                        DROP TABLE IF EXISTS physical_assets CASCADE;
+                        DROP TABLE IF EXISTS assets CASCADE;
+                        DROP TABLE IF EXISTS transactions CASCADE;
+                        DROP TABLE IF EXISTS personnel CASCADE;
+                        DROP TABLE IF EXISTS person_org CASCADE;
+                        DROP TABLE IF EXISTS party_member CASCADE;
+                        DROP TABLE IF EXISTS space_join_request CASCADE;
+                        DROP TABLE IF EXISTS space_invite CASCADE;
+                    """)
+                cur.execute(SCHEMA_SQL)
+                cur.execute("""
+                    ALTER TABLE transaction ADD COLUMN IF NOT EXISTS transaction_uid VARCHAR(100);
+                    UPDATE transaction
+                       SET transaction_uid = 'tx_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)
+                     WHERE transaction_uid IS NULL;
+                    ALTER TABLE transaction ALTER COLUMN transaction_uid SET NOT NULL;
+                """)
+                cur.execute("""
+                    ALTER TABLE space_join_request ADD COLUMN IF NOT EXISTS message VARCHAR(500);
+                """)
+                cur.execute("""
+                    DO $m$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'uq_transaction_uid'
+                        ) THEN
+                            ALTER TABLE transaction ADD CONSTRAINT uq_transaction_uid UNIQUE (transaction_uid);
+                        END IF;
+                    END $m$;
+                """)
         logger.info("Database initialized successfully")
     except Exception as e:
-        conn.rollback()
         logger.error("Database init failed: %s", e)
         raise
-    finally:
-        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -342,66 +456,38 @@ def _execute(sql: str, params: tuple = (), fetch_returning: bool = False) -> Any
 
 
 # ---------------------------------------------------------------------------
-# Shared connection pool (thread-local, autocommit)
-#
-# Every `_fetch`/`_execute` used to open and close a brand-new psycopg2
-# connection per call. With a remote database, connection setup dominates the
-# request latency (overview = 5 queries = 5 connect round-trips ≈ 0.5-1.5s).
-# We now reuse ONE autocommit connection per thread. Autocommit keeps every
-# statement independent (same semantics as connect+commit+close), so reads and
-# writes observe committed data; transactions that need atomicity still use
-# their own dedicated connection via get_db_connection().
+# Pooled autocommit helpers.
 # ---------------------------------------------------------------------------
-
-_PG_CONNECTION_ERRORS = (psycopg2.OperationalError, psycopg2.InterfaceError)
-
-_thread_local = threading.local()
-
-
-def _shared_connection():
-    conn = getattr(_thread_local, "conn", None)
-    if conn is None or conn.closed:
-        conn = get_db_connection()
-        conn.autocommit = True
-        _thread_local.conn = conn
-    return conn
-
-
-def _discard_shared_connection() -> None:
-    conn = getattr(_thread_local, "conn", None)
-    if conn is not None:
-        try:
-            conn.close()
-        except Exception:
-            pass
-    _thread_local.conn = None
 
 
 def _run_shared(sql: str, params: tuple, want_rows: bool):
     for attempt in (0, 1):
+        conn = None
+        close = False
         try:
-            conn = _shared_connection()
+            conn = get_pooled_connection()
+            conn.autocommit = True
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, params)
+                if want_rows:
+                    return [dict(row) for row in cur.fetchall()]
+                return cur.rowcount
+        except DatabasePoolExhaustedError:
+            raise
         except _PG_CONNECTION_ERRORS:
-            _discard_shared_connection()
-            if attempt:
-                raise
-            continue
-        try:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute(sql, params)
-            if want_rows:
-                return [dict(row) for row in cur.fetchall()]
-            return cur.rowcount
-        except _PG_CONNECTION_ERRORS:
-            _discard_shared_connection()
+            close = True
             if attempt:
                 raise
         except Exception:
             try:
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
             except Exception:
-                pass
+                close = True
             raise
+        finally:
+            if conn is not None:
+                release_pooled_connection(conn, close=close)
 
 
 def register_personal_space(puid: str, name: str, login: str,
@@ -411,36 +497,29 @@ def register_personal_space(puid: str, name: str, login: str,
     Returns (person, account, org, membership). Any failure rolls back.
     personal space: ouid={puid}_personal, type=personal, name={name}的个人空间.
     """
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(
-            "INSERT INTO person (puid, name) VALUES (%s, %s) RETURNING *",
-            (puid, name))
-        person = dict(cur.fetchone())
-        cur.execute(
-            "INSERT INTO account (person_id, login, password, salt, system_role)"
-            " VALUES (%s, %s, %s, %s, 'user') RETURNING *",
-            (person["id"], login, password_hash, salt))
-        account = dict(cur.fetchone())
-        org_ouid = f"{puid}_personal"
-        cur.execute(
-            "INSERT INTO organization (ouid, name, type, description)"
-            " VALUES (%s, %s, 'personal', '个人空间') RETURNING *",
-            (org_ouid, f"{name}的个人空间"))
-        org = dict(cur.fetchone())
-        cur.execute(
-            "INSERT INTO membership (person_id, organization_id, role)"
-            " VALUES (%s, %s, 'owner') RETURNING *",
-            (person["id"], org["id"]))
-        membership = dict(cur.fetchone())
-        conn.commit()
-        return person, account, org, membership
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    with _transaction_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "INSERT INTO person (puid, name) VALUES (%s, %s) RETURNING *",
+                (puid, name))
+            person = dict(cur.fetchone())
+            cur.execute(
+                "INSERT INTO account (person_id, login, password, salt, system_role)"
+                " VALUES (%s, %s, %s, %s, 'user') RETURNING *",
+                (person["id"], login, password_hash, salt))
+            account = dict(cur.fetchone())
+            org_ouid = f"{puid}_personal"
+            cur.execute(
+                "INSERT INTO organization (ouid, name, type, description)"
+                " VALUES (%s, %s, 'personal', '个人空间') RETURNING *",
+                (org_ouid, f"{name}的个人空间"))
+            org = dict(cur.fetchone())
+            cur.execute(
+                "INSERT INTO membership (person_id, organization_id, role)"
+                " VALUES (%s, %s, 'owner') RETURNING *",
+                (person["id"], org["id"]))
+            membership = dict(cur.fetchone())
+            return person, account, org, membership
 
 
 # --- Organization ---
@@ -473,26 +552,19 @@ def create_org_with_owner(name: str, org_type: str, person_id: int,
     if ouid is None:
         safe_name = _re.sub(r'[^a-zA-Z0-9]', '_', name).strip('_').lower()
         ouid = f"org_{safe_name}_{_secrets.token_hex(4)}"
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(
-            "INSERT INTO organization (ouid, name, type, description)"
-            " VALUES (%s, %s, %s, %s) RETURNING *",
-            (ouid, name, org_type, description))
-        org = dict(cur.fetchone())
-        cur.execute(
-            "INSERT INTO membership (person_id, organization_id, role)"
-            " VALUES (%s, %s, 'owner') RETURNING *",
-            (person_id, org["id"]))
-        cur.fetchone()
-        conn.commit()
-        return org
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    with _transaction_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "INSERT INTO organization (ouid, name, type, description)"
+                " VALUES (%s, %s, %s, %s) RETURNING *",
+                (ouid, name, org_type, description))
+            org = dict(cur.fetchone())
+            cur.execute(
+                "INSERT INTO membership (person_id, organization_id, role)"
+                " VALUES (%s, %s, 'owner') RETURNING *",
+                (person_id, org["id"]))
+            cur.fetchone()
+            return org
 
 
 def query_organization(org_id: int = None, name: str = None,
@@ -692,29 +764,22 @@ def query_invite_by_uid(invite_uid: str) -> List[Dict]:
 
 def accept_invite(invite_uid: str, person_id: int) -> Optional[Dict[str, Any]]:
     """Atomically add membership and mark invite accepted. Returns membership or None."""
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM space_invite WHERE invite_uid = %s FOR UPDATE",
-                    (invite_uid,))
-        invite = cur.fetchone()
-        if not invite or invite["status"] != "pending":
-            return None
-        cur.execute(
-            "INSERT INTO membership (person_id, organization_id, role)"
-            " VALUES (%s, %s, %s) ON CONFLICT (person_id, organization_id) DO NOTHING"
-            " RETURNING *",
-            (person_id, invite["organization_id"], invite["role"]))
-        membership = cur.fetchone()
-        cur.execute("UPDATE space_invite SET status = 'accepted' WHERE invite_uid = %s",
-                    (invite_uid,))
-        conn.commit()
-        return dict(membership) if membership else None
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    with _transaction_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM space_invite WHERE invite_uid = %s FOR UPDATE",
+                        (invite_uid,))
+            invite = cur.fetchone()
+            if not invite or invite["status"] != "pending":
+                return None
+            cur.execute(
+                "INSERT INTO membership (person_id, organization_id, role)"
+                " VALUES (%s, %s, %s) ON CONFLICT (person_id, organization_id) DO NOTHING"
+                " RETURNING *",
+                (person_id, invite["organization_id"], invite["role"]))
+            membership = cur.fetchone()
+            cur.execute("UPDATE space_invite SET status = 'accepted' WHERE invite_uid = %s",
+                        (invite_uid,))
+            return dict(membership) if membership else None
 
 
 def create_join_request(organization_id: int, requester_puid: str,
@@ -803,29 +868,22 @@ def reject_join_request(request_uid: str) -> bool:
 def approve_join_request(request_uid: str, person_id: int,
                          role: str = "member") -> Optional[Dict[str, Any]]:
     """Atomically add membership and mark request approved. Returns membership or None."""
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM space_join_request WHERE request_uid = %s FOR UPDATE",
-                    (request_uid,))
-        req = cur.fetchone()
-        if not req or req["status"] != "pending":
-            return None
-        cur.execute(
-            "INSERT INTO membership (person_id, organization_id, role)"
-            " VALUES (%s, %s, %s) ON CONFLICT (person_id, organization_id) DO NOTHING"
-            " RETURNING *",
-            (person_id, req["organization_id"], role))
-        membership = cur.fetchone()
-        cur.execute("UPDATE space_join_request SET status = 'approved' WHERE request_uid = %s",
-                    (request_uid,))
-        conn.commit()
-        return dict(membership) if membership else None
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    with _transaction_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM space_join_request WHERE request_uid = %s FOR UPDATE",
+                        (request_uid,))
+            req = cur.fetchone()
+            if not req or req["status"] != "pending":
+                return None
+            cur.execute(
+                "INSERT INTO membership (person_id, organization_id, role)"
+                " VALUES (%s, %s, %s) ON CONFLICT (person_id, organization_id) DO NOTHING"
+                " RETURNING *",
+                (person_id, req["organization_id"], role))
+            membership = cur.fetchone()
+            cur.execute("UPDATE space_join_request SET status = 'approved' WHERE request_uid = %s",
+                        (request_uid,))
+            return dict(membership) if membership else None
 
 
 def remove_membership(person_id: int, organization_id: int) -> int:
@@ -842,21 +900,14 @@ def count_org_owners(organization_id: int) -> int:
 
 def transfer_ownership(organization_id: int, new_owner_person_id: int) -> None:
     """Transfer: old owner -> admin, new member -> owner (single transaction)."""
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(
-            "UPDATE membership SET role = 'admin' WHERE organization_id = %s AND role = 'owner'",
-            (organization_id,))
-        cur.execute(
-            "UPDATE membership SET role = 'owner' WHERE organization_id = %s AND person_id = %s",
-            (organization_id, new_owner_person_id))
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    with _transaction_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "UPDATE membership SET role = 'admin' WHERE organization_id = %s AND role = 'owner'",
+                (organization_id,))
+            cur.execute(
+                "UPDATE membership SET role = 'owner' WHERE organization_id = %s AND person_id = %s",
+                (organization_id, new_owner_person_id))
 
 
 # --- Resource ---
@@ -1213,70 +1264,62 @@ def get_campaign_replay(campaign_import_id: int, organization_ids: List[int] = N
 
 
 def delete_campaign_import(campaign_import_id: int) -> Dict[str, Any]:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM campaign_import WHERE id = %s", (campaign_import_id,))
-        campaign = cur.fetchone()
-        if not campaign:
-            conn.rollback()
-            return {"deleted": False, "reason": "not_found"}
+    with _transaction_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM campaign_import WHERE id = %s", (campaign_import_id,))
+            campaign = cur.fetchone()
+            if not campaign:
+                return {"deleted": False, "reason": "not_found"}
 
-        cur.execute(
-            "SELECT organization_id FROM campaign_import_org WHERE campaign_import_id = %s AND created_by_import = TRUE",
-            (campaign_import_id,)
-        )
-        org_ids = [row["organization_id"] for row in cur.fetchall()]
+            cur.execute(
+                "SELECT organization_id FROM campaign_import_org WHERE campaign_import_id = %s AND created_by_import = TRUE",
+                (campaign_import_id,)
+            )
+            org_ids = [row["organization_id"] for row in cur.fetchall()]
 
-        cur.execute("DELETE FROM campaign_event WHERE campaign_import_id = %s", (campaign_import_id,))
-        deleted_events = cur.rowcount
+            cur.execute("DELETE FROM campaign_event WHERE campaign_import_id = %s", (campaign_import_id,))
+            deleted_events = cur.rowcount
 
-        deleted = {
-            "events": deleted_events,
-            "parties": 0,
-            "movements": 0,
-            "transactions": 0,
-            "resource_warehouse": 0,
-            "resources": 0,
-            "warehouses": 0,
-            "memberships": 0,
-            "organizations": 0,
-        }
+            deleted = {
+                "events": deleted_events,
+                "parties": 0,
+                "movements": 0,
+                "transactions": 0,
+                "resource_warehouse": 0,
+                "resources": 0,
+                "warehouses": 0,
+                "memberships": 0,
+                "organizations": 0,
+            }
 
-        if org_ids:
-            cur.execute("DELETE FROM party WHERE organization_id = ANY(%s)", (org_ids,))
-            deleted["parties"] = cur.rowcount
-            cur.execute("DELETE FROM inventory_movement WHERE organization_id = ANY(%s)", (org_ids,))
-            deleted["movements"] = cur.rowcount
-            cur.execute("DELETE FROM transaction WHERE organization_id = ANY(%s)", (org_ids,))
-            deleted["transactions"] = cur.rowcount
-            cur.execute("""
-                DELETE FROM resource_warehouse rw
-                USING resource r
-                WHERE rw.resource_id = r.id AND r.organization_id = ANY(%s)
-            """, (org_ids,))
-            deleted["resource_warehouse"] = cur.rowcount
-            cur.execute("DELETE FROM resource WHERE organization_id = ANY(%s)", (org_ids,))
-            deleted["resources"] = cur.rowcount
-            cur.execute("DELETE FROM warehouse WHERE organization_id = ANY(%s)", (org_ids,))
-            deleted["warehouses"] = cur.rowcount
-            cur.execute("DELETE FROM membership WHERE organization_id = ANY(%s)", (org_ids,))
-            deleted["memberships"] = cur.rowcount
-            cur.execute("DELETE FROM organization WHERE id = ANY(%s)", (org_ids,))
-            deleted["organizations"] = cur.rowcount
+            if org_ids:
+                cur.execute("DELETE FROM party WHERE organization_id = ANY(%s)", (org_ids,))
+                deleted["parties"] = cur.rowcount
+                cur.execute("DELETE FROM inventory_movement WHERE organization_id = ANY(%s)", (org_ids,))
+                deleted["movements"] = cur.rowcount
+                cur.execute("DELETE FROM transaction WHERE organization_id = ANY(%s)", (org_ids,))
+                deleted["transactions"] = cur.rowcount
+                cur.execute("""
+                    DELETE FROM resource_warehouse rw
+                    USING resource r
+                    WHERE rw.resource_id = r.id AND r.organization_id = ANY(%s)
+                """, (org_ids,))
+                deleted["resource_warehouse"] = cur.rowcount
+                cur.execute("DELETE FROM resource WHERE organization_id = ANY(%s)", (org_ids,))
+                deleted["resources"] = cur.rowcount
+                cur.execute("DELETE FROM warehouse WHERE organization_id = ANY(%s)", (org_ids,))
+                deleted["warehouses"] = cur.rowcount
+                cur.execute("DELETE FROM membership WHERE organization_id = ANY(%s)", (org_ids,))
+                deleted["memberships"] = cur.rowcount
+                cur.execute("DELETE FROM organization WHERE id = ANY(%s)", (org_ids,))
+                deleted["organizations"] = cur.rowcount
 
-        cur.execute(
-            "UPDATE campaign_import SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = %s RETURNING *",
-            (campaign_import_id,)
-        )
-        updated = dict(cur.fetchone())
-        conn.commit()
-        return {"deleted": True, "campaign_import": updated, "counts": deleted}
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+            cur.execute(
+                "UPDATE campaign_import SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP WHERE id = %s RETURNING *",
+                (campaign_import_id,)
+            )
+            updated = dict(cur.fetchone())
+            return {"deleted": True, "campaign_import": updated, "counts": deleted}
 
 
 # ---------------------------------------------------------------------------
@@ -1304,95 +1347,86 @@ def execute_purchase_in(
     if total_amount < 0:
         raise ValueError("total_amount must be non-negative")
     import uuid as _uuid
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("BEGIN")
+    with _transaction_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            r = _exec_cur(cur,
+                "SELECT id FROM resource "
+                "WHERE organization_id = %s AND name = %s "
+                "AND status = 'active' AND type = 'physical'",
+                (organization_id, product_uid),
+            )
+            if not r:
+                raise ValueError(f"Product not found: {product_uid}")
+            resource_id = r[0]["id"]
 
-        r = _exec_cur(cur,
-            "SELECT id FROM resource "
-            "WHERE organization_id = %s AND name = %s "
-            "AND status = 'active' AND type = 'physical'",
-            (organization_id, product_uid),
-        )
-        if not r:
-            raise ValueError(f"Product not found: {product_uid}")
-        resource_id = r[0]["id"]
+            w = _exec_cur(cur,
+                "SELECT id FROM warehouse WHERE organization_id = %s AND code = %s",
+                (organization_id, warehouse_code),
+            )
+            if not w:
+                raise ValueError(f"Warehouse not found: {warehouse_code}")
+            warehouse_id = w[0]["id"]
 
-        w = _exec_cur(cur,
-            "SELECT id FROM warehouse WHERE organization_id = %s AND code = %s",
-            (organization_id, warehouse_code),
-        )
-        if not w:
-            raise ValueError(f"Warehouse not found: {warehouse_code}")
-        warehouse_id = w[0]["id"]
+            _exec_cur(cur,
+                "INSERT INTO resource_warehouse (resource_id, warehouse_id, location_path, quantity, unit) "
+                "VALUES (%s, %s, %s, 0, %s) "
+                "ON CONFLICT (resource_id, warehouse_id, location_path) "
+                "DO UPDATE SET unit = EXCLUDED.unit "
+                "RETURNING id, quantity",
+                (resource_id, warehouse_id, location_path, unit),
+            )
+            rw = _exec_cur(cur,
+                "SELECT id, quantity FROM resource_warehouse "
+                "WHERE resource_id = %s AND warehouse_id = %s AND location_path = %s "
+                "FOR UPDATE",
+                (resource_id, warehouse_id, location_path),
+            )[0]
+            rw_id = rw["id"]
+            old_qty = float(rw["quantity"])
+            new_qty = old_qty + quantity
 
-        _exec_cur(cur,
-            "INSERT INTO resource_warehouse (resource_id, warehouse_id, location_path, quantity, unit) "
-            "VALUES (%s, %s, %s, 0, %s) "
-            "ON CONFLICT (resource_id, warehouse_id, location_path) "
-            "DO UPDATE SET unit = EXCLUDED.unit "
-            "RETURNING id, quantity",
-            (resource_id, warehouse_id, location_path, unit),
-        )
-        rw = _exec_cur(cur,
-            "SELECT id, quantity FROM resource_warehouse "
-            "WHERE resource_id = %s AND warehouse_id = %s AND location_path = %s "
-            "FOR UPDATE",
-            (resource_id, warehouse_id, location_path),
-        )[0]
-        rw_id = rw["id"]
-        old_qty = float(rw["quantity"])
-        new_qty = old_qty + quantity
+            cur.execute(
+                "UPDATE resource_warehouse SET quantity = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (new_qty, rw_id),
+            )
 
-        cur.execute(
-            "UPDATE resource_warehouse SET quantity = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
-            (new_qty, rw_id),
-        )
+            tx = _exec_cur(cur,
+                "INSERT INTO transaction (transaction_uid, organization_id, amount, category, description) "
+                "VALUES (%s, %s, %s, 'purchase_in', %s) RETURNING id",
+                (f"tx_{_uuid.uuid4().hex[:12]}", organization_id, total_amount,
+                 f"purchase_in {product_uid} x {quantity}{unit}"),
+            )[0]
+            tx_id = tx["id"]
 
-        tx = _exec_cur(cur,
-            "INSERT INTO transaction (transaction_uid, organization_id, amount, category, description) "
-            "VALUES (%s, %s, %s, 'purchase_in', %s) RETURNING id",
-            (f"tx_{_uuid.uuid4().hex[:12]}", organization_id, total_amount,
-             f"purchase_in {product_uid} x {quantity}{unit}"),
-        )[0]
-        tx_id = tx["id"]
+            movement_uid = f"mv_{_uuid.uuid4().hex[:12]}"
+            cur.execute(
+                "INSERT INTO inventory_movement "
+                "(movement_uid, organization_id, operator_person_id, resource_id, "
+                " warehouse_id, resource_warehouse_id, transaction_id, "
+                " operation_type, location_path, quantity_delta, quantity_after, unit, "
+                " total_amount, counterparty_name) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    movement_uid, organization_id, operator_person_id, resource_id,
+                    warehouse_id, rw_id, tx_id,
+                    "purchase_in", location_path, quantity, new_qty, unit,
+                    total_amount, counterparty_name,
+                ),
+            )
 
-        movement_uid = f"mv_{_uuid.uuid4().hex[:12]}"
-        cur.execute(
-            "INSERT INTO inventory_movement "
-            "(movement_uid, organization_id, operator_person_id, resource_id, "
-            " warehouse_id, resource_warehouse_id, transaction_id, "
-            " operation_type, location_path, quantity_delta, quantity_after, unit, "
-            " total_amount, counterparty_name) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                movement_uid, organization_id, operator_person_id, resource_id,
-                warehouse_id, rw_id, tx_id,
-                "purchase_in", location_path, quantity, new_qty, unit,
-                total_amount, counterparty_name,
-            ),
-        )
-
-        conn.commit()
-        return {
-            "status": "ok",
-            "operation_type": "purchase_in",
-            "product_uid": product_uid,
-            "warehouse_code": warehouse_code,
-            "location_path": location_path,
-            "quantity_delta": quantity,
-            "new_quantity": new_qty,
-            "unit": unit,
-            "total_amount": total_amount,
-            "counterparty_name": counterparty_name,
-            "movement_uid": movement_uid,
-        }
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+            return {
+                "status": "ok",
+                "operation_type": "purchase_in",
+                "product_uid": product_uid,
+                "warehouse_code": warehouse_code,
+                "location_path": location_path,
+                "quantity_delta": quantity,
+                "new_quantity": new_qty,
+                "unit": unit,
+                "total_amount": total_amount,
+                "counterparty_name": counterparty_name,
+                "movement_uid": movement_uid,
+            }
 
 
 def execute_sales_out(
@@ -1407,99 +1441,86 @@ def execute_sales_out(
     if total_amount < 0:
         raise ValueError("total_amount must be non-negative")
     import uuid as _uuid
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("BEGIN")
+    with _transaction_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            r = _exec_cur(cur,
+                "SELECT id FROM resource "
+                "WHERE organization_id = %s AND name = %s "
+                "AND status = 'active' AND type = 'physical'",
+                (organization_id, product_uid),
+            )
+            if not r:
+                raise ValueError(f"Product not found: {product_uid}")
+            resource_id = r[0]["id"]
 
-        r = _exec_cur(cur,
-            "SELECT id FROM resource "
-            "WHERE organization_id = %s AND name = %s "
-            "AND status = 'active' AND type = 'physical'",
-            (organization_id, product_uid),
-        )
-        if not r:
-            raise ValueError(f"Product not found: {product_uid}")
-        resource_id = r[0]["id"]
+            w = _exec_cur(cur,
+                "SELECT id FROM warehouse WHERE organization_id = %s AND code = %s",
+                (organization_id, warehouse_code),
+            )
+            if not w:
+                raise ValueError(f"Warehouse not found: {warehouse_code}")
+            warehouse_id = w[0]["id"]
 
-        w = _exec_cur(cur,
-            "SELECT id FROM warehouse WHERE organization_id = %s AND code = %s",
-            (organization_id, warehouse_code),
-        )
-        if not w:
-            raise ValueError(f"Warehouse not found: {warehouse_code}")
-        warehouse_id = w[0]["id"]
+            rw_rows = _exec_cur(cur,
+                "SELECT id, quantity FROM resource_warehouse "
+                "WHERE resource_id = %s AND warehouse_id = %s AND location_path = %s "
+                "FOR UPDATE",
+                (resource_id, warehouse_id, location_path),
+            )
+            if not rw_rows:
+                raise HTTPException(409, "No stock at this location")
+            rw = rw_rows[0]
+            rw_id = rw["id"]
+            old_qty = float(rw["quantity"])
 
-        rw_rows = _exec_cur(cur,
-            "SELECT id, quantity FROM resource_warehouse "
-            "WHERE resource_id = %s AND warehouse_id = %s AND location_path = %s "
-            "FOR UPDATE",
-            (resource_id, warehouse_id, location_path),
-        )
-        if not rw_rows:
-            conn.rollback()
-            raise HTTPException(409, "No stock at this location")
-        rw = rw_rows[0]
-        rw_id = rw["id"]
-        old_qty = float(rw["quantity"])
+            if old_qty < quantity:
+                raise HTTPException(409,
+                    f"Insufficient stock: have {old_qty}, need {quantity}")
 
-        if old_qty < quantity:
-            conn.rollback()
-            raise HTTPException(409,
-                f"Insufficient stock: have {old_qty}, need {quantity}")
+            new_qty = old_qty - quantity
 
-        new_qty = old_qty - quantity
+            cur.execute(
+                "UPDATE resource_warehouse SET quantity = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (new_qty, rw_id),
+            )
 
-        cur.execute(
-            "UPDATE resource_warehouse SET quantity = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
-            (new_qty, rw_id),
-        )
+            tx = _exec_cur(cur,
+                "INSERT INTO transaction (transaction_uid, organization_id, amount, category, description) "
+                "VALUES (%s, %s, %s, 'sales_out', %s) RETURNING id",
+                (f"tx_{_uuid.uuid4().hex[:12]}", organization_id, total_amount,
+                 f"sales_out {product_uid} x {quantity}{unit}"),
+            )[0]
+            tx_id = tx["id"]
 
-        tx = _exec_cur(cur,
-            "INSERT INTO transaction (transaction_uid, organization_id, amount, category, description) "
-            "VALUES (%s, %s, %s, 'sales_out', %s) RETURNING id",
-            (f"tx_{_uuid.uuid4().hex[:12]}", organization_id, total_amount,
-             f"sales_out {product_uid} x {quantity}{unit}"),
-        )[0]
-        tx_id = tx["id"]
+            movement_uid = f"mv_{_uuid.uuid4().hex[:12]}"
+            cur.execute(
+                "INSERT INTO inventory_movement "
+                "(movement_uid, organization_id, operator_person_id, resource_id, "
+                " warehouse_id, resource_warehouse_id, transaction_id, "
+                " operation_type, location_path, quantity_delta, quantity_after, unit, "
+                " total_amount, counterparty_name) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    movement_uid, organization_id, operator_person_id, resource_id,
+                    warehouse_id, rw_id, tx_id,
+                    "sales_out", location_path, -quantity, new_qty, unit,
+                    total_amount, counterparty_name,
+                ),
+            )
 
-        movement_uid = f"mv_{_uuid.uuid4().hex[:12]}"
-        cur.execute(
-            "INSERT INTO inventory_movement "
-            "(movement_uid, organization_id, operator_person_id, resource_id, "
-            " warehouse_id, resource_warehouse_id, transaction_id, "
-            " operation_type, location_path, quantity_delta, quantity_after, unit, "
-            " total_amount, counterparty_name) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                movement_uid, organization_id, operator_person_id, resource_id,
-                warehouse_id, rw_id, tx_id,
-                "sales_out", location_path, -quantity, new_qty, unit,
-                total_amount, counterparty_name,
-            ),
-        )
-
-        conn.commit()
-        return {
-            "status": "ok",
-            "operation_type": "sales_out",
-            "product_uid": product_uid,
-            "warehouse_code": warehouse_code,
-            "location_path": location_path,
-            "quantity_delta": -quantity,
-            "new_quantity": new_qty,
-            "unit": unit,
-            "total_amount": total_amount,
-            "counterparty_name": counterparty_name,
-            "movement_uid": movement_uid,
-        }
-    except HTTPException:
-        raise
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+            return {
+                "status": "ok",
+                "operation_type": "sales_out",
+                "product_uid": product_uid,
+                "warehouse_code": warehouse_code,
+                "location_path": location_path,
+                "quantity_delta": -quantity,
+                "new_quantity": new_qty,
+                "unit": unit,
+                "total_amount": total_amount,
+                "counterparty_name": counterparty_name,
+                "movement_uid": movement_uid,
+            }
 
 
 def query_stock(organization_id: int, product_uid: str = None) -> list:
@@ -2002,6 +2023,31 @@ def get_space_resources(organization_id: int) -> Dict[str, Any]:
         """,
         (organization_id,),
     )
+    physical_ids = [row["rid"] for row in rows if row["type"] == "physical"]
+    locations_by_resource: Dict[int, List[Dict[str, Any]]] = {}
+    if physical_ids:
+        loc_rows = _fetch(
+            """
+            SELECT rw.resource_id AS rid, w.code AS warehouse_code,
+                   rw.location_path, rw.quantity, rw.unit
+            FROM resource_warehouse rw
+            JOIN warehouse w ON w.id = rw.warehouse_id
+            JOIN resource r ON r.id = rw.resource_id
+            WHERE r.organization_id = %s
+              AND rw.resource_id = ANY(%s)
+              AND rw.location_path <> 'total'
+            ORDER BY rw.resource_id, w.code, rw.location_path
+            """,
+            (organization_id, physical_ids),
+        )
+        for loc in loc_rows:
+            locations_by_resource.setdefault(loc["rid"], []).append({
+                "warehouse_code": loc["warehouse_code"],
+                "location_path": loc["location_path"],
+                "quantity": float(loc["quantity"]),
+                "unit": loc["unit"],
+            })
+
     grouped = {"physical": [], "knowledge": [], "financial": [], "human": []}
     for row in rows:
         entry = {
@@ -2012,25 +2058,7 @@ def get_space_resources(organization_id: int) -> Dict[str, Any]:
             "description": row["description"],
         }
         if row["type"] == "physical":
-            locs = _fetch(
-                """
-                SELECT w.code AS warehouse_code, rw.location_path, rw.quantity, rw.unit
-                FROM resource_warehouse rw
-                JOIN warehouse w ON w.id = rw.warehouse_id
-                WHERE rw.resource_id = %s AND rw.location_path <> 'total'
-                ORDER BY w.code, rw.location_path
-                """,
-                (row["rid"],),
-            )
-            entry["locations"] = [
-                {
-                    "warehouse_code": l["warehouse_code"],
-                    "location_path": l["location_path"],
-                    "quantity": float(l["quantity"]),
-                    "unit": l["unit"],
-                }
-                for l in locs
-            ]
+            entry["locations"] = locations_by_resource.get(row["rid"], [])
         else:
             entry["locations"] = None
         grouped.setdefault(row["type"] or "other", []).append(entry)

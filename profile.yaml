@@ -12,6 +12,8 @@ database:
   port: 5432
   name: unires
   user: unires
+  pool_min: 1
+  pool_max: 10
 
 llm:
   base_url: http://127.0.0.1:8080/v1

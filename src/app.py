@@ -1,10 +1,12 @@
 """
 Uni-Resource Agent — FastAPI backend entry point (v5.3).
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from src.logging_config import setup_logging
 from src.db.database import (
+    init_connection_pool, close_connection_pool, DatabasePoolExhaustedError,
     init_database, create_organization, create_person, create_account, add_membership,
     query_organization_by_ouid, query_person_by_puid, query_account_by_login, query_membership,
 )
@@ -56,8 +58,25 @@ def ensure_default_super():
 
 @app.on_event("startup")
 async def ensure_schema_and_super():
+    init_connection_pool()
     init_database(drop_all=False)
     ensure_default_super()
+
+
+@app.on_event("shutdown")
+async def close_db_pool():
+    close_connection_pool()
+
+
+@app.exception_handler(DatabasePoolExhaustedError)
+async def database_pool_exhausted_handler(
+    request: Request, exc: DatabasePoolExhaustedError,
+):
+    logger.warning("Database pool exhausted for %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database is busy, please retry shortly"},
+    )
 
 
 @app.get("/health")

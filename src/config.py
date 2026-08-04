@@ -31,7 +31,7 @@ PROFILE_FILE = REPO_ROOT / "profile.yaml"
 ENV_FILE = REPO_ROOT / ".env"
 
 _ALLOWED_PROFILE_KEYS = {
-    "database": {"host", "port", "name", "user"},
+    "database": {"host", "port", "name", "user", "pool_min", "pool_max"},
     "llm": {"base_url", "model", "temperature"},
 }
 
@@ -44,6 +44,8 @@ _DEFAULTS: Dict[str, Dict[str, Any]] = {
         "name": "unires",
         "user": "unires",
         "password": "demo123",
+        "pool_min": 1,
+        "pool_max": 10,
     },
     "llm": {
         "base_url": "http://127.0.0.1:8080/v1",
@@ -60,6 +62,8 @@ _ENV_MAP: Dict[str, Dict[str, str]] = {
         "name": "DB_NAME",
         "user": "DB_USER",
         "password": "DB_PASSWORD",
+        "pool_min": "DB_POOL_MIN",
+        "pool_max": "DB_POOL_MAX",
     },
     "llm": {
         "base_url": "LLM_BASE_URL",
@@ -110,6 +114,20 @@ def _load(profile_file: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
     except (TypeError, ValueError) as exc:
         raise RuntimeError("database.port/DB_PORT must be an integer") from exc
 
+    for key, env_name in (("pool_min", "DB_POOL_MIN"), ("pool_max", "DB_POOL_MAX")):
+        try:
+            config["database"][key] = int(config["database"][key])
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(f"database.{key}/{env_name} must be an integer") from exc
+    pool_min = config["database"]["pool_min"]
+    pool_max = config["database"]["pool_max"]
+    if pool_min < 1:
+        raise RuntimeError("database.pool_min/DB_POOL_MIN must be >= 1")
+    if pool_max < pool_min:
+        raise RuntimeError("database.pool_max/DB_POOL_MAX must be >= pool_min")
+    if pool_max > 50:
+        raise RuntimeError("database.pool_max/DB_POOL_MAX must be <= 50")
+
     try:
         config["llm"]["temperature"] = float(config["llm"]["temperature"])
     except (TypeError, ValueError) as exc:
@@ -123,7 +141,7 @@ _config = _load()
 
 
 def get_database_config() -> Dict[str, Any]:
-    """Return merged database config. Keys: host, port, name, user, password."""
+    """Return merged database config including pool_min/pool_max."""
     return dict(_config["database"])
 
 

@@ -18,7 +18,7 @@ JSON=false
 
 LLAMACPP_PORT=8080
 UNIRES_BACKEND_PORT=8000
-UNIRES_FRONTEND_PORT=7860
+UNIRES_FRONTEND_PORT=5173
 
 # ---- 颜色 ----
 RED='\033[0;31m'
@@ -101,20 +101,11 @@ get_unires_info() {
             backend="down"
         fi
     fi
-    # 前端
-    if [ -f /tmp/uni_resource_agent_frontend.process_id ]; then
-        frontend_process_id=$(cat /tmp/uni_resource_agent_frontend.process_id 2>/dev/null || echo "")
-        if [ -n "$frontend_process_id" ] && kill -0 "$frontend_process_id" 2>/dev/null; then
-            frontend="up"
-        else
-            frontend="down"
-        fi
+    # 前端 (Vue + Vite, 手动启动)
+    if curl -s --max-time 3 "http://localhost:${UNIRES_FRONTEND_PORT}/" >/dev/null 2>&1; then
+        frontend="up"
     else
-        if curl -s --max-time 3 "http://localhost:${UNIRES_FRONTEND_PORT}/" >/dev/null 2>&1; then
-            frontend="up"
-        else
-            frontend="down"
-        fi
+        frontend="down"
     fi
     echo "${backend}|${frontend}"
 }

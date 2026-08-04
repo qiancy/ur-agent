@@ -22,6 +22,7 @@ Naming:
 from typing import Optional, List, Dict, Any
 from decimal import Decimal, ROUND_HALF_UP
 import uuid as _uuid
+import threading
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from src.logging_config import get_logger
@@ -333,31 +334,74 @@ def init_database(drop_all: bool = False):
 # ---------------------------------------------------------------------------
 
 def _fetch(sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(sql, params)
-        return [dict(row) for row in cur.fetchall()]
-    finally:
-        conn.close()
+    return _run_shared(sql, params, want_rows=True)
 
 
 def _execute(sql: str, params: tuple = (), fetch_returning: bool = False) -> Any:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute(sql, params)
-        if fetch_returning:
-            result = [dict(row) for row in cur.fetchall()]
-            conn.commit()
-            return result
-        conn.commit()
-        return cur.rowcount
-    except Exception as e:
-        conn.rollback()
-        raise e
-    finally:
-        conn.close()
+    return _run_shared(sql, params, want_rows=fetch_returning)
+
+
+# ---------------------------------------------------------------------------
+# Shared connection pool (thread-local, autocommit)
+#
+# Every `_fetch`/`_execute` used to open and close a brand-new psycopg2
+# connection per call. With a remote database, connection setup dominates the
+# request latency (overview = 5 queries = 5 connect round-trips ≈ 0.5-1.5s).
+# We now reuse ONE autocommit connection per thread. Autocommit keeps every
+# statement independent (same semantics as connect+commit+close), so reads and
+# writes observe committed data; transactions that need atomicity still use
+# their own dedicated connection via get_db_connection().
+# ---------------------------------------------------------------------------
+
+_PG_CONNECTION_ERRORS = (psycopg2.OperationalError, psycopg2.InterfaceError)
+
+_thread_local = threading.local()
+
+
+def _shared_connection():
+    conn = getattr(_thread_local, "conn", None)
+    if conn is None or conn.closed:
+        conn = get_db_connection()
+        conn.autocommit = True
+        _thread_local.conn = conn
+    return conn
+
+
+def _discard_shared_connection() -> None:
+    conn = getattr(_thread_local, "conn", None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    _thread_local.conn = None
+
+
+def _run_shared(sql: str, params: tuple, want_rows: bool):
+    for attempt in (0, 1):
+        try:
+            conn = _shared_connection()
+        except _PG_CONNECTION_ERRORS:
+            _discard_shared_connection()
+            if attempt:
+                raise
+            continue
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(sql, params)
+            if want_rows:
+                return [dict(row) for row in cur.fetchall()]
+            return cur.rowcount
+        except _PG_CONNECTION_ERRORS:
+            _discard_shared_connection()
+            if attempt:
+                raise
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
 
 
 def register_personal_space(puid: str, name: str, login: str,

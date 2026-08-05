@@ -6,7 +6,7 @@ variables (LLM_BASE_URL / LLM_API_KEY / LLM_MODEL) and a REAL database
 (DB_*). Default pytest run skips this file via pytest.ini
 ``addopts = -m "not integration"``. Run explicitly:
 
-    pytest -m integration agents/tdd/test_seller_chat_live_llm.py
+    pytest -m integration tests/backend/15_test_seller_chat_live_llm_v1_20260802.py
 
 Load secrets from your local .env (never commit them), e.g.:
     set -a; source .env; set +a

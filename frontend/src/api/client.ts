@@ -3,7 +3,7 @@ import { setAuthenticated } from './session'
 export const TOKEN_KEY = 'unires_token'
 
 export const API_BASE: string =
-  import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+  import.meta.env.VITE_API_BASE ?? ''
 export function apiUrl(path: string): string {
   return `${API_BASE}${path}`
 }

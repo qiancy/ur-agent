@@ -406,12 +406,10 @@ uni-resource-agent/
 ├── scripts/
 │   └── init_db.py                  # 数据库初始化
 ├── docs/
+│   ├── API.md                      # REST API 文档
 │   └── ARCHITECTURE.md             # 本文档
-├── agents/
-│   ├── DBA_AGENT.md                # 数据库管理规范
-│   └── tdd/                        # 测试相关
-├── README.md                       # 项目说明
-└── AGENTS.md                       # Agent指令
+├── tests/                          # API 与 E2E 冒烟测试
+└── README.md                       # 项目说明
 ```
 
 ---
@@ -440,6 +438,3 @@ uni-resource-agent/
 ## 🔗 相关文档
 
 - [API文档](docs/API.md)
-- [数据库管理](agents/DBA_AGENT.md)
-- [测试指南](agents/tdd/TDD.md)
-- [项目进度](_pm/进度跟踪.md)

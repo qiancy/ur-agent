@@ -286,7 +286,6 @@ cd web && npm run dev -- --host 0.0.0.0 --port 5173
 ```
 uni-resource-agent/
 ├── README.md                 # This file
-├── AGENTS.md                 # Agent instructions
 ├── src/
 │   ├── app.py                # FastAPI backend (REST API)
 │   ├── agents/
@@ -316,11 +315,9 @@ uni-resource-agent/
 ├── scripts/
 │   └── init_db.py            # DB init + demo data
 ├── docs/
-│   ├── DBA.md                # PostgreSQL DBA guide
+│   ├── API.md                # REST API reference
 │   └── ARCHITECTURE.md       # Architecture documentation
-└── agents/                   # Project management & TDD
-    ├── pm/
-    └── tdd/
+└── tests/                    # API and E2E smoke tests
 ```
 
 ---
@@ -337,7 +334,7 @@ uni-resource-agent/
 
 ## 🔧 Database Management
 
-See [DBA.md](docs/DBA.md) for PostgreSQL management, pgvector setup, and service scripts.
+Database connection and runtime settings are configured through `profile.yaml` plus local environment variables or `.env`.
 
 ---
 
@@ -346,8 +343,7 @@ See [DBA.md](docs/DBA.md) for PostgreSQL management, pgvector setup, and service
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, frontend-backend separation |
-| [DBA.md](docs/DBA.md) | PostgreSQL database administration |
-| [TDD.md](agents/tdd/TDD.md) | Test-driven development guide |
+| [API.md](docs/API.md) | REST API reference |
 
 ---
 

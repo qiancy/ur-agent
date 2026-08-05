@@ -1,0 +1,31 @@
+@startuml
+
+participant "时间\n«业务实体»" as SJ
+participant "房东\n«业务工人»" as FD
+participant "计算器\n«业务实体»" as JSQ
+participant "微信\n«业务实体»" as WX
+participant "水表\n«业务实体»" as SB
+participant "电表\n«业务实体»" as DB
+
+SJ -> FD : 收租
+activate FD
+FD -> FD : 翻查合同看每个租客的租金
+FD -> FD : 记录租金、水电费物管费、\n水电上次读数信息
+loop 每个房间
+  FD -> FD : 去往现场
+  FD -> FD : 查看水表和电表读数
+  FD -> FD : 记录水电读数
+  FD -> FD : 计算应收费用
+  activate FD
+  FD -> JSQ : 计算算式
+  activate JSQ
+  deactivate JSQ
+  deactivate FD
+  FD -> FD : 通知租客交租
+  activate FD
+  FD -> WX : 发消息
+  activate WX
+  deactivate WX
+  deactivate FD
+end
+@enduml

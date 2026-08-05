@@ -1,0 +1,23 @@
+@startuml
+
+left to right direction
+
+actor 时间
+actor 房东
+actor 水表
+actor 电表
+actor 微信
+
+rectangle 智慧公寓系统 {
+    usecase 计算费用
+    usecase 确认收租数据
+}
+
+时间 --> 计算费用
+房东 --> 确认收租数据
+
+计算费用 --> 水表
+计算费用 --> 电表
+确认收租数据 --> 微信
+
+@enduml

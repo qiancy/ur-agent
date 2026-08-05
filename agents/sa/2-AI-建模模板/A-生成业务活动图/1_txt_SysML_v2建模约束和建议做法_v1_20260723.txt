@@ -1,0 +1,16 @@
+（1）直接使用所给素材中的名称命名各个模型元素，不需要像样例一样英文命名加注释。中文命名时，应该使用两个单引号把名称放在其中，例如'蒸馏器'。
+（2）模仿所给的SysML v2样例，使用action def和action描述大小流程之间的调用，使用在part def中perform action的方式定义action责任归属（泳道）。
+（3）尽量推断出每个action def 的in和out参数，如果action def中有多个action，建模各个action之间的控制流以及数据流。控制流、数据流要用最简练的语法，不需要起名字。
+（4）给action usage、part usage、item usage命名的时候，要尽量用缩写的小写，例如：
+item vfi : VEGFRFamilyInhibition;
+vif分别取VEGFRF、Family、Inhibition的首字母，而且是小写。
+不要这样起名：item vEGFRFamilyInhibition : VEGFRFamilyInhibition; 因为这样显得重复了。
+如果允许，action usage可以不起名。
+（5）在定义action之间的流转时，尽量用保守语法，例如，不要写：
+first action : RepressCCL5Expression;
+then action : ReduceCCL5Secretion;
+应该写：
+action rce : RepressCCL5Expression;
+action rcs : ReduceCCL5Secretion;
+first rce;
+then rcs;

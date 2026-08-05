@@ -285,6 +285,7 @@ onMounted(() => {
               v-else
               :is="currentComponent"
               :ouid="ctx.ouid"
+              :active-section="currentView"
               @logged-out="onLoggedOut"
             />
           </div>

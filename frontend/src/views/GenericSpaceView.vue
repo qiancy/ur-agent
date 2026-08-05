@@ -10,8 +10,10 @@ import {
   type TimelineEvent,
 } from '../api/spaces'
 
-const props = defineProps<{ ouid: string }>()
+const props = defineProps<{ ouid: string; activeSection?: string }>()
 const emit = defineEmits<{ (e: 'logged-out'): void }>()
+
+const sectionRefs: Record<string, HTMLElement | undefined> = {}
 
 const overview = ref<SpaceOverviewData | null>(null)
 const grouped = ref<SpaceResourcesData | null>(null)
@@ -62,6 +64,17 @@ async function load() {
 
 watch(() => props.ouid, load, { immediate: true })
 
+watch(
+  () => props.activeSection,
+  (section) => {
+    if (!section) return
+    const el = sectionRefs[section]
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  },
+)
+
 function toggleLocations(name: string) {
   openLocations.value[name] = !openLocations.value[name]
 }
@@ -91,7 +104,7 @@ function flowLines(key: 'info_flow' | 'logistics_flow' | 'people_flow'): string[
     <p v-else-if="error" class="form-error" data-test="error">{{ error }}</p>
 
     <template v-else>
-      <section class="block" data-test="block-overview">
+      <section class="block" data-test="block-overview" :ref="(el) => { if (el) sectionRefs['overview'] = el as HTMLElement }">
         <h2>1 空间概览</h2>
         <div class="overview-grid">
           <div class="metric">
@@ -129,7 +142,7 @@ function flowLines(key: 'info_flow' | 'logistics_flow' | 'people_flow'): string[
         </div>
       </section>
 
-      <section class="block" data-test="block-resources">
+      <section class="block" data-test="block-resources" :ref="(el) => { if (el) sectionRefs['resources'] = el as HTMLElement }">
         <h2>2 资源观察</h2>
         <div
           v-for="group in resourceGroups"
@@ -184,7 +197,7 @@ function flowLines(key: 'info_flow' | 'logistics_flow' | 'people_flow'): string[
         </div>
       </section>
 
-      <section class="block" data-test="block-persons">
+      <section class="block" data-test="block-persons" :ref="(el) => { if (el) sectionRefs['persons'] = el as HTMLElement }">
         <h2>3 人员观察</h2>
         <ul v-if="persons.length" class="item-list">
           <li v-for="p in persons" :key="p.puid" class="person" data-test="person-row">
@@ -194,7 +207,7 @@ function flowLines(key: 'info_flow' | 'logistics_flow' | 'people_flow'): string[
         <p v-else class="hint">暂无成员</p>
       </section>
 
-      <section class="block" data-test="block-timeline">
+      <section class="block" data-test="block-timeline" :ref="(el) => { if (el) sectionRefs['timeline'] = el as HTMLElement }">
         <h2>4 时间线</h2>
         <ol v-if="events.length" class="timeline">
           <li
@@ -223,7 +236,7 @@ function flowLines(key: 'info_flow' | 'logistics_flow' | 'people_flow'): string[
         <p v-else class="hint" data-test="timeline-empty">暂无事件</p>
       </section>
 
-      <section class="block" data-test="block-flows">
+      <section class="block" data-test="block-flows" :ref="(el) => { if (el) sectionRefs['flows'] = el as HTMLElement }">
         <h2>5 多维流向</h2>
         <div class="flows-grid">
           <div class="flow" data-test="flow-info">

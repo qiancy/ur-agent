@@ -11,7 +11,7 @@ from playwright.sync_api import Page, expect
 
 from conftest import API_BASE, BASE_URL
 
-load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=False)
+load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
 
 
 LOGIN = os.getenv("DEMO_RECORDING_LOGIN", "liuming")
@@ -84,13 +84,19 @@ def _login(page: Page) -> dict:
 
 
 def _switch_org(page: Page, ouid: str) -> dict:
-    with page.expect_request(
-        lambda req: req.method == "POST" and _path(req.url) == "/auth/switch-organization"
-    ) as request_info:
+    """Switch organization and wait for the API response before reading context."""
+    with page.expect_response(
+        lambda resp: resp.request.method == "POST" and _path(resp.url) == "/auth/switch-organization"
+    ) as response_info:
         page.locator('[data-test="org-switch"]').select_option(ouid)
-    body = json.loads(request_info.value.post_data or "{}")
+    # Verify request body
+    body = json.loads(response_info.value.request.post_data or "{}")
     assert body == {"ouid": ouid}, f"switch request must be {{ouid}} only, got {body}"
     _assert_no_internal_keys(body)
+    # Wait for response and verify success
+    assert response_info.value.status == 200, f"switch failed: {response_info.value.status}"
+    # Small delay to ensure frontend has processed the response and updated localStorage
+    page.wait_for_timeout(500)
     ctx = _read_ctx(page)
     return ctx
 
@@ -186,7 +192,7 @@ def test_recording_main_flow(page: Page):
     expect(page.locator('[data-test="metric-sales"]')).to_be_visible()
     expect(page.locator('[data-test="metric-purchase"]')).to_be_visible()
     expect(page.locator('[data-test="metric-cashflow"]')).to_be_visible()
-    sales_text = page.locator('[data-test="metric-sales"]').inner_text()
+    sales_text = page.locator('[data-test="metric-sales"] .metric-value').inner_text()
     assert float(sales_text.replace(",", "").replace("¥", "").strip()) > 0, sales_text
     expect(page.locator('[data-test="low-stock"]')).to_contain_text("草船借箭纪念徽章")
     _hold(page)

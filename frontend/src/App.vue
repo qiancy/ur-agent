@@ -305,15 +305,13 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--bg, #f4f6f8);
+  background: var(--bg, #f8fafc);
   color: var(--ink, #17202a);
-  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
 }
 .shell {
   min-height: 100vh;
-  background: var(--bg, #f4f6f8);
+  background: var(--bg, #f8fafc);
   color: var(--ink, #17202a);
-  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -321,7 +319,7 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 236px 1fr;
+  grid-template-columns: 220px 1fr;
 }
 .main-col {
   min-width: 0;
@@ -331,6 +329,9 @@ onMounted(() => {
 .main {
   padding: 22px;
   min-width: 0;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
 }
 .views {
   min-width: 0;

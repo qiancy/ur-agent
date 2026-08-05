@@ -116,28 +116,30 @@ uni-resource-agent/
 ├── README.md                 # Human-readable
 ├── LICENSE
 ├── agents/                   # ← Agent specifications (root level)
-│   ├── pm/                      # Project management (NOT YET CREATED - see note below)
-│   │   ├── PM_AGENT.md
-│   │   ├── 1-团队分工.md
-│   │   ├── 2-任务拆分.md
-│   │   ├── 3-质量检查.md
-│   │   ├── 4-进度跟踪.md
-│   ├── sa/                 # ← 软件方法建模相关文件
-│   │   ├── SA_AGENT.md     # ← 建模师 AGENT
-│   │   └── 1-modeling/   # ← 建模相关文件
-│   │   └── 2-modeling/   # ← 建模相关文件
-│   │   └── 3-modeling/   # ← 建模相关文件
-│   │   └── 4-modeling/   # ← 建模相关文件
-│   ├── dba/                  # 数据库管理相关文件
-│       ├── DBA_AGENT.md      # PostgreSQL数据库管理规范
-│   └── tdd/                  # 测试相关文件
-│       ├── TDD_AGENT.md      # 测试驱动开发规范
-│       ├── README.md
-│       ├── test_three_kingdoms.py
-│       ├── test_three_kingdoms_http.py
-│       ├── test_fire_newye_api.py
-│       ├── setup_fire_newye_campaign.py
-│       └── 火烧新野战役故事文档.md
+│   ├── AGENT_ASSISTANT.md    # ← 项目经理助理 Agent
+│   ├── AGENT_DBA.md          # ← 数据库管理 Agent
+│   ├── AGENT_DEV.md          # ← 开发运维 Agent
+│   ├── AGENT_PM.md           # ← 项目管理 Agent
+│   ├── AGENT_SA.md           # ← 系统分析师 Agent
+│   ├── AGENT_TDD.md          # ← 测试驱动开发 Agent
+│   ├── dev/                  # ← dev agent 工作目录
+│   │   └── AGENT_DEV.md      # ← 仓库 git 现状 & 发布流程文档
+│   ├── pm/                   # ← 项目管理文档
+│   │   ├── README.md
+│   │   ├── 10_doc_团队分工_v1_20260721.md
+│   │   ├── 9_doc_任务拆分_v1_20260721.md
+│   │   └── ...
+│   ├── sa/                   # ← 软件方法建模相关文件
+│   │   ├── README.md
+│   │   ├── 1_doc_软件方法书_v1_20260723.md
+│   │   └── 4-modeling/
+│   ├── tdd/                  # ← 测试驱动开发相关文件
+│   │   ├── README.md
+│   │   ├── 1_doc_火烧新野战役故事文档_v1_20260721.md
+│   │   └── ...
+│   ├── assistant/            # ← 助理 Agent 工作目录
+│   │   └── inbox/
+│   └── backend/   frontend/  # ← 开发产出物
 ├── src/
 │   ├── agents/agent.py       # LangChain Agent
 │   ├── tools/
@@ -157,14 +159,10 @@ uni-resource-agent/
 │   ├── init_data/            # 4 spaces JSON
 │   └── knowledge/            # RAG documents
 ├── docs/
-│   ├── API.md                # API documentation
-│   └── (removed - moved to agents/DBA_AGENT.md)
-├── AI-prompt/              # ← AI建模提示词
-└── agents/
-    └── tdd/                  # Test scripts (moved here)
-        ├── TDD.md            # TDD规范文档
-        ├── test_three_kingdoms_http.py
-        └── test_three_kingdoms.py
+│   └── API.md                # API documentation
+├── AI-prompt/                # ← AI建模提示词
+└── tests/                    # ← 可执行测试 (pytest)
+    └── backend/
 ```
 
 ---
@@ -235,7 +233,7 @@ assets ─┬─ physical_assets
 ## 🛠️ Database Configuration
 
 PostgreSQL 16.14 + pgvector. Database: `unires`, User: `unires`, Password: `demo123`, Port: `5432`.
-See [DBA_AGENT.md](agents/DBA_AGENT.md) for details.
+See [AGENT_DBA.md](agents/AGENT_DBA.md) for details.
 
 ## 🌐 REST API
 
@@ -333,7 +331,7 @@ Detailed tasks: [`_pm/进度跟踪.md`](_pm/进度跟踪.md)
 - [团队分工](_pm/团队分工.md)
 - [进度跟踪](_pm/进度跟踪.md)
 - [质量检查](_pm/质量检查.md)
-- [DBA指南](agents/DBA_AGENT.md)
+- [DBA指南](agents/AGENT_DBA.md)
 - [TDD指南](agents/tdd/TDD.md)
 - [回归测试计划](agents/tdd/回归测试计划.md)
 - [测试执行指南](agents/tdd/测试执行指南.md)

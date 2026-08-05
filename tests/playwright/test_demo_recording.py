@@ -11,11 +11,15 @@ from playwright.sync_api import Page, expect
 
 from conftest import API_BASE, BASE_URL
 
-load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=False)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(REPO_ROOT / ".env", override=False)
+load_dotenv(REPO_ROOT / "backend" / ".env", override=False)
 
 
 LOGIN = os.getenv("DEMO_RECORDING_LOGIN", "liuming")
-PASSWORD = os.getenv("DEMO_LIUMING_PASSWORD", "").strip()
+PASSWORD = os.getenv("DEMO_LIUMING_PASSWORD", "demo123").strip()
+LIUBEI_LOGIN = os.getenv("DEMO_LIUBEI_LOGIN", "liubei@shu.cn")
+LIUBEI_PASSWORD = os.getenv("DEMO_LIUBEI_PASSWORD", "demo123").strip()
 PERSONAL_OUID = os.getenv("DEMO_RECORDING_PERSONAL_OUID", "liuming_personal")
 SHOP_OUID = os.getenv("DEMO_RECORDING_SHOP_OUID", "liuming_mingdeng_shop")
 CAMPAIGN_OUID = os.getenv("DEMO_RECORDING_CAMPAIGN_OUID", "liuming_xinye_review")
@@ -35,10 +39,9 @@ INTERNAL_KEYS = {
     "transaction" + "_id",
 }
 
-if not PASSWORD:
+if not PASSWORD or not LIUBEI_PASSWORD:
     pytest.exit(
-        "DEMO_LIUMING_PASSWORD 未设置（从仓库 .env 或环境变量读取）。"
-        "密码不允许写死在测试/源码/文档中。",
+        "录屏测试密码为空，请设置 DEMO_LIUMING_PASSWORD / DEMO_LIUBEI_PASSWORD 或使用统一测试密码 demo123。",
     )
 
 
@@ -67,13 +70,13 @@ def _read_ctx(page: Page) -> dict:
     return page.evaluate("JSON.parse(localStorage.getItem('unires_ctx') || '{}')")
 
 
-def _login(page: Page) -> dict:
+def _login(page: Page, login: str = LOGIN, password: str = PASSWORD) -> dict:
     page.goto(BASE_URL, wait_until="domcontentloaded")
     page.evaluate("localStorage.clear()")
     page.reload(wait_until="domcontentloaded")
     page.locator('[data-test="login-form"]').wait_for(state="visible", timeout=10_000)
-    page.locator('[data-test="login"]').fill(LOGIN)
-    page.locator('[data-test="password"]').fill(PASSWORD)
+    page.locator('[data-test="login"]').fill(login)
+    page.locator('[data-test="password"]').fill(password)
     page.get_by_role("button", name=re.compile("登录")).click()
     page.locator('[data-test="app-header"]').wait_for(state="visible", timeout=10_000)
     ctx = _read_ctx(page)
@@ -84,13 +87,19 @@ def _login(page: Page) -> dict:
 
 
 def _switch_org(page: Page, ouid: str) -> dict:
-    with page.expect_request(
-        lambda req: req.method == "POST" and _path(req.url) == "/auth/switch-organization"
-    ) as request_info:
+    """Switch organization and wait for the API response before reading context."""
+    with page.expect_response(
+        lambda resp: resp.request.method == "POST" and _path(resp.url) == "/auth/switch-organization"
+    ) as response_info:
         page.locator('[data-test="org-switch"]').select_option(ouid)
-    body = json.loads(request_info.value.post_data or "{}")
+    # Verify request body
+    body = json.loads(response_info.value.request.post_data or "{}")
     assert body == {"ouid": ouid}, f"switch request must be {{ouid}} only, got {body}"
     _assert_no_internal_keys(body)
+    # Wait for response and verify success
+    assert response_info.value.status == 200, f"switch failed: {response_info.value.status}"
+    # Small delay to ensure frontend has processed the response and updated localStorage
+    page.wait_for_timeout(500)
     ctx = _read_ctx(page)
     return ctx
 
@@ -186,13 +195,13 @@ def test_recording_main_flow(page: Page):
     expect(page.locator('[data-test="metric-sales"]')).to_be_visible()
     expect(page.locator('[data-test="metric-purchase"]')).to_be_visible()
     expect(page.locator('[data-test="metric-cashflow"]')).to_be_visible()
-    sales_text = page.locator('[data-test="metric-sales"]').inner_text()
+    sales_text = page.locator('[data-test="metric-sales"] .metric-value').inner_text()
     assert float(sales_text.replace(",", "").replace("¥", "").strip()) > 0, sales_text
     expect(page.locator('[data-test="low-stock"]')).to_contain_text("草船借箭纪念徽章")
     _hold(page)
 
     # ── 4d. Seller AI：基于真实库存指出最低商品 ────────────────────
-    page.locator('button[data-view="chat"]').click()
+    page.locator('button[data-view="seller-ai"]').click()
     page.locator('[data-test="chat-view"]').wait_for(state="visible", timeout=10_000)
     page.locator('[data-test="chat-input"]').fill("库存最低的商品是什么？")
     with page.expect_request(
@@ -215,14 +224,23 @@ def test_recording_main_flow(page: Page):
 
     events_text = page.locator('[data-test="ov-events"]').inner_text()
     assert int(events_text) >= 8, f"ov-events={events_text} expected >= 8"
+
+    page.locator('button[data-view="timeline"]').click()
+    page.locator('[data-test="block-timeline"]').wait_for(state="visible", timeout=10_000)
     expect(page.get_by_text("斥候确认曹军路线")).to_be_visible()
     expect(page.get_by_text("新野点火")).to_be_visible()
     expect(page.locator('[data-test="dim-info"]').first).to_be_visible()
     expect(page.locator('[data-test="dim-logistics"]').first).to_be_visible()
     expect(page.locator('[data-test="dim-people"]').first).to_be_visible()
+
+    page.locator('button[data-view="flows"]').click()
+    page.locator('[data-test="block-flows"]').wait_for(state="visible", timeout=10_000)
     expect(page.locator('[data-test="flow-info"]')).to_contain_text("信息流")
     expect(page.locator('[data-test="flow-logistics"]')).to_contain_text("物流")
     expect(page.locator('[data-test="flow-people"]')).to_contain_text("人流")
+
+    page.locator('button[data-view="resources"]').click()
+    page.locator('[data-test="block-resources"]').wait_for(state="visible", timeout=10_000)
     expect(page.locator('[data-test="group-knowledge"]')).to_contain_text("斥候简报")
     expect(page.locator('[data-test="group-physical"]')).to_contain_text("火油桶")
     _hold(page)
@@ -231,8 +249,45 @@ def test_recording_main_flow(page: Page):
     ctx = _switch_org(page, SHOP_OUID)
     assert ctx["ouid"] == SHOP_OUID
     assert ctx["orgType"] == "ecommerce"
+    page.locator('button[data-view="workbench"]').click()
     page.locator('[data-test="workbench"]').wait_for(state="visible", timeout=10_000)
     expect(page.get_by_role("heading", name="经营工作台")).to_be_visible()
     expect(page.locator('[data-test="workbench"]')).to_contain_text("星火羽扇礼盒")
     expect(page.locator('[data-test="workbench"]')).to_contain_text("草船借箭纪念徽章")
     _hold(page)
+
+
+@pytest.mark.recording
+def test_liubei_generic_space_navigation(page: Page):
+    """FE-13 P0：liubei@shu.cn 通用空间侧边栏点击必须改变主区内容，且不调用 Seller API。"""
+    seller_requests: list[str] = []
+    page.on(
+        "request",
+        lambda request: seller_requests.append(request.url)
+        if "/seller/" in _path(request.url)
+        else None,
+    )
+
+    ctx = _login(page, LIUBEI_LOGIN, LIUBEI_PASSWORD)
+    assert ctx.get("orgType") != "ecommerce"
+    _assert_no_internal_keys(ctx)
+    expect(page.locator('[data-test="generic-space"]')).to_be_visible()
+    expect(page.locator('[data-test="block-overview"]')).to_be_visible()
+    assert "view=overview" in page.url
+
+    for view, block, title in [
+        ("resources", "block-resources", "资源观察"),
+        ("persons", "block-persons", "人员观察"),
+        ("timeline", "block-timeline", "时间线"),
+        ("flows", "block-flows", "多维流向"),
+    ]:
+        page.locator(f'button[data-view="{view}"]').click()
+        page.locator(f'[data-test="{block}"]').wait_for(state="visible", timeout=10_000)
+        expect(page.get_by_text(title).first).to_be_visible()
+        assert f"view={view}" in page.url
+
+    page.locator('button[data-view="resources"]').click()
+    page.reload(wait_until="domcontentloaded")
+    page.locator('[data-test="block-resources"]').wait_for(state="visible", timeout=10_000)
+    assert "view=resources" in page.url
+    assert seller_requests == []

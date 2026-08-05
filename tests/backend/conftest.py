@@ -30,14 +30,19 @@ def _check_account(login: str) -> bool:
 
 
 def _seed_if_missing(login: str, script_name: str) -> None:
-    """账号不存在且环境变量存在时自动补种。"""
+    """账号不存在时自动补种；未设置密码环境变量则使用 demo123。"""
     if not _check_account(login):
         password_var = "DEMO_ZHANSAN_PASSWORD" if login == "zhansan" else "DEMO_LIUMING_PASSWORD"
-        if os.getenv(password_var):
-            subprocess.run(
-                [sys.executable, str(BACKEND_DIR / "scripts" / script_name)],
-                capture_output=True,
-            )
+        env = {
+            **os.environ,
+            password_var: os.getenv(password_var, "demo123"),
+        }
+        subprocess.run(
+            [sys.executable, str(BACKEND_DIR / "scripts" / script_name)],
+            cwd=BACKEND_DIR,
+            env=env,
+            capture_output=True,
+        )
 
 
 @pytest.fixture(scope="session", autouse=True)

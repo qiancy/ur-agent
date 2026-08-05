@@ -140,17 +140,21 @@ class TestThreeKingdomsDemo(unittest.TestCase):
         import subprocess, sys, os
         from pathlib import Path
         repo_root = Path(__file__).resolve().parents[2]
-        env = {**os.environ, "PYTHONPATH": str(repo_root)}
-        if os.getenv("DEMO_ZHANSAN_PASSWORD"):
-            subprocess.run(
-                [sys.executable, "scripts/seed_demo_data.py"],
-                cwd=repo_root, env=env, capture_output=True
-            )
-        if os.getenv("DEMO_LIUMING_PASSWORD"):
-            subprocess.run(
-                [sys.executable, "scripts/seed_recording_data.py"],
-                cwd=repo_root, env=env, capture_output=True
-            )
+        backend_root = repo_root / "backend"
+        env = {
+            **os.environ,
+            "PYTHONPATH": str(backend_root),
+            "DEMO_ZHANSAN_PASSWORD": os.getenv("DEMO_ZHANSAN_PASSWORD", "demo123"),
+            "DEMO_LIUMING_PASSWORD": os.getenv("DEMO_LIUMING_PASSWORD", "demo123"),
+        }
+        subprocess.run(
+            [sys.executable, "scripts/seed_demo_data.py"],
+            cwd=backend_root, env=env, capture_output=True
+        )
+        subprocess.run(
+            [sys.executable, "scripts/seed_recording_data.py"],
+            cwd=backend_root, env=env, capture_output=True
+        )
 
     def test_shu_resource_types(self):
         from src.db.database import query_resource, resolve_organization_id

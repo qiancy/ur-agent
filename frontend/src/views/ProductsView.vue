@@ -8,6 +8,10 @@ import {
   type ProductStatus,
   type SellerProduct,
 } from '../api/products'
+import PageHeader from '../components/PageHeader.vue'
+import SectionCard from '../components/SectionCard.vue'
+import StatusChip from '../components/StatusChip.vue'
+import EmptyState from '../components/EmptyState.vue'
 
 const emit = defineEmits<{ (e: 'logged-out'): void }>()
 
@@ -120,32 +124,28 @@ async function applyStatus(p: SellerProduct, status: ProductStatus) {
 
 <template>
   <section class="products-view" data-test="products-view">
-    <div class="topbar">
-      <div>
-        <h1>商品管理</h1>
-        <div class="status">{{ products.length }} 个商品</div>
-      </div>
+    <PageHeader
+      title="商品管理"
+      :status="`${products.length} 个商品`"
+    >
       <button class="btn primary" type="button" data-test="btn-add" @click="showAdd = true">
         新增商品
       </button>
-    </div>
+    </PageHeader>
 
-    <div class="panel">
-      <div class="panel-head">
-        <div class="panel-title">全部商品</div>
-        <div class="filters">
-          <select v-model="statusFilter" class="status-select" data-test="status-filter">
-            <option value="all">全部</option>
-            <option value="active">正常</option>
-            <option value="inactive">已停用</option>
-          </select>
-          <span class="chip">{{ visible.length }} 项</span>
-        </div>
-      </div>
+    <SectionCard data-test="products-panel">
+      <template #filters>
+        <select v-model="statusFilter" class="status-select" data-test="status-filter">
+          <option value="all">全部</option>
+          <option value="active">正常</option>
+          <option value="inactive">已停用</option>
+        </select>
+        <span class="chip">{{ visible.length }} 项</span>
+      </template>
 
       <p v-if="loading" class="hint">加载中…</p>
       <p v-else-if="error" class="form-error" data-test="error">{{ error }}</p>
-      <table v-else class="products-table" data-test="products-table">
+      <table v-else-if="visible.length" class="products-table" data-test="products-table">
         <thead>
           <tr>
             <th>商品编号</th>
@@ -154,7 +154,7 @@ async function applyStatus(p: SellerProduct, status: ProductStatus) {
             <th class="num">库存总数</th>
             <th class="num">库位数</th>
             <th>描述</th>
-            <th></th>
+            <th class="num">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -162,9 +162,7 @@ async function applyStatus(p: SellerProduct, status: ProductStatus) {
             <td>{{ p.product_uid }}</td>
             <td>{{ p.unit }}</td>
             <td>
-              <span class="tag" :class="p.status === 'active' ? 'ok' : 'off'">
-                {{ p.status === 'active' ? '正常' : '已停用' }}
-              </span>
+              <StatusChip :label="p.status === 'active' ? '正常' : '已停用'" :variant="p.status === 'active' ? 'ok' : 'off'" />
             </td>
             <td class="num">{{ p.stock_total }}</td>
             <td class="num">{{ p.stock_location_count }}</td>
@@ -181,12 +179,17 @@ async function applyStatus(p: SellerProduct, status: ProductStatus) {
               </button>
             </td>
           </tr>
-          <tr v-if="visible.length === 0">
-            <td colspan="7" class="empty">暂无商品</td>
-          </tr>
         </tbody>
       </table>
-    </div>
+      <EmptyState
+        v-else
+        type="filtered"
+        title="没有匹配的商品"
+        description="试试调整筛选条件，或新增一个商品开始管理库存。"
+        action-label="新增商品"
+        :on-action="() => showAdd = true"
+      />
+    </SectionCard>
 
     <div v-if="showAdd" class="modal-mask" @click.self="showAdd = false">
       <div class="modal" role="dialog" aria-label="新增商品">
@@ -230,7 +233,7 @@ async function applyStatus(p: SellerProduct, status: ProductStatus) {
           </p>
           <div class="modal-actions">
             <button class="btn" type="button" data-test="cancel-toggle" @click="confirmProduct = null">取消</button>
-            <button class="btn primary" type="button" data-test="confirm-toggle" @click="confirmToggle">
+            <button class="btn primary" type="button" data-test="confirm-toggle" @click="confirmToggle" :disabled="toggling">
               确认停用
             </button>
           </div>
@@ -246,74 +249,13 @@ async function applyStatus(p: SellerProduct, status: ProductStatus) {
   flex-direction: column;
   gap: 16px;
 }
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-h1 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 750;
-}
-.status {
-  color: var(--muted, #637083);
-  font-size: 13px;
-  margin-top: 5px;
-}
-.btn {
-  border: 1px solid var(--line, #d8dee8);
-  background: var(--panel, #ffffff);
-  color: var(--ink, #17202a);
-  border-radius: 6px;
-  padding: 10px 13px;
-  font-weight: 650;
-  font-size: 13px;
-  cursor: pointer;
-}
-.btn.primary {
-  background: var(--teal, #0f766e);
-  color: #ffffff;
-  border-color: var(--teal, #0f766e);
-}
-.btn.small {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-.btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.panel {
-  background: var(--panel, #ffffff);
-  border: 1px solid var(--line, #d8dee8);
-  border-radius: 8px;
-}
-.panel-head {
-  min-height: 54px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line, #d8dee8);
-}
-.panel-title {
-  font-size: 15px;
-  font-weight: 760;
-}
-.filters {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
 .status-select {
   border: 1px solid var(--line, #d8dee8);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
   background: #fbfcfe;
+  color: var(--ink, #17202a);
 }
 .chip {
   border: 1px solid var(--line, #d8dee8);
@@ -352,22 +294,6 @@ th {
 .ops {
   text-align: right;
 }
-.tag {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.tag.ok {
-  color: var(--green, #117a55);
-  background: #e8f6ef;
-}
-.tag.off {
-  color: var(--muted, #637083);
-  background: #eef1f5;
-}
 .hint {
   padding: 16px;
   color: var(--muted, #637083);
@@ -380,10 +306,31 @@ th {
   font-size: 13px;
   color: var(--red, #b42318);
 }
-.empty {
-  text-align: center;
-  color: var(--muted, #637083);
-  padding: 24px;
+.btn {
+  border: 1px solid var(--line, #d8dee8);
+  background: var(--panel, #ffffff);
+  color: var(--ink, #17202a);
+  border-radius: 6px;
+  padding: 10px 13px;
+  font-weight: 650;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn.primary {
+  background: var(--teal, #0f766e);
+  color: #ffffff;
+  border-color: var(--teal, #0f766e);
+}
+.btn.primary:hover {
+  background: #115e59;
+}
+.btn.small {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 .modal-mask {
   position: fixed;

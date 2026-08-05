@@ -1,3 +1,16 @@
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --line: #e2e8f0;
+  --ink: #17202a;
+  --muted: #64748b;
+  --teal: #0f766e;
+  --green: #10b981;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+}
+
 html,
 body {
   margin: 0;
@@ -11,9 +24,28 @@ body {
 }
 
 body {
-  background: var(--bg, #f4f6f8);
+  background: var(--bg, #f8fafc);
+  color: var(--ink, #17202a);
+  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
   min-height: 100vh;
+}
+
+a {
+  color: var(--teal, #0f766e);
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 13px;
 }

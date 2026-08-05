@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { UserOrganization } from '../api/auth'
 import SpaceMenu from './SpaceMenu.vue'
 
@@ -25,23 +26,24 @@ function onSwitch(event: Event) {
     emit('switch-organization', ouid)
   }
 }
+
+const orgLabel = computed(() => props.organizationName || props.ouid)
 </script>
 
 <template>
   <header class="app-header" data-test="app-header">
     <div class="brand">
       <div class="mark">UA</div>
-      <div class="brand-text">
-        <div class="brand-name">Uni-Resource Agent</div>
-        <div class="brand-meta">{{ organizationName }}</div>
-      </div>
+      <div class="brand-name">Uni-Resource Agent</div>
     </div>
 
-    <div class="org-ctx">
-      <span class="chip">{{ orgType }}</span>
-      <span class="ouid">{{ ouid }}</span>
+    <div class="ctx-card">
+      <span class="ctx-name" :title="orgLabel">{{ orgLabel }}</span>
+      <span class="ctx-chip">{{ orgType }}</span>
+      <span class="ctx-chip">{{ role }}</span>
+      <span class="ctx-meta">{{ puid }}</span>
       <select
-        class="org-switch"
+        class="ctx-switch"
         data-test="org-switch"
         :value="ouid"
         aria-label="切换组织"
@@ -53,25 +55,21 @@ function onSwitch(event: Event) {
       </select>
     </div>
 
-    <div class="quick">
-      <SpaceMenu :role="role" :org-type="orgType" @select="(action) => emit('navigate-space-menu', action)" />
-    </div>
-
-    <div class="user">
-      <div class="user-name">{{ personName }}</div>
-      <div class="user-meta">
-        {{ puid }} · {{ role }}
+    <div class="actions">
+      <div class="user">
+        <span class="user-name">{{ personName }}</span>
+        <span class="user-meta">{{ role }} · {{ puid }}</span>
       </div>
+      <SpaceMenu :role="role" :org-type="orgType" @select="(action) => emit('navigate-space-menu', action)" />
+      <button
+        type="button"
+        class="btn logout"
+        data-test="header-logout"
+        @click="emit('logout')"
+      >
+        退出登录
+      </button>
     </div>
-
-    <button
-      type="button"
-      class="logout"
-      data-test="header-logout"
-      @click="emit('logout')"
-    >
-      退出登录
-    </button>
   </header>
 </template>
 
@@ -82,16 +80,17 @@ function onSwitch(event: Event) {
   z-index: 30;
   background: var(--panel, #ffffff);
   border-bottom: 1px solid var(--line, #d8dee8);
-  padding: 12px 22px;
+  padding: 10px 22px;
   display: flex;
   align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
+  gap: 18px;
+  min-height: 56px;
 }
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 .mark {
   width: 34px;
@@ -107,63 +106,79 @@ function onSwitch(event: Event) {
 .brand-name {
   font-weight: 800;
   font-size: 15px;
+  color: var(--ink, #17202a);
 }
-.brand-meta {
-  color: var(--muted, #637083);
-  font-size: 12px;
-}
-.org-ctx {
+.ctx-card {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
   min-width: 0;
-}
-.chip {
+  padding: 6px 12px;
   border: 1px solid var(--line, #d8dee8);
-  border-radius: 999px;
-  padding: 5px 10px;
-  color: var(--muted, #637083);
-  font-size: 12px;
-  background: #fbfcfe;
+  border-radius: 8px;
+  background: #f8fafc;
 }
-.ouid {
-  color: var(--muted, #637083);
-  font-size: 12px;
-  max-width: 140px;
+.ctx-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink, #17202a);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.org-switch {
+.ctx-chip {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+  white-space: nowrap;
+}
+.ctx-meta {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted, #637083);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+.ctx-switch {
+  flex-shrink: 0;
   border: 1px solid var(--line, #d8dee8);
   background: #ffffff;
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   font-size: 13px;
   color: var(--ink, #17202a);
-  max-width: 200px;
+  max-width: 180px;
 }
-.quick {
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.user {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
-}
-.user {
-  text-align: right;
-  min-width: 0;
+  padding-right: 10px;
+  border-right: 1px solid var(--line, #d8dee8);
 }
 .user-name {
   font-size: 13px;
   font-weight: 700;
+  color: var(--ink, #17202a);
 }
 .user-meta {
-  color: var(--muted, #637083);
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--muted, #637083);
   white-space: nowrap;
-  max-width: 180px;
 }
 .logout {
   border: 1px solid var(--line, #d8dee8);
@@ -171,22 +186,32 @@ function onSwitch(event: Event) {
   color: var(--ink, #17202a);
   border-radius: 6px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 .logout:hover {
   background: #f4f6f8;
 }
-@media (max-width: 980px) {
+
+@media (max-width: 768px) {
   .app-header {
-    align-items: stretch;
-    flex-direction: column;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 14px;
   }
-  .quick {
-    margin-left: 0;
+  .ctx-card {
+    order: 10;
+    flex: 1 1 100%;
+    padding: 8px 10px;
   }
-  .user {
-    text-align: left;
+  .ctx-meta {
+    display: none;
+  }
+  .ctx-switch {
+    max-width: 140px;
+  }
+  .actions {
+    margin-left: auto;
   }
 }
 </style>

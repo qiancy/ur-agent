@@ -1,38 +1,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { WorkspaceNavItem } from '../workspace/types'
 
 const props = defineProps<{
   currentView: string
-  orgType: string
+  navItems: WorkspaceNavItem[]
 }>()
 
 const emit = defineEmits<{
   (e: 'navigate', view: string): void
 }>()
 
-interface NavItem {
-  key: string
-  label: string
-}
-
-const navItems = computed<NavItem[]>(() =>
-  props.orgType === 'ecommerce'
-    ? [
-        { key: 'workbench', label: '工作台' },
-        { key: 'products', label: '商品' },
-        { key: 'stock', label: '库存' },
-        { key: 'movements', label: '库存流水' },
-        { key: 'summary', label: '经营摘要' },
-        { key: 'chat', label: 'Seller AI' },
-      ]
-    : [
-        { key: 'overview', label: '空间总览' },
-        { key: 'resources', label: '资源' },
-        { key: 'persons', label: '人员' },
-        { key: 'timeline', label: '时间线' },
-        { key: 'flows', label: '多维观察' },
-      ],
-)
+const grouped = computed(() => {
+  const groups: Record<string, WorkspaceNavItem[]> = {}
+  for (const item of props.navItems) {
+    if (!groups[item.group]) groups[item.group] = []
+    groups[item.group].push(item)
+  }
+  return groups
+})
 
 function onNavigate(view: string) {
   if (view !== props.currentView) {
@@ -44,61 +30,124 @@ function onNavigate(view: string) {
 <template>
   <aside class="side">
     <div class="brand">
-      Uni-Resource Agent
+      <div class="mark">UA</div>
+      <div class="brand-text">Uni-Resource Agent</div>
     </div>
     <nav class="nav">
-      <button
-        v-for="item in navItems"
-        :key="item.key"
-        type="button"
-        :data-view="item.key"
-        :class="['nav-item', { active: currentView === item.key }]"
-        @click="onNavigate(item.key)"
-      >
-        {{ item.label }}
-      </button>
+      <template v-for="(items, groupKey) in grouped" :key="groupKey">
+        <div class="nav-group">
+          <div class="nav-group-label">{{ groupKey === 'observe' ? '观察' : groupKey === 'operate' ? '经营' : groupKey === 'ai' ? 'AI' : '空间治理' }}</div>
+          <button
+            v-for="item in items"
+            :key="item.key"
+            type="button"
+            :data-view="item.key"
+            :class="['nav-item', { active: currentView === item.key }]"
+            :title="item.label"
+            @click="onNavigate(item.key)"
+          >
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path :d="item.icon" />
+            </svg>
+            <span class="nav-label">{{ item.label }}</span>
+          </button>
+        </div>
+      </template>
     </nav>
   </aside>
 </template>
 
 <style scoped>
 .side {
-  background: #16202e;
+  background: #1E293B;
   color: #e7edf5;
-  padding: 22px 16px;
+  padding: 18px 12px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 20px;
+  min-height: 100vh;
+  overflow-y: auto;
 }
 .brand {
-  font-weight: 800;
-  font-size: 18px;
-  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px;
 }
-.brand span {
-  display: block;
-  color: #9fb3ca;
-  font-size: 12px;
-  font-weight: 500;
-  margin-top: 6px;
+.mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: #0f766e;
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.brand-text {
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.2;
+  color: #f1f5f9;
 }
 .nav {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-group + .nav-group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #334155;
+}
+.nav-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  padding: 0 12px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   border: 0;
-  color: #dbe5f0;
+  color: #cbd5e1;
   background: transparent;
   text-align: left;
-  padding: 11px 12px;
+  padding: 10px 12px;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.nav-item:hover {
+  background: #334155;
+  color: #f1f5f9;
 }
 .nav-item.active {
-  background: #233247;
+  background: #0f766e;
   color: #ffffff;
-  border-left: 3px solid #45b8ac;
+  font-weight: 700;
+}
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.nav-item.active .nav-icon {
+  opacity: 1;
+}
+.nav-label {
+  line-height: 1.3;
 }
 </style>

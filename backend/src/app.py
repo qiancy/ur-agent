@@ -1,6 +1,8 @@
 """
 Uni-Resource Agent — FastAPI backend entry point (v5.3).
 """
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +17,11 @@ from src.auth.auth import hash_password
 logger = setup_logging("api")
 
 from src.routers import auth, organization, person, resource, warehouse, transaction, party, summary, chat, campaign, seller, spaces
+
+DEMO_BOOTSTRAP_ENV = "UNIRES_BOOTSTRAP_DEMO_DATA"
+DEMO_BOOTSTRAP_DISABLED = {"0", "false", "no", "off"}
+SHARED_DEMO_PASSWORD_ENV = "UNIRES_DEMO_PASSWORD"
+DEFAULT_DEMO_PASSWORD = "demo123"
 
 app = FastAPI(title="Uni-Resource Agent API", version="5.3.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
@@ -56,11 +63,43 @@ def ensure_default_super():
         add_membership(person["id"], org["id"], "admin")
 
 
+def _demo_bootstrap_enabled() -> bool:
+    raw = os.getenv(DEMO_BOOTSTRAP_ENV, "1").strip().lower()
+    return raw not in DEMO_BOOTSTRAP_DISABLED
+
+
+def _ensure_seed_password(env_key: str) -> None:
+    if os.getenv(env_key):
+        return
+    os.environ[env_key] = os.getenv(SHARED_DEMO_PASSWORD_ENV, DEFAULT_DEMO_PASSWORD)
+
+
+def ensure_default_demo_data():
+    """Keep hackathon demo logins available after DB reset.
+
+    The seed scripts are idempotent and update demo password hashes when the
+    configured password changes. Disable with UNIRES_BOOTSTRAP_DEMO_DATA=0.
+    """
+    if not _demo_bootstrap_enabled():
+        logger.info("Demo data bootstrap disabled by %s", DEMO_BOOTSTRAP_ENV)
+        return
+    try:
+        _ensure_seed_password("DEMO_ZHANSAN_PASSWORD")
+        _ensure_seed_password("DEMO_LIUMING_PASSWORD")
+        from scripts import seed_demo_data, seed_recording_data
+
+        seed_demo_data.main()
+        seed_recording_data.main()
+    except Exception as exc:
+        logger.warning("Demo data bootstrap failed: %s", exc)
+
+
 @app.on_event("startup")
 async def ensure_schema_and_super():
     init_connection_pool()
     init_database(drop_all=False)
     ensure_default_super()
+    ensure_default_demo_data()
 
 
 @app.on_event("shutdown")

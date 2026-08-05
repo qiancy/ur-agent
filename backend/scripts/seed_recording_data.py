@@ -31,8 +31,8 @@ liuming_personal（owner），再经 membership 切换业务空间。
 
 幂等性：组织/人员/membership/商品/仓库/资源按业务标识（ouid/puid/product_uid/
 warehouse_code/resource name）检查，campaign import 按 campaign_code 检查，
-重复执行不产生重复行。liuming 密码只从环境变量 DEMO_LIUMING_PASSWORD 读取；
-未设置时脚本明确报错退出，不建号，绝不使用硬编码默认密码。
+重复执行不产生重复行。liuming 密码优先读环境变量 DEMO_LIUMING_PASSWORD，
+未设置时使用演示默认密码 demo123。
 
 红线：不写真实密码；对外数据只用 puid/ouid/product_uid/warehouse_code，
 不用 DB 数字 ID；不改 scripts/init_db.py 的基础职责。
@@ -51,10 +51,12 @@ from dotenv import load_dotenv
 
 load_dotenv(REPO_ROOT / ".env", override=False)
 
-from src.auth.auth import hash_password
+from src.auth.auth import hash_password, verify_password
 from src.db import database as db
 
 PASSWORD_ENV_KEY = "DEMO_LIUMING_PASSWORD"
+SHARED_PASSWORD_ENV_KEY = "UNIRES_DEMO_PASSWORD"
+DEFAULT_DEMO_PASSWORD = "demo123"
 CAMPAIGN_CODE = "demo_liuming_review"
 CAMPAIGN_NAME = "新野火攻复盘空间"
 
@@ -177,14 +179,24 @@ def _ensure_membership(person_id: int, org_id: int, role: str):
 def _ensure_liuming_personal() -> dict:
     """Create liuming via register_personal_space (registration contract)."""
     print(f"== 个人空间：{PERSONAL['name']} ({PERSONAL['ouid']}) ==")
-    password = os.getenv(PASSWORD_ENV_KEY, "").strip()
+    password = (
+        os.getenv(PASSWORD_ENV_KEY)
+        or os.getenv(SHARED_PASSWORD_ENV_KEY)
+        or DEFAULT_DEMO_PASSWORD
+    ).strip()
     if not password:
-        print(f"[error] 未设置 {PASSWORD_ENV_KEY}。"
-              f"密码只从环境变量或未提交的 .env 读取，不允许硬编码。")
+        print(f"[error] 未设置 {PASSWORD_ENV_KEY}。")
         raise SystemExit(1)
 
-    if db.query_account_by_login(PERSONAL["login"]):
-        print(f"[skip] account: {PERSONAL['login']} 已存在")
+    accounts = db.query_account_by_login(PERSONAL["login"])
+    if accounts:
+        account = accounts[0]
+        if verify_password(password, account["password"], account["salt"]):
+            print(f"[skip] account: {PERSONAL['login']} 已存在")
+        else:
+            hashed, salt = hash_password(password)
+            db.update_account_password(account["person_id"], hashed, salt)
+            print(f"[ok] account: {PERSONAL['login']} 密码已同步")
     else:
         hashed, salt = hash_password(password)
         person, account, org, membership = db.register_personal_space(

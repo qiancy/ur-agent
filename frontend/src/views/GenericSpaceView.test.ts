@@ -3,10 +3,18 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { ApiError } from '../api/client'
 import GenericSpaceView from './GenericSpaceView.vue'
 
-const dashboardMock = vi.fn()
+const overviewMock = vi.fn()
+const resourcesMock = vi.fn()
+const personsMock = vi.fn()
+const timelineMock = vi.fn()
+const transactionsMock = vi.fn()
 
 vi.mock('../api/spaces', () => ({
-  getSpaceDashboard: (...args: unknown[]) => dashboardMock(...args),
+  getSpaceOverview: (...args: unknown[]) => overviewMock(...args),
+  getSpaceResources: (...args: unknown[]) => resourcesMock(...args),
+  getSpacePersons: (...args: unknown[]) => personsMock(...args),
+  getSpaceTimeline: (...args: unknown[]) => timelineMock(...args),
+  getSpaceTransactions: (...args: unknown[]) => transactionsMock(...args),
 }))
 
 const OVERVIEW = {
@@ -43,18 +51,6 @@ const PERSONS = [
   { name: '张小宝', puid: 'xiaobao', role: 'member' },
 ]
 
-const TRANSACTIONS = [
-  {
-    transaction_uid: 'txn-0001',
-    from_party_name: '张三',
-    to_party_name: '书店',
-    amount: 128,
-    category: '教育支出',
-    description: '购买教材',
-    created_at: '2026-08-01T10:00:00',
-  },
-]
-
 const TIMELINE = {
   events: [
     {
@@ -73,30 +69,47 @@ const TIMELINE = {
   ],
 }
 
+const TRANSACTIONS = [
+  {
+    transaction_uid: 'txn-0001',
+    from_party_name: '张三',
+    to_party_name: '书店',
+    amount: 128,
+    category: '教育支出',
+    description: '购买教材',
+    created_at: '2026-08-01T10:00:00',
+  },
+]
+
 const EMPTY_TIMELINE = { events: [] }
 
 function mockAll() {
-  dashboardMock.mockResolvedValue({
-    status: 'ok',
-    overview: OVERVIEW,
-    resources: RESOURCES,
-    persons: PERSONS,
-    transactions: TRANSACTIONS,
-    timeline: TIMELINE,
-  })
+  overviewMock.mockResolvedValue(OVERVIEW)
+  resourcesMock.mockResolvedValue(RESOURCES)
+  personsMock.mockResolvedValue(PERSONS)
+  timelineMock.mockResolvedValue(TIMELINE)
+  transactionsMock.mockResolvedValue(TRANSACTIONS)
 }
 
 describe('GenericSpaceView', () => {
   beforeEach(() => {
-    dashboardMock.mockReset()
+    overviewMock.mockReset()
+    resourcesMock.mockReset()
+    personsMock.mockReset()
+    timelineMock.mockReset()
+    transactionsMock.mockReset()
   })
 
-  it('loads dashboard data on mount and renders the overview block', async () => {
+  it('loads overview data on mount and renders the overview block', async () => {
     mockAll()
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'overview' } })
     await flushPromises()
 
-    expect(dashboardMock).toHaveBeenCalledTimes(1)
+    expect(overviewMock).toHaveBeenCalledTimes(1)
+    expect(resourcesMock).not.toHaveBeenCalled()
+    expect(personsMock).not.toHaveBeenCalled()
+    expect(timelineMock).not.toHaveBeenCalled()
+    expect(transactionsMock).not.toHaveBeenCalled()
 
     expect(wrapper.find('[data-test="ov-name"]').text()).toContain('张三家庭')
     expect(wrapper.find('[data-test="ov-type"]').text()).toContain('family')
@@ -108,13 +121,37 @@ describe('GenericSpaceView', () => {
     expect(wrapper.find('[data-test="ov-funds"]').text()).toContain('8500')
   })
 
-  it('renders resource groups and expands physical locations on demand', async () => {
+  it('renders radar cards from overview data', async () => {
     mockAll()
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'overview' } })
     await flushPromises()
 
+    expect(wrapper.find('[data-test="radar-resources"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="radar-persons"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="radar-finance"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="radar-knowledge"]').exists()).toBe(true)
+  })
+
+  it('loads resources section on demand', async () => {
+    mockAll()
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'resources' } })
+    await flushPromises()
+
+    expect(resourcesMock).toHaveBeenCalledTimes(1)
+    expect(overviewMock).not.toHaveBeenCalled()
+    expect(personsMock).not.toHaveBeenCalled()
+    expect(timelineMock).not.toHaveBeenCalled()
+    expect(transactionsMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('资源观察')
     expect(wrapper.find('[data-test="group-physical"]').text()).toContain('教材')
     expect(wrapper.find('[data-test="group-knowledge"]').text()).toContain('错题本')
+  })
+
+  it('renders resource groups and expands physical locations on demand', async () => {
+    mockAll()
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'resources' } })
+    await flushPromises()
+
     expect(wrapper.find('[data-test="locations-table"]').exists()).toBe(false)
 
     await wrapper.find('[data-test="toggle-locations-教材"]').trigger('click')
@@ -130,9 +167,14 @@ describe('GenericSpaceView', () => {
 
   it('renders the persons observation block', async () => {
     mockAll()
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'persons' } })
     await flushPromises()
 
+    expect(personsMock).toHaveBeenCalledTimes(1)
+    expect(overviewMock).not.toHaveBeenCalled()
+    expect(resourcesMock).not.toHaveBeenCalled()
+    expect(timelineMock).not.toHaveBeenCalled()
+    expect(transactionsMock).not.toHaveBeenCalled()
     const rows = wrapper.findAll('[data-test="person-row"]')
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('zhangsan')
@@ -141,9 +183,14 @@ describe('GenericSpaceView', () => {
 
   it('renders the timeline events with their flow dimensions', async () => {
     mockAll()
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'timeline' } })
     await flushPromises()
 
+    expect(timelineMock).toHaveBeenCalledTimes(1)
+    expect(overviewMock).not.toHaveBeenCalled()
+    expect(resourcesMock).not.toHaveBeenCalled()
+    expect(personsMock).not.toHaveBeenCalled()
+    expect(transactionsMock).not.toHaveBeenCalled()
     const events = wrapper.findAll('[data-test="event-row"]')
     expect(events).toHaveLength(1)
     expect(events[0].text()).toContain('每日学习要求')
@@ -155,15 +202,9 @@ describe('GenericSpaceView', () => {
   })
 
   it('shows an empty state when there are no timeline events', async () => {
-    dashboardMock.mockResolvedValue({
-      status: 'ok',
-      overview: OVERVIEW,
-      resources: RESOURCES,
-      persons: PERSONS,
-      transactions: TRANSACTIONS,
-      timeline: EMPTY_TIMELINE,
-    })
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    mockAll()
+    timelineMock.mockResolvedValue(EMPTY_TIMELINE)
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'timeline' } })
     await flushPromises()
 
     expect(wrapper.find('[data-test="event-row"]').exists()).toBe(false)
@@ -172,9 +213,14 @@ describe('GenericSpaceView', () => {
 
   it('renders the multi-dimensional flows including funds from transactions only', async () => {
     mockAll()
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'flows' } })
     await flushPromises()
 
+    expect(overviewMock).toHaveBeenCalledTimes(1)
+    expect(resourcesMock).toHaveBeenCalledTimes(1)
+    expect(personsMock).toHaveBeenCalledTimes(1)
+    expect(timelineMock).toHaveBeenCalledTimes(1)
+    expect(transactionsMock).toHaveBeenCalledTimes(1)
     expect(wrapper.find('[data-test="flow-info"]').text()).toContain('错题本')
     expect(wrapper.find('[data-test="flow-logistics"]').text()).toContain('教材')
     expect(wrapper.find('[data-test="flow-people"]').text()).toContain('张小宝')
@@ -191,52 +237,88 @@ describe('GenericSpaceView', () => {
   })
 
   it('shows an empty funds state when there are no transactions', async () => {
-    dashboardMock.mockResolvedValue({
-      status: 'ok',
-      overview: OVERVIEW,
-      resources: RESOURCES,
-      persons: PERSONS,
-      transactions: [],
-      timeline: TIMELINE,
-    })
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    mockAll()
+    transactionsMock.mockResolvedValue([])
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'flows' } })
     await flushPromises()
 
     expect(wrapper.findAll('[data-test="tx-row"]')).toHaveLength(0)
     expect(wrapper.find('[data-test="flow-funds"]').text()).toContain('暂无资金流水')
   })
 
-  it('refreshes all data when the refresh button is clicked', async () => {
+  it('refreshes the active overview section when the refresh button is clicked', async () => {
     mockAll()
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'overview' } })
     await flushPromises()
 
-    dashboardMock.mockClear()
+    overviewMock.mockClear()
+    resourcesMock.mockClear()
+    personsMock.mockClear()
+    timelineMock.mockClear()
+    transactionsMock.mockClear()
     await wrapper.find('[data-test="btn-refresh"]').trigger('click')
     await flushPromises()
 
-    expect(dashboardMock).toHaveBeenCalledTimes(1)
+    expect(overviewMock).toHaveBeenCalledTimes(1)
+    expect(resourcesMock).not.toHaveBeenCalled()
+    expect(personsMock).not.toHaveBeenCalled()
+    expect(timelineMock).not.toHaveBeenCalled()
+    expect(transactionsMock).not.toHaveBeenCalled()
+  })
+
+  it('refreshes all flow dependencies when the active section is flows', async () => {
+    mockAll()
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'flows' } })
+    await flushPromises()
+
+    overviewMock.mockClear()
+    resourcesMock.mockClear()
+    personsMock.mockClear()
+    timelineMock.mockClear()
+    transactionsMock.mockClear()
+    await wrapper.find('[data-test="btn-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(overviewMock).toHaveBeenCalledTimes(1)
+    expect(resourcesMock).toHaveBeenCalledTimes(1)
+    expect(personsMock).toHaveBeenCalledTimes(1)
+    expect(timelineMock).toHaveBeenCalledTimes(1)
+    expect(transactionsMock).toHaveBeenCalledTimes(1)
   })
 
   it('emits logged-out when the backend rejects with 401', async () => {
-    dashboardMock.mockRejectedValue(new ApiError(401, 'unauthorized'))
+    overviewMock.mockRejectedValue(new ApiError(401, 'unauthorized'))
     const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
     await flushPromises()
 
     expect(wrapper.emitted('logged-out')).toBeTruthy()
   })
 
-  it('reloads all data when the ouid prop changes', async () => {
+  it('caches section data and does not re-fetch on re-render', async () => {
     mockAll()
-    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family' } })
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'overview' } })
     await flushPromises()
-    expect(dashboardMock).toHaveBeenCalledTimes(1)
 
-    dashboardMock.mockClear()
+    overviewMock.mockClear()
+    await wrapper.setProps({ activeSection: 'resources' })
+    await flushPromises()
+    await wrapper.setProps({ activeSection: 'overview' })
+    await flushPromises()
 
+    // overview should NOT be re-fetched because it was cached
+    expect(overviewMock).not.toHaveBeenCalled()
+  })
+
+  it('isolates cached section data by ouid', async () => {
+    mockAll()
+    const wrapper = mount(GenericSpaceView, { props: { ouid: 'zhangsan_family', activeSection: 'resources' } })
+    await flushPromises()
+    expect(resourcesMock).toHaveBeenCalledTimes(1)
+
+    resourcesMock.mockClear()
     await wrapper.setProps({ ouid: 'deep_space_fleet' })
     await flushPromises()
 
-    expect(dashboardMock).toHaveBeenCalledTimes(1)
+    expect(resourcesMock).toHaveBeenCalledTimes(1)
   })
 })

@@ -22,8 +22,8 @@ DEMO 录屏模拟数据增强（DEMO_录屏模拟数据增强开发测试安排 
 
 幂等性：组织/人员/membership/商品/仓库/资源按业务标识（ouid/puid/product_uid/
 warehouse_code/resource name）检查，campaign import 按 campaign_code 检查，
-重复执行不产生重复行。zhansan 密码读环境变量 DEMO_ZHANSAN_PASSWORD
-（未设置则跳过账号创建）。
+重复执行不产生重复行。zhansan 密码优先读环境变量 DEMO_ZHANSAN_PASSWORD，
+未设置时使用演示默认密码 demo123。
 
 红线：不写真实密码；只创建一个账号 account.login=zhansan；对外数据只用
 puid/ouid/product_uid/warehouse_code，不用 DB 数字 ID。
@@ -42,10 +42,12 @@ from dotenv import load_dotenv
 
 load_dotenv(REPO_ROOT / ".env", override=False)
 
-from src.auth.auth import hash_password
+from src.auth.auth import hash_password, verify_password
 from src.db import database as db
 
 PASSWORD_ENV_KEY = "DEMO_ZHANSAN_PASSWORD"
+SHARED_PASSWORD_ENV_KEY = "UNIRES_DEMO_PASSWORD"
+DEFAULT_DEMO_PASSWORD = "demo123"
 CAMPAIGN_CODE = "demo_xinye_recording"
 CAMPAIGN_NAME = "火烧新野战役"
 
@@ -308,12 +310,23 @@ def _seed_xinye_timeline(org_id: int) -> None:
 
 
 def _ensure_zhansan_account() -> None:
-    password = os.getenv(PASSWORD_ENV_KEY, "").strip()
+    password = (
+        os.getenv(PASSWORD_ENV_KEY)
+        or os.getenv(SHARED_PASSWORD_ENV_KEY)
+        or DEFAULT_DEMO_PASSWORD
+    ).strip()
     if not password:
         print(f"未设置 {PASSWORD_ENV_KEY}，跳过演示账号创建")
         return
-    if db.query_account_by_login("zhansan"):
-        print("[skip] account: zhansan 已存在")
+    accounts = db.query_account_by_login("zhansan")
+    if accounts:
+        account = accounts[0]
+        if verify_password(password, account["password"], account["salt"]):
+            print("[skip] account: zhansan 已存在")
+        else:
+            hashed, salt = hash_password(password)
+            db.update_account_password(account["person_id"], hashed, salt)
+            print("[ok] account: zhansan 密码已同步")
         return
     persons = db.query_person_by_puid("zhansan")
     if not persons:

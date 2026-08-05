@@ -15,8 +15,7 @@ DEMO-DATA-02 全新录屏冒烟测试（DEMO-DATA-02_全新录屏账号与数据
 
 约定：
 - 默认测试使用脚本化 fake LLM（默认测试不触发真 LLM），数据仍来自真实 seeded DB。
-- 需要的环境变量：DEMO_LIUMING_PASSWORD（liuming 演示密码），来自仓库 .env。
-- 密码不写入源码/文档/测试；未设置时本模块跳过。
+- 演示密码优先读 DEMO_LIUMING_PASSWORD，未设置时使用 demo123。
 """
 import json
 import os
@@ -28,7 +27,9 @@ import pytest
 from fastapi.testclient import TestClient
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(REPO_ROOT / ".env", override=False)
+load_dotenv(REPO_ROOT / "backend" / ".env", override=False)
 
 from src.app import app
 from src.auth.auth import decode_access_token
@@ -39,7 +40,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 
 client = TestClient(app)
 
-PASSWORD = os.getenv("DEMO_LIUMING_PASSWORD", "").strip()
+PASSWORD = os.getenv("DEMO_LIUMING_PASSWORD", "demo123").strip()
 
 _PERSONAL_OUID = "liuming_personal"
 _SHOP_OUID = "liuming_mingdeng_shop"
@@ -52,13 +53,6 @@ _FORBIDDEN_ID_FIELDS = {
     "resource_id", "warehouse_id", "transaction_id", "account_id",
     "resource_warehouse_id", "inventory_movement_id",
 }
-
-if not PASSWORD:
-    pytest.skip(
-        "DEMO_LIUMING_PASSWORD is not set; recording smoke tests skipped",
-        allow_module_level=True,
-    )
-
 
 def _auth_header(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}

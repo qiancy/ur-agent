@@ -4,7 +4,7 @@ set -euo pipefail
 echo "🔥 启动 Uni-Resource E2E 录屏演示（DEMO-DATA-02：liuming）..."
 echo "请先确认后端 http://localhost:8000 与前端 http://localhost:5173 已启动。"
 
-# 从仓库根目录 .env（gitignored）读取 DEMO_LIUMING_PASSWORD 等未提交机密。
+# 从 backend/.env（gitignored）读取 DEMO_LIUMING_PASSWORD 等未提交机密。
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
 while [[ "$REPO_ROOT" != "/" && ! -f "$REPO_ROOT/src/app.py" && ! -f "$REPO_ROOT/backend/src/app.py" ]]; do

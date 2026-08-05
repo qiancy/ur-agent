@@ -1,8 +1,11 @@
 """
 TDD HTTP API Tests (v5.1: person + membership + resource + warehouse)
 """
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
+
 from src.app import app
 from typing import Optional
 
@@ -13,16 +16,40 @@ client = TestClient(app)
 # 数据管理工具
 # ============================================================================
 
+def _uid() -> str:
+    return uuid.uuid4().hex[:8]
+
+
+def _auth(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _register(login: str, password: str = "pass123", name: str = None, puid: str = None) -> dict:
+    body = {"login": login, "password": password, "name": name or login}
+    if puid is not None:
+        body["puid"] = puid
+    resp = client.post("/auth/register", json=body)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def _create_space(token: str, name: str, org_type: str = "company", ouid: str = None) -> dict:
+    body = {"name": name, "org_type": org_type}
+    if ouid:
+        body["ouid"] = ouid
+    resp = client.post("/spaces", headers=_auth(token), json=body)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
 def create_test_data():
     """创建测试所需的基础数据"""
-    # 创建组织
-    org_resp = client.post("/organizations", json={
-        "name": "测试组织",
-        "org_type": "company",
-        "description": "测试用途"
-    })
-    assert org_resp.status_code in (200, 201)
-    return org_resp.json()
+    # 注册用户并创建组织
+    login = f"test_{_uid()}"
+    token_data = _register(login, puid=login)
+    token = token_data["access_token"]
+    space = _create_space(token, f"测试组织_{_uid()}", "company")
+    return token_data, space
 
 
 def delete_test_data(org_id: int):
@@ -580,86 +607,95 @@ class TestIntegration:
     """集成测试：完整业务流程"""
     
     def test_full_workflow(self):
-        """测试完整业务流程：创建组织 -> 添加人员 -> 创建资源 -> 记录交易"""
-        # 1. 创建组织
-        org_resp = client.post("/organizations", json={
-            "name": "集成测试组织",
-            "org_type": "company",
-            "description": "集成测试"
-        })
-        assert org_resp.status_code in (200, 201)
-        org = org_resp.json()
-        org_id = org["id"]
-        org_ouid = org["ouid"]
-        
-        # 2. 添加人员
+        """测试完整业务流程：注册用户 -> 创建空间 -> 添加人员 -> 创建资源 -> 记录交易"""
+        # 0. 注册用户（创建个人空间，获取 JWT）
+        login = f"integration_{_uid()}"
+        token_data = _register(login, puid=login)
+        token = token_data["access_token"]
+        personal_ouid = token_data["organization"]["ouid"]
+
+        # 1. 创建组织（使用 /spaces 端点，调用者成为 owner）
+        space = _create_space(token, "集成测试组织", "company")
+        # 使用新返回的 token（已切换到新组织上下文）
+        token = space["access_token"]
+        org_ouid = space["organization"]["ouid"]
+
+        # 查询组织 ID（_context_dto 不返回 id）
+        all_orgs = client.get("/organizations").json()
+        org_rows = [o for o in all_orgs if o["ouid"] == org_ouid]
+        assert org_rows, f"org ouid={org_ouid} not found"
+        org_id = org_rows[0]["id"]
+
+        # 2. 添加人员（无认证要求）
         person_resp = client.post("/person", json={
             "name": "集成测试人",
             "birth_date": "2000-01-01"
         })
-        assert person_resp.status_code in (200, 201)
+        assert person_resp.status_code in (200, 201), person_resp.text
         person = person_resp.json()
         person_puid = person["puid"]
-        
-        # 3. 添加组织成员
-        member_resp = client.post("/organizations/members", json={
-            "puid": person_puid,
-            "ouid": org_ouid,
-            "role": "测试角色"
-        })
-        assert member_resp.status_code in (200, 201)
-        
-        # 4. 创建资源
+
+        # 3. 添加组织成员（需要 owner JWT）
+        member_resp = client.post("/organizations/members",
+                                  headers=_auth(token),
+                                  json={
+                                      "puid": person_puid,
+                                      "ouid": org_ouid,
+                                      "role": "member"
+                                  })
+        assert member_resp.status_code in (200, 201), member_resp.text
+
+        # 4. 创建资源（需要 JWT 上下文）
         resource_resp = client.post(
             "/resource",
-            params={"ouid": org_ouid},
+            headers=_auth(token),
             json={
                 "name": "集成测试资源",
                 "resource_type": "physical",
                 "unit": "个",
             },
         )
-        assert resource_resp.status_code in (200, 201)
+        assert resource_resp.status_code in (200, 201), resource_resp.text
         resource = resource_resp.json()
-        
+
         # 5. 创建仓库
         warehouse_resp = client.post(
             "/warehouse",
-            params={"ouid": org_ouid},
+            headers=_auth(token),
             json={
                 "name": "集成测试仓库",
                 "code": "IT",
                 "location": "测试地点",
             },
         )
-        assert warehouse_resp.status_code in (200, 201)
+        assert warehouse_resp.status_code in (200, 201), warehouse_resp.text
         
         # 6. 创建资源-仓库明细
-        rw_resp = client.post("/resource-warehouse", params={"ouid": org_ouid}, json={
+        rw_resp = client.post("/resource-warehouse", headers=_auth(token), json={
             "resource_id": resource["id"],
             "warehouse_code": "IT",
             "location_path": "total",
             "quantity": 50,
             "unit": "个"
         })
-        assert rw_resp.status_code in (200, 201)
-        
+        assert rw_resp.status_code in (200, 201), rw_resp.text
+
         # 7. 创建交易
         txn_resp = client.post(
             "/transaction",
-            params={"ouid": org_ouid},
+            headers=_auth(token),
             json={
                 "amount": 1000.0,
                 "category": "测试",
                 "description": "集成测试交易",
             },
         )
-        assert txn_resp.status_code in (200, 201)
-        
+        assert txn_resp.status_code in (200, 201), txn_resp.text
+
         # 8. 创建参与方
         party_resp = client.post(
             "/party",
-            params={"ouid": org_ouid},
+            headers=_auth(token),
             json={
                 "puid": person_puid,
                 "transaction_uid": txn_resp.json()["transaction_uid"],
@@ -667,8 +703,8 @@ class TestIntegration:
                 "description": "付款方",
             },
         )
-        assert party_resp.status_code in (200, 201)
-        
+        assert party_resp.status_code in (200, 201), party_resp.text
+
         # 9. 验证数据（按 ouid 查找，不依赖自增 ID 连续）
         orgs = client.get("/organizations").json()
         assert any(o["ouid"] == org_ouid and o["id"] == org_id for o in orgs), (

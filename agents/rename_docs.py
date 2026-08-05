@@ -144,7 +144,7 @@ def main(dry_run=True):
             topic = get_topic(fp)
             date = get_date(fp)
             ext = os.path.splitext(fp)[1]
-            new_name = f"{seq:03d}_{ftype}_{topic}_{VERSION}_{date}{ext}"
+            new_name = f"{seq:d}_{ftype}_{topic}_{VERSION}_{date}{ext}"
             new_path = os.path.join(subdir, new_name)
             old_name = os.path.basename(fp)
 

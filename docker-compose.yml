@@ -1,28 +1,39 @@
 version: '3.8'
 
 services:
-  app:
-    build: .
+  backend:
+    build: ./backend
     ports:
       - "8000:8000"
     environment:
       - DB_HOST=database
-      - DB_NAME=uni_resource_agent
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      - DB_NAME=${POSTGRES_DB:-unires}
+      - DB_USER=${POSTGRES_USER:-unires}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-change_me}
       - DB_PORT=5432
     depends_on:
       - database
     volumes:
-      - ./data:/app/data
-      - ./models:/app/models
+      - ./backend/data:/app/data
+      - ./backend/models:/app/models
+
+  frontend:
+    image: node:22-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
 
   database:
     image: postgres:13
     environment:
-      - POSTGRES_DB=uni_resource_agent
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-unires}
+      - POSTGRES_USER=${POSTGRES_USER:-unires}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:

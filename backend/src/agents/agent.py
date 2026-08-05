@@ -1,17 +1,15 @@
 """
-Uni-Resource Agent — LangChain Agent.
+Uni-Resource Agent — LangGraph ReAct Agent.
 
 Uses tool functions from src.tools.* which operate directly on PostgreSQL.
 
-LangChain 0.1 API update:
-- create_tool_calling_agent -> create_openai_tools_agent
-- Tool class moved to langchain_core.tools
-- Prompt must be ChatPromptTemplate with input_variables
+LangGraph (1.x) migration:
+- AgentExecutor 已移除，改用 langgraph.prebuilt.create_react_agent
+- 返回 CompiledStateGraph，通过 {"messages": [...]} 调用
+- 最终输出从 result["messages"][-1].content 提取
 """
-from langchain.agents import create_openai_tools_agent, AgentExecutor
-from langchain_core.tools import BaseTool
-from langchain_openai import ChatOpenAI
-from langchain import hub
+from langgraph.prebuilt import create_react_agent
+from langchain_core.messages import HumanMessage
 
 from src.tools import ALL_TOOLS
 from src.logging_config import get_logger
@@ -23,6 +21,7 @@ logger = get_logger("agent")
 def get_llm():
     """Initialize LLM from unified config (profile.yaml + DB_* env overrides)."""
     cfg = get_llm_config()
+    from langchain_openai import ChatOpenAI
     return ChatOpenAI(
         model=cfg["model"],
         base_url=cfg["base_url"],
@@ -31,42 +30,35 @@ def get_llm():
     )
 
 
-def create_uni_resource_agent(tools: list = None):
-    """Create and return a LangChain agent with the given tools (or all tools by default)."""
+def create_uni_resource_agent(tools=None):
+    """Create and return a LangGraph ReAct agent graph with the given tools."""
     llm = get_llm()
-
-    prompt = hub.pull("hwchase17/openai-tools-agent")
     resolved_tools = tools if tools is not None else ALL_TOOLS
-
-    agent = create_openai_tools_agent(
-        llm=llm,
+    return create_react_agent(
+        model=get_llm(),
         tools=resolved_tools,
-        prompt=prompt,
     )
-    
-    return agent
+
+
+def _extract_output(result: dict) -> str:
+    messages = result.get("messages", [])
+    if not messages:
+        return ""
+    last = messages[-1]
+    return last.content if hasattr(last, "content") else str(last)
 
 
 if __name__ == "__main__":
-    agent = create_uni_resource_agent()
+    graph = create_uni_resource_agent()
     logger.info("Uni-Resource Agent started")
     logger.info("Tools: %s", [t.name for t in ALL_TOOLS])
-
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=ALL_TOOLS,
-        verbose=True,
-        handle_parsing_errors=True,
-        max_iterations=20,
-        max_execution_time=30
-    )
 
     while True:
         user_input = input("\n> ")
         if user_input.lower() in ("quit", "exit", "q"):
             break
         try:
-            result = agent_executor.invoke({"input": user_input})
-            logger.info("Answer: %s", result.get('output', 'No output'))
+            result = graph.invoke({"messages": [HumanMessage(content=user_input)]})
+            logger.info("Answer: %s", _extract_output(result))
         except Exception as e:
             logger.error("Error: %s", e)

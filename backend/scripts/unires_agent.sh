@@ -35,15 +35,52 @@ get_frontend_dir() {
     fi
 }
 
+# 优先使用项目虚拟环境；不存在则回退系统 python3/pip3
+get_venv_dir() {
+    local project_root
+    project_root="$(get_project_root)"
+    if [ -d "$project_root/../.venv/bin" ]; then
+        echo "$project_root/../.venv"
+    elif [ -d "$project_root/.venv/bin" ]; then
+        echo "$project_root/.venv"
+    fi
+}
+
+get_python() {
+    local venv
+    venv="$(get_venv_dir)"
+    if [ -n "$venv" ]; then
+        echo "$venv/bin/python"
+    else
+        echo "python3"
+    fi
+}
+
+get_pip() {
+    local venv
+    venv="$(get_venv_dir)"
+    if [ -n "$venv" ]; then
+        echo "$venv/bin/pip"
+    fi
+}
+
 # 检查依赖
 check_dependencies() {
     echo -e "${YELLOW}检查依赖...${NC}"
-    if ! command -v python3 &> /dev/null; then
-        echo -e "${RED}错误: 请先安装 Python 3${NC}"
+    local venv py
+    venv="$(get_venv_dir)"
+    py="$(get_python)"
+    if [ -n "$venv" ]; then
+        echo -e "${GREEN}使用虚拟环境: $venv${NC}"
+    fi
+    if ! command -v "$py" &> /dev/null; then
+        echo -e "${RED}错误: 请先安装 Python 3（$py 不可用）${NC}"
         exit 1
     fi
 
-    if ! command -v pip3 &> /dev/null; then
+    local pip_cmd
+    pip_cmd="$(get_pip)"
+    if [ -z "$pip_cmd" ] && ! command -v pip3 &> /dev/null; then
         echo -e "${RED}错误: 请先安装 pip${NC}"
         exit 1
     fi
@@ -65,7 +102,14 @@ install_dependencies() {
         exit 1
     fi
 
-    pip3 install --break-system-packages -r "$REQUIREMENTS_FILE"
+    local pip_cmd pip_extra
+    pip_cmd="$(get_pip)"
+    pip_extra=""
+    if [ -z "$pip_cmd" ]; then
+        pip_cmd="pip3"
+        pip_extra="--break-system-packages"
+    fi
+    "$pip_cmd" install $pip_extra -r "$REQUIREMENTS_FILE"
     if [ $? -ne 0 ]; then
         echo -e "${RED}依赖安装失败${NC}"
         exit 1
@@ -73,28 +117,38 @@ install_dependencies() {
     echo -e "${GREEN}依赖安装成功${NC}"
 }
 
-# 初始化数据库
+# 初始化数据库（幂等保护：已初始化则跳过，避免 drop_all 清库）
 init_database() {
     echo -e "${YELLOW}初始化数据库...${NC}"
     # 获取脚本所在目录的父目录（项目根目录）
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    local py
+    py="$(get_python)"
 
-    # 尝试使用项目根目录下的init_db.py文件
-    if [ -f "$PROJECT_ROOT/scripts/init_db.py" ]; then
-        # 初始化时 drop_all=True 以应用新的 schema
-        python3 "$PROJECT_ROOT/scripts/init_db.py"
+    if ! (cd "$PROJECT_ROOT" && PYTHONPATH="$PROJECT_ROOT" "$py" -c "
+import sys
+from src.db.database import get_db_connection
+try:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT 1 FROM account LIMIT 1')
+    cur.close()
+    conn.close()
+except Exception:
+    sys.exit(1)
+" 2>/dev/null); then
+        echo -e "${YELLOW}数据库尚未初始化，执行 init_db.py（drop_all=True）${NC}"
+        if [ -f "$PROJECT_ROOT/scripts/init_db.py" ]; then
+            (cd "$PROJECT_ROOT" && PYTHONPATH="$PROJECT_ROOT" "$py" "$PROJECT_ROOT/scripts/init_db.py")
+        else
+            echo -e "${YELLOW}未找到数据库初始化脚本，跳过数据库初始化${NC}"
+        fi
     else
-        # 如果没有这个文件，创建一个简单的数据库初始化
-        echo -e "${YELLOW}未找到数据库初始化脚本，跳过数据库初始化${NC}"
+        echo -e "${GREEN}数据库已初始化，跳过重建（保留现有数据）${NC}"
     fi
 
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}数据库初始化失败${NC}"
-        echo -e "${YELLOW}这可能是因为数据库服务未启动，但我们可以继续启动应用${NC}"
-        # 不退出，因为可能数据库服务是外部的
-    fi
-    echo -e "${GREEN}数据库初始化完成${NC}"
+    echo -e "${GREEN}数据库初始化检查完成${NC}"
 }
 
 # 启动后端服务
@@ -124,7 +178,7 @@ start_backend() {
     cd "$PROJECT_ROOT"
     export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
     export PYTHONUNBUFFERED=1
-    nohup setsid python3 -m uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 < /dev/null &
+    nohup setsid "$(get_python)" -m uvicorn src.app:app --host 0.0.0.0 --port 8000 > "$BACKEND_LOG" 2>&1 < /dev/null &
     BACKEND_PROCESS_ID=$!
 
     # 保存进程编号

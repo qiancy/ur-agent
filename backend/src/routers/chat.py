@@ -7,6 +7,7 @@ from src.logging_config import setup_logging
 
 from src.models.schemas import ChatRequest
 from src.routers.deps import require_org_context
+from langchain_core.messages import HumanMessage
 
 logger = setup_logging("api.chat")
 
@@ -64,19 +65,12 @@ async def chat(body: ChatRequest, request: Request):
 
         def _run_agent():
             from src.agents.agent import create_uni_resource_agent
-            from langchain.agents import AgentExecutor
             from src.tools import ALL_TOOLS
             tools = list(ALL_TOOLS)
-            agent = create_uni_resource_agent(tools=tools)
-            agent_executor = AgentExecutor(
-                agent=agent,
-                tools=tools,
-                verbose=True,
-                handle_parsing_errors=True,
-                max_iterations=4,
-                return_intermediate_steps=True,
-            )
-            return agent_executor.invoke({"input": agent_input})
+            graph = create_uni_resource_agent(tools=tools)
+            result = graph.invoke({"messages": [HumanMessage(content=agent_input)]})
+            output = result["messages"][-1].content if result.get("messages") else ""
+            return {"output": output, "intermediate_steps": []}
 
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_agent), timeout=30

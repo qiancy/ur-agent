@@ -1,9 +1,10 @@
 # requirements.txt
 
-# LangChain
-langchain
-langchain-core
-langchain-openai
+# LangChain + LangGraph（1.x 系列；AgentExecutor 已移除，使用 StateGraph / create_react_agent）
+langchain>=1.0.0
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+langgraph>=0.2.0
 
 # Database
 psycopg2-binary

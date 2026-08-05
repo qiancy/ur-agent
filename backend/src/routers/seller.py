@@ -18,6 +18,7 @@ from src.db.database import (
 from src.routers.deps import require_ecommerce_context
 from src.agents.seller_agent import create_seller_agent
 from src.tools.seller_tools import make_seller_tools
+from langchain_core.messages import HumanMessage
 
 router = APIRouter(prefix="/seller", tags=["seller"])
 
@@ -280,9 +281,10 @@ async def seller_chat(body: SellerChatRequest, request: Request):
 
     try:
         tools = make_seller_tools(ctx["organization_id"])
-        executor = create_seller_agent(tools)
-        result = executor.invoke({"input": message, "chat_history": []})
-        return {"response": result["output"], "ouid": ouid}
+        graph = create_seller_agent(tools)
+        result = graph.invoke({"messages": [HumanMessage(content=message)]})
+        output = result["messages"][-1].content if result.get("messages") else ""
+        return {"response": output, "ouid": ouid}
     except TimeoutError:
         raise HTTPException(504, "AI 处理超时，请稍后重试")
     except Exception:

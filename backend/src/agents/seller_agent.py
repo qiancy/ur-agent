@@ -1,12 +1,14 @@
 """
 Seller Agent — read-only agent for POST /seller/chat.
 
-Uses a local ChatPromptTemplate (never hub.pull, no network). Only accepts
-the explicit Seller read-only tool list passed by the caller; there is no
-default all-tools fallback.
+Uses a local system prompt. Only accepts the explicit Seller read-only tool
+list passed by the caller; there is no default all-tools fallback.
+
+LangGraph (1.x) migration:
+- AgentExecutor 已移除，改用 langgraph.prebuilt.create_react_agent
+- 返回 CompiledStateGraph，通过 {"messages": [...]} 调用
 """
-from langchain.agents import AgentExecutor, create_openai_tools_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langgraph.prebuilt import create_react_agent
 
 from src.agents.agent import get_llm
 
@@ -18,29 +20,14 @@ _SELLER_SYSTEM_PROMPT = (
 )
 
 
-def create_seller_agent(tools: list):
+def create_seller_agent(tools):
     """Create a read-only agent bound to the given Seller tools.
 
     ``tools`` must be produced by ``make_seller_tools``; it is never defaulted
     to the global ALL_TOOLS.
     """
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", _SELLER_SYSTEM_PROMPT),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
-    agent = create_openai_tools_agent(
-        llm=get_llm(),
+    return create_react_agent(
+        model=get_llm(),
         tools=tools,
-        prompt=prompt,
-    )
-    return AgentExecutor(
-        agent=agent,
-        tools=tools,
-        max_iterations=4,
-        handle_parsing_errors=True,
-        max_execution_time=30,
-        return_intermediate_steps=True,
-        verbose=False,
+        prompt=_SELLER_SYSTEM_PROMPT,
     )

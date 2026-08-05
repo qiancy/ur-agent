@@ -46,6 +46,7 @@ output/
 
 # Environment / secrets (never commit real credentials)
 .env
+backend/.env
 .env.*
 !.env.example
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { getToken, clearToken } from './api/client'
 import { isAuthenticated, setAuthenticated } from './api/session'
 import type { SellerLoginResult } from './api/seller'
@@ -9,31 +9,19 @@ import {
   type UserOrganization,
 } from './api/auth'
 import LoginView from './views/LoginView.vue'
-import WorkbenchView from './views/WorkbenchView.vue'
-import StockView from './views/StockView.vue'
-import MovementsView from './views/MovementsView.vue'
-import SummaryView from './views/SummaryView.vue'
-import ChatView from './views/ChatView.vue'
-import ProductsView from './views/ProductsView.vue'
-import GenericSpaceView from './views/GenericSpaceView.vue'
 import PlaceholderView from './views/PlaceholderView.vue'
-import SpaceManageView from './views/SpaceManageView.vue'
-import SpaceCreateView from './views/SpaceCreateView.vue'
-import JoinSpaceView from './views/JoinSpaceView.vue'
-import ReviewRequestsView from './views/ReviewRequestsView.vue'
-import LeaveSpaceView from './views/LeaveSpaceView.vue'
 import SidebarNav from './components/SidebarNav.vue'
 import AppHeader from './components/AppHeader.vue'
+import {
+  getWorkspaceDefinition,
+  filterNavItems,
+  clampToAllowedView,
+  type WorkspaceDefinition,
+  type WorkspaceCapability,
+} from './workspace/registry'
 
 const CTX_KEY = 'unires_ctx'
-
-const GOVERNANCE_VIEWS = [
-  'space-manage',
-  'space-create',
-  'space-join',
-  'space-review',
-  'space-leave',
-]
+const VIEW_QUERY = 'view'
 
 interface AppContext {
   personName: string
@@ -52,10 +40,25 @@ interface Exchange {
 setAuthenticated(getToken() !== null)
 
 const authenticated = isAuthenticated
-const currentView = ref('workbench')
 const organizations = ref<UserOrganization[]>([])
 const headerExchange = ref<Exchange | null>(null)
 const placeholderMessage = ref('功能即将开放')
+
+// URL state
+const currentView = ref<WorkspaceCapability>('overview')
+const workspaceDefinition = shallowRef<WorkspaceDefinition | null>(null)
+const navItems = computed(() => {
+  if (!workspaceDefinition.value) return []
+  return filterNavItems(workspaceDefinition.value.navItems, ctx.value.role)
+})
+const currentNavItem = computed(() =>
+  navItems.value.find((item) => item.key === currentView.value) ?? navItems.value[0],
+)
+const currentComponent = computed(() => currentNavItem.value?.component ?? PlaceholderView)
+const currentSection = computed(() => currentNavItem.value?.section)
+const isGovernanceView = computed(() =>
+  ['space-manage', 'space-create', 'space-join', 'space-review', 'space-leave'].includes(currentView.value),
+)
 
 function loadCtx(): AppContext {
   try {
@@ -76,10 +79,52 @@ function loadCtx(): AppContext {
 
 const ctx = ref<AppContext>(loadCtx())
 
-const isEcommerce = computed(() => ctx.value.orgType === 'ecommerce')
+function readViewFromUrl(): string | undefined {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    return params.get(VIEW_QUERY) ?? undefined
+  } catch {
+    // ignore
+  }
+  return undefined
+}
 
-function defaultViewFor(orgType: string): string {
-  return orgType === 'ecommerce' ? 'workbench' : 'overview'
+function writeViewToUrl(view: WorkspaceCapability, replace = false) {
+  try {
+    const url = new URL(window.location.href)
+    url.searchParams.set(VIEW_QUERY, view)
+    const href = url.toString()
+    if (replace) {
+      window.history.replaceState(null, '', href)
+    } else {
+      window.history.pushState(null, '', href)
+    }
+  } catch {
+    // jsdom may not support pushState with about:blank; ignore
+  }
+}
+
+function applyView(view: WorkspaceCapability, replace = false) {
+  currentView.value = view
+  writeViewToUrl(view, replace)
+}
+
+function applyWorkspaceDefinition(orgType: string, role: string) {
+  const def = getWorkspaceDefinition(orgType)
+  workspaceDefinition.value = def
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const hasUrlView = params.has(VIEW_QUERY)
+    if (hasUrlView) {
+      const requested = readViewFromUrl()
+      const clamped = clampToAllowedView(requested, def, role)
+      applyView(clamped, true)
+    } else {
+      applyView(def.defaultView, true)
+    }
+  } catch {
+    applyView(def.defaultView, true)
+  }
 }
 
 async function refreshOrganizations() {
@@ -108,11 +153,11 @@ function applyContext(result: SellerLoginResult) {
 
 async function onAuthenticated(result: SellerLoginResult) {
   applyContext(result)
-  if (!result.organization || !result.access_token) {
+  if (!result.organization || !result.access_token || !result.membership) {
     setAuthenticated(false)
     return
   }
-  currentView.value = defaultViewFor(result.organization.type)
+  applyWorkspaceDefinition(result.organization.type, result.membership.role)
   headerExchange.value = null
   setAuthenticated(true)
   await refreshOrganizations()
@@ -123,12 +168,9 @@ async function onSwitchOrganization(ouid: string) {
   try {
     const result = await switchOrganization(ouid)
     applyContext(result)
-    // Clamp to a legal view key for the new organization type.
-    currentView.value = result.organization
-      ? defaultViewFor(result.organization.type)
-      : currentView.value
+    if (!result.organization || !result.membership) return
+    applyWorkspaceDefinition(result.organization.type, result.membership.role)
   } catch {
-    // token/ctx unchanged; keep the old selection via the dropdown value
     await refreshOrganizations()
     return
   }
@@ -141,11 +183,14 @@ function onLoggedOut() {
   clearToken()
   localStorage.removeItem(CTX_KEY)
   setAuthenticated(false)
-  currentView.value = 'workbench'
+  currentView.value = 'overview'
+  workspaceDefinition.value = null
 }
 
 function onNavigate(view: string) {
-  currentView.value = view
+  if (navItems.value.some((item) => item.key === view)) {
+    applyView(view as WorkspaceCapability)
+  }
 }
 
 function onSpaceMenuAction(action: string) {
@@ -156,17 +201,16 @@ function onSpaceMenuAction(action: string) {
     review: 'space-review',
     leave: 'space-leave',
   }
-  currentView.value = viewMap[action] ?? currentView.value
+  const target = viewMap[action]
+  if (target && navItems.value.some((item) => item.key === target)) {
+    applyView(target as WorkspaceCapability)
+  }
 }
 
-const isGovernanceView = computed(() =>
-  GOVERNANCE_VIEWS.includes(currentView.value),
-)
-
 function onContextUpdated(result: SellerLoginResult) {
-  if (!result.organization || !result.access_token) return
+  if (!result.organization || !result.access_token || !result.membership) return
   applyContext(result)
-  currentView.value = defaultViewFor(result.organization.type)
+  applyWorkspaceDefinition(result.organization.type, result.membership.role)
   headerExchange.value = null
   placeholderMessage.value = '功能即将开放'
   setAuthenticated(true)
@@ -192,45 +236,32 @@ function onNavigateSpace(action: string) {
   onSpaceMenuAction(action)
 }
 
-const currentComponent = computed(() => {
-  const view = currentView.value
-  switch (view) {
-    case 'space-manage':
-      return SpaceManageView
-    case 'space-create':
-      return SpaceCreateView
-    case 'space-join':
-      return JoinSpaceView
-    case 'space-review':
-      return ReviewRequestsView
-    case 'space-leave':
-      return LeaveSpaceView
-    case 'placeholder':
-      return PlaceholderView
-  }
-  if (isEcommerce.value) {
-    switch (view) {
-      case 'stock':
-        return StockView
-      case 'movements':
-        return MovementsView
-      case 'summary':
-        return SummaryView
-      case 'chat':
-        return ChatView
-      case 'products':
-        return ProductsView
-      default:
-        return WorkbenchView
+// Handle browser back/forward
+function onPopState() {
+  if (!workspaceDefinition.value) return
+  try {
+    const requested = readViewFromUrl()
+    const clamped = clampToAllowedView(requested, workspaceDefinition.value, ctx.value.role)
+    if (requested !== clamped) {
+      applyView(clamped, true)
+    } else {
+      currentView.value = clamped
     }
+  } catch {
+    // ignore URL parsing errors
   }
-  return GenericSpaceView
-})
+}
 
 onMounted(() => {
-  if (getToken()) {
+  window.addEventListener('popstate', onPopState)
+  if (getToken() && ctx.value.ouid) {
+    applyWorkspaceDefinition(ctx.value.orgType, ctx.value.role)
     refreshOrganizations()
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('popstate', onPopState)
 })
 </script>
 
@@ -251,18 +282,14 @@ onMounted(() => {
     <div class="body-grid">
       <SidebarNav
         :current-view="currentView"
-        :org-type="ctx.orgType"
+        :nav-items="navItems"
         @navigate="onNavigate"
       />
       <div class="main-col">
         <main class="main">
           <div class="views">
-            <PlaceholderView
-              v-if="currentView === 'placeholder'"
-              :message="placeholderMessage"
-            />
             <component
-              v-else-if="isGovernanceView"
+              v-if="isGovernanceView"
               :is="currentComponent"
               :ouid="ctx.ouid"
               :org-type="ctx.orgType"
@@ -276,16 +303,15 @@ onMounted(() => {
               @logged-out="onLoggedOut"
             />
             <component
-              v-else-if="isEcommerce"
+              v-else-if="currentSection"
               :is="currentComponent"
-              :header-exchange="currentView === 'chat' ? headerExchange : null"
+              :ouid="ctx.ouid"
+              :active-section="currentSection"
               @logged-out="onLoggedOut"
             />
             <component
               v-else
               :is="currentComponent"
-              :ouid="ctx.ouid"
-              :active-section="currentView"
               @logged-out="onLoggedOut"
             />
           </div>

@@ -1,41 +1,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { WorkspaceNavItem } from '../workspace/types'
 
 const props = defineProps<{
   currentView: string
-  orgType: string
+  navItems: WorkspaceNavItem[]
 }>()
 
 const emit = defineEmits<{
   (e: 'navigate', view: string): void
 }>()
 
-interface NavItem {
-  key: string
-  label: string
-  icon: string
-}
-
-const sellerItems: NavItem[] = [
-  { key: 'workbench', label: '工作台', icon: 'M3 12l2-2m7-7l7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-  { key: 'products', label: '商品', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
-  { key: 'stock', label: '库存', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
-  { key: 'movements', label: '库存流水', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { key: 'summary', label: '经营摘要', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-  { key: 'chat', label: 'Seller AI', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-4.272C3.512 14.461 3 13.762 3 13c0-4.418 4.03-8 9-8s9 3.582 9 8z' },
-]
-
-const genericItems: NavItem[] = [
-  { key: 'overview', label: '空间总览', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
-  { key: 'resources', label: '资源', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
-  { key: 'persons', label: '人员', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
-  { key: 'timeline', label: '时间线', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { key: 'flows', label: '多维观察', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
-]
-
-const navItems = computed<NavItem[]>(() =>
-  props.orgType === 'ecommerce' ? sellerItems : genericItems,
-)
+const grouped = computed(() => {
+  const groups: Record<string, WorkspaceNavItem[]> = {}
+  for (const item of props.navItems) {
+    if (!groups[item.group]) groups[item.group] = []
+    groups[item.group].push(item)
+  }
+  return groups
+})
 
 function onNavigate(view: string) {
   if (view !== props.currentView) {
@@ -51,20 +34,25 @@ function onNavigate(view: string) {
       <div class="brand-text">Uni-Resource Agent</div>
     </div>
     <nav class="nav">
-      <button
-        v-for="item in navItems"
-        :key="item.key"
-        type="button"
-        :data-view="item.key"
-        :class="['nav-item', { active: currentView === item.key }]"
-        :title="item.label"
-        @click="onNavigate(item.key)"
-      >
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path :d="item.icon" />
-        </svg>
-        <span class="nav-label">{{ item.label }}</span>
-      </button>
+      <template v-for="(items, groupKey) in grouped" :key="groupKey">
+        <div class="nav-group">
+          <div class="nav-group-label">{{ groupKey === 'observe' ? '观察' : groupKey === 'operate' ? '经营' : groupKey === 'ai' ? 'AI' : '空间治理' }}</div>
+          <button
+            v-for="item in items"
+            :key="item.key"
+            type="button"
+            :data-view="item.key"
+            :class="['nav-item', { active: currentView === item.key }]"
+            :title="item.label"
+            @click="onNavigate(item.key)"
+          >
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path :d="item.icon" />
+            </svg>
+            <span class="nav-label">{{ item.label }}</span>
+          </button>
+        </div>
+      </template>
     </nav>
   </aside>
 </template>
@@ -78,6 +66,7 @@ function onNavigate(view: string) {
   flex-direction: column;
   gap: 20px;
   min-height: 100vh;
+  overflow-y: auto;
 }
 .brand {
   display: flex;
@@ -104,8 +93,27 @@ function onNavigate(view: string) {
   color: #f1f5f9;
 }
 .nav {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
+}
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-group + .nav-group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #334155;
+}
+.nav-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  padding: 0 12px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .nav-item {
   display: flex;

@@ -1,7 +1,7 @@
 """
 初始化数据库：建表 + 插入三国示例数据。
 用法: PYTHONPATH=. python scripts/init_db.py
-账号密码从环境变量 DEMO_INIT_PASSWORD 或未提交的 .env 读取（不得写入源码）。
+账号密码优先从 DEMO_INIT_PASSWORD/UNIRES_DEMO_PASSWORD 读取，默认 demo123。
 """
 import sys
 import os
@@ -24,6 +24,8 @@ from src.db.database import (
 from src.auth.auth import hash_password
 
 PASSWORD_ENV_KEY = "DEMO_INIT_PASSWORD"
+SHARED_PASSWORD_ENV_KEY = "UNIRES_DEMO_PASSWORD"
+DEFAULT_DEMO_PASSWORD = "demo123"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if load_dotenv:
     load_dotenv(REPO_ROOT / ".env", override=False)
@@ -63,12 +65,14 @@ def main():
         persons[name] = create_person(name=name, puid=puid)
 
     # ── Account (认证凭据, 仅给有密码的角色) ──────
-    # 密码仅从 DEMO_INIT_PASSWORD 读取；未配置则跳过账号创建（DB 中已有账号不受影响）。
-    init_password = os.getenv(PASSWORD_ENV_KEY, "").strip()
+    # 演示/测试环境默认密码固定，保证初始化后 curl 示例可直接登录。
+    init_password = (
+        os.getenv(PASSWORD_ENV_KEY)
+        or os.getenv(SHARED_PASSWORD_ENV_KEY)
+        or DEFAULT_DEMO_PASSWORD
+    ).strip()
     accounts = {}
-    if not init_password:
-        print("[warn] 未设置 DEMO_INIT_PASSWORD，跳过演示账号创建")
-    else:
+    if init_password:
         for person_name, login, system_role in [
             ("超级用户", "super@system.cn", "super"),
             ("诸葛亮", "zhugeliang@shu.cn", "user"),
@@ -84,6 +88,8 @@ def main():
                 salt=salt,
                 system_role=system_role,
             )
+    else:
+        print("[warn] 演示账号密码为空，跳过账号创建")
 
     # ── Membership (person ↔ org, 带 role) ──────────────────
     links = [

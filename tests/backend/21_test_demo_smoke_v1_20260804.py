@@ -16,7 +16,7 @@ DEMO 双场景回归冒烟测试（DEMO_双场景回归测试计划 §4）。
 - 默认测试使用脚本化 fake LLM（§1.3：默认测试不触发真 LLM），数据仍来自真实
   seeded DB：fake 发出 seller_stock 工具调用 -> 真实工具查询真实库存 -> fake 从
   工具返回的真实数据中归纳回答。
-- 需要的环境变量：DEMO_ZHANSAN_PASSWORD（zhansan 演示密码），来自仓库 .env。
+- 演示密码优先读 DEMO_ZHANSAN_PASSWORD，未设置时使用 demo123。
 """
 import json
 import os
@@ -28,7 +28,9 @@ import pytest
 from fastapi.testclient import TestClient
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(REPO_ROOT / ".env", override=False)
+load_dotenv(REPO_ROOT / "backend" / ".env", override=False)
 
 from src.app import app
 from src.auth.auth import decode_access_token
@@ -40,7 +42,7 @@ from pydantic import Field
 
 client = TestClient(app)
 
-PASSWORD = os.getenv("DEMO_ZHANSAN_PASSWORD", "").strip()
+PASSWORD = os.getenv("DEMO_ZHANSAN_PASSWORD", "demo123").strip()
 
 _TAOBAO_OUID = "taobao_shop_a"
 _XINYE_OUID = "xinye_campaign"
@@ -51,13 +53,6 @@ _FORBIDDEN_ID_FIELDS = {
     "resource_id", "warehouse_id", "transaction_id", "account_id",
     "resource_warehouse_id", "inventory_movement_id",
 }
-
-if not PASSWORD:
-    pytest.skip(
-        "DEMO_ZHANSAN_PASSWORD is not set; demo smoke tests skipped",
-        allow_module_level=True,
-    )
-
 
 def _auth_header(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}

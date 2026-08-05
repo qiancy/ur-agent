@@ -2,7 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '../api/client'
 import {
-  getSpaceDashboard,
+  getSpaceOverview,
+  getSpaceResources,
+  getSpacePersons,
+  getSpaceTimeline,
+  getSpaceTransactions,
   type SpaceOverviewData,
   type SpacePerson,
   type SpaceResourcesData,
@@ -14,28 +18,53 @@ import SectionCard from '../components/SectionCard.vue'
 import StatusChip from '../components/StatusChip.vue'
 import EmptyState from '../components/EmptyState.vue'
 
-const props = defineProps<{ ouid: string }>()
+const props = defineProps<{
+  ouid: string
+  activeSection?: string
+}>()
 const emit = defineEmits<{ (e: 'logged-out'): void }>()
+
+type SectionKey = 'overview' | 'resources' | 'persons' | 'timeline' | 'flows'
+type CacheKey = SectionKey | 'transactions'
+
+const SECTION_TITLES: Record<SectionKey, string> = {
+  overview: '空间概览',
+  resources: '资源观察',
+  persons: '人员观察',
+  timeline: '时间线',
+  flows: '多维流向',
+}
 
 const overview = ref<SpaceOverviewData | null>(null)
 const grouped = ref<SpaceResourcesData | null>(null)
 const persons = ref<SpacePerson[]>([])
 const transactions = ref<SpaceTransaction[]>([])
 const events = ref<TimelineEvent[]>([])
-const loading = ref(true)
+const loading = ref(false)
 const error = ref('')
+const loadedKeys = ref(new Set<string>())
 
 const openLocations = ref<Record<string, boolean>>({})
 
-const resourceGroups = computed(() => {
-  const g = grouped.value?.grouped
-  return [
-    { key: 'physical', label: '实物资源', items: g?.physical ?? [] },
-    { key: 'knowledge', label: '知识资源', items: g?.knowledge ?? [] },
-    { key: 'financial', label: '资金资源', items: g?.financial ?? [] },
-    { key: 'human', label: '人力资源', items: g?.human ?? [] },
-  ]
+const activeSec = computed<SectionKey>(() => {
+  const section = props.activeSection
+  return section === 'resources' ||
+    section === 'persons' ||
+    section === 'timeline' ||
+    section === 'flows' ||
+    section === 'overview'
+    ? section
+    : 'overview'
 })
+
+const pageTitle = computed(() =>
+  activeSec.value === 'overview'
+    ? overview.value?.space.name ?? SECTION_TITLES.overview
+    : SECTION_TITLES[activeSec.value],
+)
+const pageStatus = computed(() =>
+  overview.value ? `${overview.value.space.type} · ${overview.value.space.role}` : props.ouid,
+)
 
 function handleError(e: unknown): boolean {
   if (e instanceof ApiError && e.status === 401) {
@@ -45,16 +74,82 @@ function handleError(e: unknown): boolean {
   return false
 }
 
-async function load() {
+function cacheKey(key: CacheKey): string {
+  return `${props.ouid}:${key}`
+}
+
+function isLoaded(key: CacheKey): boolean {
+  return loadedKeys.value.has(cacheKey(key))
+}
+
+function markLoaded(key: CacheKey) {
+  loadedKeys.value.add(cacheKey(key))
+}
+
+function resetForSpace() {
+  overview.value = null
+  grouped.value = null
+  persons.value = []
+  transactions.value = []
+  events.value = []
+  error.value = ''
+  loadedKeys.value = new Set()
+  openLocations.value = {}
+}
+
+async function loadOverview(force = false) {
+  if (!force && isLoaded('overview')) return
+  overview.value = await getSpaceOverview()
+  markLoaded('overview')
+}
+
+async function loadResources(force = false) {
+  if (!force && isLoaded('resources')) return
+  grouped.value = await getSpaceResources()
+  markLoaded('resources')
+}
+
+async function loadPersons(force = false) {
+  if (!force && isLoaded('persons')) return
+  persons.value = await getSpacePersons()
+  markLoaded('persons')
+}
+
+async function loadTimeline(force = false) {
+  if (!force && isLoaded('timeline')) return
+  const data = await getSpaceTimeline()
+  events.value = data.events
+  markLoaded('timeline')
+}
+
+async function loadTransactions(force = false) {
+  if (!force && isLoaded('transactions')) return
+  transactions.value = await getSpaceTransactions()
+  markLoaded('transactions')
+}
+
+async function loadSection(section: SectionKey = activeSec.value, force = false) {
   loading.value = true
   error.value = ''
   try {
-    const dashboard = await getSpaceDashboard()
-    overview.value = dashboard.overview
-    grouped.value = dashboard.resources
-    persons.value = dashboard.persons
-    transactions.value = dashboard.transactions
-    events.value = dashboard.timeline.events
+    if (section === 'overview') {
+      await loadOverview(force)
+    } else if (section === 'resources') {
+      await loadResources(force)
+    } else if (section === 'persons') {
+      await loadPersons(force)
+    } else if (section === 'timeline') {
+      await loadTimeline(force)
+    } else {
+      await Promise.all([
+        loadOverview(force),
+        loadResources(force),
+        loadPersons(force),
+        loadTimeline(force),
+        loadTransactions(force),
+      ])
+      markLoaded('flows')
+    }
   } catch (e) {
     if (!handleError(e)) {
       error.value = e instanceof Error ? e.message : '空间数据加载失败'
@@ -64,7 +159,18 @@ async function load() {
   }
 }
 
-watch(() => props.ouid, load, { immediate: true })
+watch(
+  () => props.ouid,
+  () => {
+    resetForSpace()
+    loadSection(activeSec.value)
+  },
+  { immediate: true },
+)
+
+watch(activeSec, (section) => {
+  loadSection(section)
+})
 
 function toggleLocations(name: string) {
   openLocations.value[name] = !openLocations.value[name]
@@ -75,6 +181,16 @@ function flowLines(key: 'info_flow' | 'logistics_flow' | 'people_flow'): string[
     .map((e) => e.payload[key])
     .filter((v): v is string => Boolean(v))
 }
+
+const resourceGroups = computed(() => {
+  const g = grouped.value?.grouped
+  return [
+    { key: 'physical', label: '实物资源', items: g?.physical ?? [] },
+    { key: 'knowledge', label: '知识资源', items: g?.knowledge ?? [] },
+    { key: 'financial', label: '资金资源', items: g?.financial ?? [] },
+    { key: 'human', label: '人力资源', items: g?.human ?? [] },
+  ]
+})
 
 const radarCards = computed(() => {
   if (!overview.value) return []
@@ -124,10 +240,10 @@ const radarCards = computed(() => {
 <template>
   <section class="generic-space" data-test="generic-space">
     <PageHeader
-      :title="overview?.space.name ?? '空间观察'"
-      :status="overview ? `${overview.space.type} · ${overview.space.role}` : ''"
+      :title="pageTitle"
+      :status="pageStatus"
     >
-      <button class="btn" type="button" data-test="btn-refresh" @click="load">
+      <button class="btn" type="button" data-test="btn-refresh" @click="loadSection(activeSec, true)">
         刷新
       </button>
     </PageHeader>
@@ -135,54 +251,56 @@ const radarCards = computed(() => {
     <p v-if="loading" class="hint">加载中…</p>
     <p v-else-if="error" class="form-error" data-test="error">{{ error }}</p>
 
-    <template v-else-if="overview">
-      <SectionCard title="1 空间概览" data-test="block-overview">
-        <div class="overview-grid">
-          <div class="metric">
-            <span class="metric-label">名称</span>
-            <span class="metric-value" data-test="ov-name">{{ overview.space.name ?? '—' }}</span>
+    <template v-else>
+      <template v-if="activeSec === 'overview' && overview">
+        <SectionCard title="1 空间概览" data-test="block-overview">
+          <div class="overview-grid">
+            <div class="metric">
+              <span class="metric-label">名称</span>
+              <span class="metric-value" data-test="ov-name">{{ overview.space.name ?? '—' }}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">类型</span>
+              <span class="metric-value" data-test="ov-type">{{ overview.space.type ?? '—' }}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">角色</span>
+              <span class="metric-value" data-test="ov-role">{{ overview.space.role ?? '—' }}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">资源数</span>
+              <span class="metric-value" data-test="ov-resources">{{ overview.counts.resources ?? 0 }}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">人员数</span>
+              <span class="metric-value" data-test="ov-persons">{{ overview.counts.persons ?? 0 }}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">交易数</span>
+              <span class="metric-value" data-test="ov-transactions">{{ overview.counts.transactions ?? 0 }}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">最近事件</span>
+              <span class="metric-value" data-test="ov-events">{{ overview.counts.recent_events ?? 0 }}</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">资金总额</span>
+              <span class="metric-value" data-test="ov-funds">{{ overview.funds ?? 0 }}</span>
+            </div>
           </div>
-          <div class="metric">
-            <span class="metric-label">类型</span>
-            <span class="metric-value" data-test="ov-type">{{ overview.space.type ?? '—' }}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">角色</span>
-            <span class="metric-value" data-test="ov-role">{{ overview.space.role ?? '—' }}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">资源数</span>
-            <span class="metric-value" data-test="ov-resources">{{ overview.counts.resources ?? 0 }}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">人员数</span>
-            <span class="metric-value" data-test="ov-persons">{{ overview.counts.persons ?? 0 }}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">交易数</span>
-            <span class="metric-value" data-test="ov-transactions">{{ overview.counts.transactions ?? 0 }}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">最近事件</span>
-            <span class="metric-value" data-test="ov-events">{{ overview.counts.recent_events ?? 0 }}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">资金总额</span>
-            <span class="metric-value" data-test="ov-funds">{{ overview.funds ?? 0 }}</span>
+        </SectionCard>
+
+        <div class="radar-row">
+          <div v-for="card in radarCards" :key="card.key" class="radar-card" :data-test="`radar-${card.key}`">
+            <div class="radar-label">{{ card.label }}</div>
+            <div class="radar-value">{{ card.value }} <span class="radar-unit">{{ card.unit }}</span></div>
+            <div class="radar-hint">{{ card.hint }}</div>
           </div>
         </div>
-      </SectionCard>
+      </template>
 
-      <div class="radar-row">
-        <div v-for="card in radarCards" :key="card.key" class="radar-card" :data-test="`radar-${card.key}`">
-          <div class="radar-label">{{ card.label }}</div>
-          <div class="radar-value">{{ card.value }} <span class="radar-unit">{{ card.unit }}</span></div>
-          <div class="radar-hint">{{ card.hint }}</div>
-        </div>
-      </div>
-
-      <div class="grid-2">
-        <div class="left-col">
+      <div class="content-area">
+        <template v-if="activeSec === 'resources'">
           <SectionCard title="2 资源观察" data-test="block-resources">
             <div
               v-for="group in resourceGroups"
@@ -201,9 +319,7 @@ const radarCards = computed(() => {
                     数量/金额：{{ r.amount ?? '—' }}
                   </p>
                   <p class="resource-desc">{{ r.description ?? '—' }}</p>
-                  <template
-                    v-if="group.key === 'physical' && r.locations && r.locations.length"
-                  >
+                  <template v-if="group.key === 'physical' && r.locations && r.locations.length">
                     <button
                       class="btn small"
                       type="button"
@@ -236,8 +352,10 @@ const radarCards = computed(() => {
               <p v-else class="hint">暂无{{ group.label }}</p>
             </div>
           </SectionCard>
+        </template>
 
-          <SectionCard title="3 人员观察" data-test="block-persons" style="margin-top: 16px;">
+        <template v-if="activeSec === 'persons'">
+          <SectionCard title="3 人员观察" data-test="block-persons">
             <ul v-if="persons.length" class="item-list persons-list">
               <li v-for="p in persons" :key="p.puid" class="person" data-test="person-row">
                 <span class="avatar">{{ p.name.charAt(0) }}</span>
@@ -255,9 +373,9 @@ const radarCards = computed(() => {
               description="该空间还没有人员，请先添加成员。"
             />
           </SectionCard>
-        </div>
+        </template>
 
-        <div class="right-col">
+        <template v-if="activeSec === 'timeline'">
           <SectionCard title="4 时间线" data-test="block-timeline">
             <ol v-if="events.length" class="timeline">
               <li
@@ -291,8 +409,10 @@ const radarCards = computed(() => {
               data-test="timeline-empty"
             />
           </SectionCard>
+        </template>
 
-          <SectionCard title="5 多维流向" data-test="block-flows" style="margin-top: 16px;">
+        <template v-if="activeSec === 'flows'">
+          <SectionCard title="5 多维流向" data-test="block-flows">
             <div class="flows-grid">
               <div class="flow" data-test="flow-info">
                 <h3>信息流</h3>
@@ -377,7 +497,7 @@ const radarCards = computed(() => {
               </div>
             </div>
           </SectionCard>
-        </div>
+        </template>
       </div>
     </template>
   </section>
@@ -439,6 +559,11 @@ const radarCards = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.content-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -461,24 +586,6 @@ const radarCards = computed(() => {
   font-weight: 650;
   color: var(--ink, #17202a);
   text-align: right;
-}
-.grid-2 {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-.left-col,
-.right-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-.group {
-  margin-bottom: 14px;
-}
-.group:last-child {
-  margin-bottom: 0;
 }
 .item-list {
   margin: 0;
@@ -672,7 +779,7 @@ const radarCards = computed(() => {
   .radar-row {
     grid-template-columns: repeat(2, 1fr);
   }
-  .grid-2 {
+  .flows-grid {
     grid-template-columns: 1fr;
   }
 }

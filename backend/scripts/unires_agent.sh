@@ -15,6 +15,26 @@ NC='\033[0m' # No Color
 
 VERBOSE=0
 
+get_project_root() {
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    dirname "$script_dir"
+}
+
+get_frontend_dir() {
+    local project_root
+    project_root="$(get_project_root)"
+    if [ -d "$project_root/../frontend" ]; then
+        cd "$project_root/../frontend" && pwd
+    elif [ -d "$project_root/frontend" ]; then
+        cd "$project_root/frontend" && pwd
+    elif [ -d "$project_root/web" ]; then
+        cd "$project_root/web" && pwd
+    else
+        return 1
+    fi
+}
+
 # 检查依赖
 check_dependencies() {
     echo -e "${YELLOW}检查依赖...${NC}"
@@ -147,15 +167,18 @@ restart_backend() {
     start_backend
 }
 
-# 前端服务已迁移至 web/ (Vue + Vite, port 5173)
+# 前端服务使用 Vue + Vite (port 5173)
 # 以下函数保留为兼容层，仅输出提示信息
 
 hint_frontend_start() {
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-    echo -e "${YELLOW}前端已迁移到 web/ (Vue + Vite)${NC}"
+    FRONTEND_DIR="$(get_frontend_dir || true)"
+    if [ -z "$FRONTEND_DIR" ]; then
+        echo -e "${RED}未找到前端目录，期望 frontend/ 或 web/${NC}"
+        return 1
+    fi
+    echo -e "${YELLOW}前端使用 Vue + Vite${NC}"
     echo -e "${YELLOW}请手动启动前端:${NC}"
-    echo -e "  cd $PROJECT_ROOT/web && npm run dev -- --host 0.0.0.0 --port 5173"
+    echo -e "  cd $FRONTEND_DIR && npm run dev -- --host 0.0.0.0 --port 5173"
     echo -e "${GREEN}前端预览: http://localhost:5173${NC}"
 }
 
@@ -164,7 +187,7 @@ start_frontend() {
 }
 
 stop_frontend() {
-    echo -e "${YELLOW}前端使用 web/ (Vue + Vite)，请手动停止 Vite 进程${NC}"
+    echo -e "${YELLOW}前端使用 Vue + Vite，请手动停止 Vite 进程${NC}"
 }
 
 restart_frontend() {
@@ -178,7 +201,7 @@ stop_service() {
     # 停止后端服务
     stop_backend
 
-    echo -e "${YELLOW}前端使用 web/ (Vue + Vite)，请手动停止 Vite 进程${NC}"
+    echo -e "${YELLOW}前端使用 Vue + Vite，请手动停止 Vite 进程${NC}"
     echo -e "${GREEN}后端服务已停止${NC}"
 }
 
@@ -203,12 +226,11 @@ check_status() {
     fi
 
     # 前端提示
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-    if [ -d "$PROJECT_ROOT/web" ]; then
-        echo -e "${YELLOW}前端 (web/ Vue + Vite): 请手动确认 Vite 是否在端口 5173 运行${NC}"
+    FRONTEND_DIR="$(get_frontend_dir || true)"
+    if [ -n "$FRONTEND_DIR" ]; then
+        echo -e "${YELLOW}前端 (Vue + Vite): $FRONTEND_DIR，请手动确认 Vite 是否在端口 5173 运行${NC}"
     else
-        echo -e "${RED}web/ 目录不存在，前端未就绪${NC}"
+        echo -e "${RED}前端目录不存在，期望 frontend/ 或 web/${NC}"
     fi
 
     if [ "$BACKEND_RUNNING" = false ]; then
@@ -240,7 +262,7 @@ show_help() {
     echo ""
     echo "服务端口:"
     echo "  后端: 8000 (FastAPI)"
-    echo "  前端: 5173 (Vue + Vite, 需手动启动: cd web && npm run dev)"
+    echo "  前端: 5173 (Vue + Vite, 需手动启动: cd frontend && npm run dev)"
 }
 
 # 主程序
@@ -304,12 +326,11 @@ main() {
                     stop_frontend
                     ;;
                 status)
-                    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-                    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-                    if [ -d "$PROJECT_ROOT/web" ]; then
-                        echo -e "${YELLOW}前端使用 web/ (Vue + Vite)，请手动确认 Vite 是否在端口 5173 运行${NC}"
+                    FRONTEND_DIR="$(get_frontend_dir || true)"
+                    if [ -n "$FRONTEND_DIR" ]; then
+                        echo -e "${YELLOW}前端使用 Vue + Vite: $FRONTEND_DIR，请手动确认 Vite 是否在端口 5173 运行${NC}"
                     else
-                        echo -e "${RED}web/ 目录不存在，前端未就绪${NC}"
+                        echo -e "${RED}前端目录不存在，期望 frontend/ 或 web/${NC}"
                         return 1
                     fi
                     ;;

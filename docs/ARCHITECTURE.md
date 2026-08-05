@@ -2,7 +2,7 @@
 
 > **版本**: 5.4  
 > **更新日期**: 2026-08-05  
-> **说明**: 退役 Gradio 前端，产品唯一前端入口为 web/ (Vue + Vite)
+> **说明**: 退役 Gradio 前端，产品唯一前端入口为 `frontend/` (Vue + Vite)，后端入口为 `backend/` (FastAPI)
 
 ---
 
@@ -31,7 +31,7 @@
 │   ╠═══════════════════════════════════════════════════════════════════╣  │
 │   ║   ┌────────────────────────────────────────────────────────────┐ ║  │
 │   ║   │              VUE + VITE (Frontend)                         │ ║  │
-│   ║   │   File: web/src/                                           │ ║  │
+│   ║   │   File: frontend/src/                                      │ ║  │
 │   ║   │   Port: 5173                                               │ ║  │
 │   ║   │   Role: User Interface Only                                │ ║  │
 │   ║   │   Database: ❌ No direct access                             │ ║  │
@@ -41,17 +41,17 @@
 │   ╠═══════════════════════════════════════════════════════════════════╣  │
 │   ║   ┌────────────────────────────────────────────────────────────┐ ║  │
 │   ║   │                 FASTAPI (Backend)                          │ ║  │
-│   ║   │   File: src/app.py                                         │ ║  │
+│   ║   │   File: backend/src/app.py                                 │ ║  │
 │   ║   │   Port: 8000                                               │ ║  │
 │   ║   │   Role: Business Logic + API Layer                         │ ║  │
-│   ║   │   Database: ✅ Direct access via src/db/database.py       │ ║  │
+│   ║   │   Database: ✅ Direct access via backend/src/db/database.py│ ║  │
 │   ║   └────────────────────────────────────────────────────────────┘ ║  │
 │   ╠═══════════════════════════════════════════════════════════════════╣  │
 │   ║   SQL Queries + LangChain Agent                                  ║  │
 │   ╠═══════════════════════════════════════════════════════════════════╣  │
 │   ║   ┌────────────────────────────────────────────────────────────┐ ║  │
 │   ║   │              POSTGRESQL + pgvector (Database)              │ ║  │
-│   ║   │   File: src/db/database.py                                 │ ║  │
+│   ║   │   File: backend/src/db/database.py                         │ ║  │
 │   ║   │   Port: 5432                                               │ ║  │
 │   ║   │   Role: Data Persistence + Vector Search                   │ ║  │
 │   ║   └────────────────────────────────────────────────────────────┘ ║  │
@@ -59,7 +59,7 @@
 │                                                                         │
 │   ┌─────────────────────────────────────────────────────────────────┐  │
 │   │                    LangChain Agent (in Backend)                 │  │
-│   │   File: src/agents/agent.py                                     │  │
+│   │   File: backend/src/agents/agent.py                             │  │
 │   │   Integration: llama.cpp (AMD ROCm)                             │  │
 │   │   Purpose: AI reasoning with tool calls                         │  │
 │   └─────────────────────────────────────────────────────────────────┘  │
@@ -83,7 +83,7 @@
 ### 前端实现细节
 
 ```typescript
-// web/src/api/seller.ts - 前端 API 调用层 (Vue + TypeScript)
+// frontend/src/api/seller.ts - 前端 API 调用层 (Vue + TypeScript)
 // 关键特点：
 // 1. 使用 fetch 调用后端 API
 // 2. 不包含任何数据库连接代码
@@ -102,7 +102,7 @@ export async function sellerSummary(token: string): Promise<SellerSummary> {
 
 **前端代码示例：**
 ```typescript
-// web/src/views/GenericSpaceView.vue
+// frontend/src/views/GenericSpaceView.vue
 // 从后端API获取空间数据，通过聚合接口一次加载
 import { getSpaceDashboard } from '../api/spaces'
 
@@ -117,7 +117,7 @@ const load = async () => {
 ### 后端实现细节
 
 ```python
-# src/app.py - FastAPI后端
+# backend/src/app.py - FastAPI后端
 # 关键特点：
 # 1. 直接导入数据库操作函数
 # 2. 提供REST API供前端调用
@@ -146,12 +146,12 @@ async def list_personnel(org_id: int = Query(...)):
 
 | 组件 | 文件路径 | 端口 | 职责 | 数据库访问 |
 |------|----------|------|------|-----------|
-| **Vue + Vite** | `web/src/` | 5173 | 用户界面、表单、交互 | ❌ 仅调用API |
-| **FastAPI** | `src/app.py` | 8000 | REST API、业务逻辑 | ✅ 直接访问 |
-| **Database** | `src/db/database.py` | 5432 | 数据持久化、ORM | ✅ 原生连接 |
-| **LangChain Agent** | `src/agents/agent.py` | - | AI推理、工具调用 | ✅ 通过数据库 |
-| **LLM Client** | `src/models/llm_client.py` | - | LLM接口封装 | - |
-| **JWT Auth** | `src/auth/auth.py` | - | 身份验证 | ✅ 查询用户 |
+| **Vue + Vite** | `frontend/src/` | 5173 | 用户界面、表单、交互 | ❌ 仅调用API |
+| **FastAPI** | `backend/src/app.py` | 8000 | REST API、业务逻辑 | ✅ 直接访问 |
+| **Database** | `backend/src/db/database.py` | 5432 | 数据持久化、ORM | ✅ 原生连接 |
+| **LangChain Agent** | `backend/src/agents/agent.py` | - | AI推理、工具调用 | ✅ 通过数据库 |
+| **LLM Client** | `backend/src/models/llm_client.py` | - | LLM接口封装 | - |
+| **JWT Auth** | `backend/src/auth/auth.py` | - | 身份验证 | ✅ 查询用户 |
 
 ### 职责矩阵
 
@@ -188,7 +188,7 @@ async def list_personnel(org_id: int = Query(...)):
 │      └─► 用户点击按钮、填写表单                                         │
 │                                                                         │
 │   2. Frontend处理                                                      │
-│      └─► web/src/                                                      │
+│      └─► frontend/src/                                                 │
 │          • 验证用户输入                                                │
 │          • 组织请求参数                                                │
 │          • 调用后端API                                                 │
@@ -197,24 +197,24 @@ async def list_personnel(org_id: int = Query(...)):
 │      └─► requests.get/post("http://localhost:8000/api/endpoint")      │
 │                                                                         │
 │   4. Backend接收                                                       │
-│      └─► src/app.py                                                    │
+│      └─► backend/src/app.py                                            │
 │          • FastAPI路由匹配                                             │
 │          • Pydantic模型验证                                            │
 │          • 调用数据库函数                                              │
 │                                                                         │
 │   5. Database执行                                                      │
-│      └─► src/db/database.py                                            │
+│      └─► backend/src/db/database.py                                    │
 │          • psycopg2连接池                                              │
 │          • SQL查询执行                                                 │
 │          • 结果返回                                                    │
 │                                                                         │
 │   6. Backend响应                                                       │
-│      └─► src/app.py                                                    │
+│      └─► backend/src/app.py                                            │
 │          • 格式化响应                                                  │
 │          • JSON序列化                                                  │
 │                                                                         │
 │   7. Frontend接收                                                      │
-│      └─► web/src/                                                      │
+│      └─► frontend/src/                                                 │
 │          • fetch 接收响应                                              │
 │          • JSON解析                                                    │
 │          • UI更新                                                      │
@@ -262,7 +262,7 @@ async def list_personnel(org_id: int = Query(...)):
 
 | 服务 | 端口 | 协议 | 启动命令 | 说明 |
 |------|------|------|----------|------|
-| **Vue + Vite** | 5173 | HTTP | `cd web && npm run dev -- --host 0.0.0.0 --port 5173` | 用户界面 |
+| **Vue + Vite** | 5173 | HTTP | `cd frontend && npm run dev -- --host 0.0.0.0 --port 5173` | 用户界面 |
 | **FastAPI** | 8000 | HTTP | `uvicorn src.app:app --host 0.0.0.0 --port 8000` | API服务 |
 | **PostgreSQL** | 5432 | TCP | `pg_ctl start` | 数据库 |
 | **llama.cpp** | 8000 (default) | HTTP | `./main -m model.gguf` | LLM服务 |
@@ -272,6 +272,7 @@ async def list_personnel(org_id: int = Query(...)):
 ```bash
 # 启动后端
 cd /workspace/research/unires-agent
+cd backend
 PYTHONPATH=. uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
 
 # 启动前端 (另开终端)
@@ -328,7 +329,7 @@ curl http://localhost:8000/health
 │   ┌─────────────────────────────────────────────────────────────────┐  │
 │   │                    CORS Configuration                           │  │
 │   ├─────────────────────────────────────────────────────────────────┤  │
-│   │   # src/app.py:24-25                                            │  │
+│   │   # backend/src/app.py:24-25                                    │  │
 │   │   app.add_middleware(CORSMiddleware,                             │  │
 │   │       allow_origins=["*"],  # 可配置为特定域名                  │  │
 │   │       allow_credentials=True,                                    │  │
@@ -342,7 +343,7 @@ curl http://localhost:8000/health
 ### 认证代码示例
 
 ```python
-# src/auth/auth.py
+# backend/src/auth/auth.py
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
@@ -376,39 +377,32 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 ## 📂 项目结构完整版
 
 ```
-uni-resource-agent/
-├── src/
-│   ├── app.py                      # FastAPI Backend (port 8000)
-│   ├── agents/
-│   │   └── agent.py                # LangChain Agent
-│   ├── tools/
-│   │   ├── __init__.py             # ALL_TOOLS export
-│   │   ├── resource_tools.py       # 资源查询/创建
-│   │   ├── finance_tools.py        # 交易/摘要
-│   │   ├── human_tools.py          # 人员/提醒
-│   │   └── knowledge_tools.py      # RAG搜索
-│   ├── db/
-│   │   ├── __init__.py
-│   │   ├── database.py             # PostgreSQL操作
-│   │   └── chroma_client.py        # ChromaDB向量搜索
-│   ├── auth/
-│   │   ├── __init__.py
-│   │   └── auth.py                 # JWT认证
-│   └── models/
-│       ├── __init__.py
-│       └── llm_client.py           # LLM客户端
-├── web/                            # Vue + Vite 前端 (port 5173)
+ur-agent/
+├── backend/
+│   ├── src/
+│   │   ├── app.py                  # FastAPI Backend (port 8000)
+│   │   ├── agents/                 # LangChain Agent
+│   │   ├── tools/                  # 资源/财务/知识/Seller 工具
+│   │   ├── db/                     # PostgreSQL + pgvector
+│   │   ├── auth/                   # JWT认证
+│   │   └── models/                 # LLM客户端
+│   ├── scripts/                    # 数据库初始化与演示种子
+│   ├── data/                       # Seed data, no secrets
+│   ├── requirements.txt
+│   ├── profile.yaml
+│   └── .env.example
+├── frontend/                       # Vue + Vite 前端 (port 5173)
 │   ├── src/
 │   │   ├── api/                    # API 调用层
 │   │   ├── views/                  # 页面视图
 │   │   └── ...
 │   └── package.json
-├── scripts/
-│   └── init_db.py                  # 数据库初始化
 ├── docs/
 │   ├── API.md                      # REST API 文档
 │   └── ARCHITECTURE.md             # 本文档
-├── tests/                          # API 与 E2E 冒烟测试
+├── tests/
+│   ├── backend/                    # API 与单元冒烟测试
+│   └── playwright/                 # E2E 录屏测试
 └── README.md                       # 项目说明
 ```
 
@@ -431,7 +425,7 @@ uni-resource-agent/
 
 1. **CORS配置**: 当前允许所有源(`allow_origins=["*"]`)，生产环境应限制为特定域名
 2. **Token过期**: JWT过期时间为30分钟，需实现刷新机制
-3. **连接池**: 建议在`src/db/database.py`中实现连接池优化
+3. **连接池**: 建议在 `backend/src/db/database.py` 中实现连接池优化
 
 ---
 

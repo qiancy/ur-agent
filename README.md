@@ -264,17 +264,20 @@ Base URL: `http://localhost:8000`
 
 ```bash
 # 1. 安装依赖
+cd backend
 pip3 install --break-system-packages -r requirements.txt
-cd web && npm install
 
-# 2. 初始化数据库
+# 2. 配置环境并初始化数据库
+cp .env.example .env
 PYTHONPATH=. python scripts/init_db.py
 
 # 3. 启动后端
 PYTHONPATH=. python -m uvicorn src.app:app --host 0.0.0.0 --port 8000
 
 # 4. 启动前端 (另开终端)
-cd web && npm run dev -- --host 0.0.0.0 --port 5173
+cd ../frontend
+npm install
+npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
 访问 `http://localhost:5173`
@@ -284,40 +287,33 @@ cd web && npm run dev -- --host 0.0.0.0 --port 5173
 ## 📂 Project Structure
 
 ```
-uni-resource-agent/
+ur-agent/
 ├── README.md                 # This file
-├── src/
-│   ├── app.py                # FastAPI backend (REST API)
-│   ├── agents/
-│   │   └── agent.py          # LangChain Agent
-│   ├── tools/
-│   │   ├── __init__.py       # ALL_TOOLS export
-│   │   ├── resource_tools.py # 资源查询/创建
-│   │   ├── finance_tools.py  # 交易/摘要
-│   │   ├── human_tools.py    # 人员/提醒
-│   │   └── knowledge_tools.py# RAG搜索
-│   ├── db/
-│   │   ├── __init__.py
-│   │   ├── database.py       # PostgreSQL操作
-│   │   └── chroma_client.py  # ChromaDB向量搜索
-│   ├── auth/
-│   │   ├── __init__.py
-│   │   └── auth.py           # JWT认证
-│   └── models/
-│       ├── __init__.py
-│       └── llm_client.py     # LLM客户端
-├── web/                      # Vue + Vite 前端 (port 5173)
+├── backend/
+│   ├── src/
+│   │   ├── app.py            # FastAPI backend (REST API)
+│   │   ├── agents/           # LangChain Agent
+│   │   ├── tools/            # 资源/财务/知识/Seller 工具
+│   │   ├── db/               # PostgreSQL + pgvector
+│   │   ├── auth/             # JWT 认证
+│   │   └── models/           # LLM 客户端与 DTO
+│   ├── scripts/              # DB init + demo data
+│   ├── data/                 # Seed data, no secrets
+│   ├── requirements.txt
+│   ├── profile.yaml          # Non-secret config
+│   └── .env.example          # Placeholder secrets only
+├── frontend/                 # Vue + Vite frontend (port 5173)
 │   ├── src/
 │   │   ├── api/              # API 调用层
 │   │   ├── views/            # 页面视图
 │   │   └── ...
 │   └── package.json
-├── scripts/
-│   └── init_db.py            # DB init + demo data
 ├── docs/
 │   ├── API.md                # REST API reference
 │   └── ARCHITECTURE.md       # Architecture documentation
-└── tests/                    # API and E2E smoke tests
+└── tests/
+    ├── backend/              # API/unit smoke tests
+    └── playwright/           # E2E recording tests
 ```
 
 ---
@@ -334,7 +330,7 @@ uni-resource-agent/
 
 ## 🔧 Database Management
 
-Database connection and runtime settings are configured through `profile.yaml` plus local environment variables or `.env`.
+Database connection and runtime settings are configured through `backend/profile.yaml` plus local environment variables or `backend/.env`.
 
 ---
 

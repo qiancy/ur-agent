@@ -95,6 +95,21 @@ async function onSubmit() {
           {{ loading ? '处理中…' : mode === 'login' ? '登录' : '注册' }}
         </button>
       </form>
+      <div class="demo-hint" data-test="demo-hint">
+        <p class="demo-hint-title">演示账号（点击自动填入）</p>
+        <div class="demo-accounts">
+          <button type="button" class="demo-account-btn" @click="login='zhansan'; password='demo123'">
+            <span class="demo-login">zhansan</span>
+            <span class="demo-pw">demo123</span>
+            <span class="demo-role">张三 · 淘宝小店 A · owner</span>
+          </button>
+          <button type="button" class="demo-account-btn" @click="login='liuming'; password='demo123'">
+            <span class="demo-login">liuming</span>
+            <span class="demo-pw">demo123</span>
+            <span class="demo-role">刘明 · 明灯文创小店 · owner</span>
+          </button>
+        </div>
+      </div>
       <p class="switch-line">
         <button
           v-if="mode === 'login'"
@@ -217,6 +232,56 @@ input:focus {
 .switch-line {
   margin: 14px 0 0;
   text-align: center;
+}
+.demo-hint {
+  margin-top: 18px;
+  padding: 12px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+.demo-hint-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.demo-accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.demo-account-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  color: #334155;
+  transition: border-color 0.15s, background 0.15s;
+}
+.demo-account-btn:hover {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+.demo-login {
+  font-weight: 650;
+  color: #0f766e;
+}
+.demo-pw {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #475569;
+}
+.demo-role {
+  margin-left: auto;
+  font-size: 11px;
+  color: #94a3b8;
 }
 .link-btn {
   border: none;

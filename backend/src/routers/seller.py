@@ -257,6 +257,96 @@ _READ_ONLY_NOTICE = (
 )
 
 
+_FAST_PATHS = (
+    ("库存情况", "stock"),
+    ("库存有哪些", "stock"),
+    ("当前库存", "stock"),
+    ("查一下库存", "stock"),
+    ("低库存", "low_stock"),
+    ("库存不足", "low_stock"),
+    ("快没货了", "low_stock"),
+    ("今天卖了", "summary"),
+    ("今天卖了多少", "summary"),
+    ("今天卖了多少钱", "summary"),
+    ("销售收入", "summary"),
+    ("采购支出", "summary"),
+    ("经营情况", "summary"),
+    ("经营摘要", "summary"),
+    ("店铺情况", "summary"),
+    ("利润多少", "summary"),
+    ("净现金流", "summary"),
+    ("库存估值", "summary"),
+    ("商品汇总", "product_summary"),
+    ("商品经营", "product_summary"),
+    ("每个商品", "product_summary"),
+    ("库存流水", "movements"),
+    ("出入库流水", "movements"),
+    ("流水记录", "movements"),
+    ("近期流水", "movements"),
+)
+
+
+def _match_fast_path(message: str):
+    for phrase, action in _FAST_PATHS:
+        if phrase in message:
+            return action
+    return None
+
+
+def _fast_path_reply(org_id: int, action: str, message: str) -> str:
+    if action == "stock":
+        rows = query_stock(org_id)
+        if not rows:
+            return "当前店铺暂无库存数据。"
+        lines = [f"{r.get('product_uid', '未知商品')}：{r.get('quantity', 0)}{r.get('unit', '件')}（仓库：{r.get('warehouse_code', '-')}）" for r in rows]
+        return "当前店铺库存如下：\n" + "\n".join(lines)
+
+    if action == "low_stock":
+        data = get_seller_summary(org_id, low_stock_threshold=5, top_n=5)
+        low = data.get("low_stock", [])
+        if not low:
+            return "当前没有低库存商品。"
+        lines = [f"- {item.get('product_uid', '未知')}：库存 {item.get('current_stock', 0)}{item.get('unit', '件')}" for item in low]
+        return "以下商品库存较低，建议关注补货：\n" + "\n".join(lines)
+
+    if action == "summary":
+        data = get_seller_summary(org_id, low_stock_threshold=5, top_n=5)
+        lines = [
+            f"销售收入：{data.get('sales_amount', 0):.2f} 元",
+            f"采购支出：{data.get('purchase_amount', 0):.2f} 元",
+            f"净现金流：{data.get('net_cash_flow', 0):.2f} 元",
+            f"库存估值：{data.get('inventory_value', 0):.2f} 元",
+            f"流水笔数：{data.get('movement_count', 0)}",
+        ]
+        low = data.get("low_stock", [])
+        if low:
+            lines.append("低库存商品：")
+            lines.extend([f"- {item.get('product_uid', '未知')}（{item.get('current_stock', 0)} 件）" for item in low])
+        else:
+            lines.append("低库存商品：无")
+        return "\n".join(lines)
+
+    if action == "product_summary":
+        data = query_product_summary(org_id)
+        if not data:
+            return "当前暂无商品经营汇总数据。"
+        lines = ["商品维度的经营汇总如下："]
+        for item in data:
+            lines.append(f"- {item.get('product_uid', '未知')}：采购 {item.get('purchase_quantity', 0)} / 销售 {item.get('sales_quantity', 0)}")
+        return "\n".join(lines)
+
+    if action == "movements":
+        rows = query_inventory_movements(org_id, limit=10)
+        if not rows:
+            return "当前暂无库存流水记录。"
+        lines = ["近期库存流水如下："]
+        for r in rows:
+            lines.append(f"- {r.get('operation_type', '-')} {r.get('product_uid', '未知')} {r.get('quantity', 0)}{r.get('unit', '件')} @ {r.get('created_at', '-')}")
+        return "\n".join(lines)
+
+    return ""
+
+
 @router.post("/chat")
 async def seller_chat(body: SellerChatRequest, request: Request):
     ctx = require_ecommerce_context(request)
@@ -278,6 +368,14 @@ async def seller_chat(body: SellerChatRequest, request: Request):
 
     if _is_write_intent(message):
         return {"response": _READ_ONLY_NOTICE, "ouid": ouid}
+
+    fast = _match_fast_path(message)
+    if fast:
+        try:
+            reply = _fast_path_reply(ctx["organization_id"], fast, message)
+            return {"response": reply, "ouid": ouid}
+        except Exception:
+            pass
 
     try:
         tools = make_seller_tools(ctx["organization_id"])
